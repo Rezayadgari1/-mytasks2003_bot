@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import sqlite3
-from datetime import datetime, timedelta, time as dt_time
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from telegram import (
@@ -138,7 +138,6 @@ def set_user_time(user_id, hhmm):
         INSERT INTO user_settings
         (user_id, remind_time, timezone)
         VALUES (?, ?, ?)
-
         ON CONFLICT(user_id)
         DO UPDATE SET
             remind_time = excluded.remind_time,
@@ -270,100 +269,3 @@ def complete_task(user_id, task_id):
 
     cur = conn.execute("""
         UPDATE tasks
-        SET
-            status = 'done',
-            completed_at = ?
-        WHERE user_id = ?
-        AND id = ?
-        AND status = 'pending'
-    """, (
-        now,
-        user_id,
-        task_id,
-    ))
-
-    conn.commit()
-
-    result = cur.rowcount > 0
-
-    conn.close()
-
-    return result
-
-
-def reopen_task(user_id, task_id):
-    conn = get_db()
-
-    cur = conn.execute("""
-        UPDATE tasks
-        SET
-            status = 'pending',
-            completed_at = NULL
-        WHERE user_id = ?
-        AND id = ?
-    """, (
-        user_id,
-        task_id,
-    ))
-
-    conn.commit()
-
-    result = cur.rowcount > 0
-
-    conn.close()
-
-    return result
-
-
-def delete_task(user_id, task_id):
-    conn = get_db()
-
-    cur = conn.execute("""
-        DELETE FROM tasks
-        WHERE user_id = ?
-        AND id = ?
-    """, (
-        user_id,
-        task_id,
-    ))
-
-    conn.commit()
-
-    result = cur.rowcount > 0
-
-    conn.close()
-
-    return result
-
-
-def clear_pending_tasks(user_id):
-    conn = get_db()
-
-    cur = conn.execute("""
-        DELETE FROM tasks
-        WHERE user_id = ?
-        AND status = 'pending'
-    """, (user_id,))
-
-    conn.commit()
-
-    count = cur.rowcount
-
-    conn.close()
-
-    return count
-
-
-# ============================================================
-# جست‌وجوی کار
-# ============================================================
-
-def search_tasks(user_id, text):
-    conn = get_db()
-
-    rows = conn.execute("""
-        SELECT *
-        FROM tasks
-        WHERE user_id = ?
-        AND text LIKE ?
-        ORDER BY id DESC
