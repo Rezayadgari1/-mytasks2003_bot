@@ -2,15 +2,10 @@ import logging
 import os
 import re
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -21,11 +16,7 @@ from telegram.ext import (
     filters,
 )
 
-# ============================================================
-# تنظیمات
-# ============================================================
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "tasks.db")
 
 DEFAULT_TIME = "09:00"
@@ -36,20 +27,17 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# وضعیت افزودن کار
-# ============================================================
+ADD_TEXT = 1
+ADD_CATEGORY = 2
+ADD_PRIORITY = 3
+ADD_REPEAT = 4
 
-ADD_TEXT, ADD_CATEGORY, ADD_PRIORITY, ADD_REPEAT = range(4)
-
-# ============================================================
-# دیتابیس
-# ============================================================
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -89,7 +77,8 @@ def init_db():
         "category": "TEXT NOT NULL DEFAULT 'عمومی'",
         "priority": "TEXT NOT NULL DEFAULT 'متوسط'",
         "repeat_type": "TEXT NOT NULL DEFAULT 'none'",
-        "last_reminded": "TEXT",
+        "reminder_time": "TEXT",
+        "reminder_enabled": "INTEGER NOT NULL DEFAULT 0",
     }
 
     for column, definition in new_columns.items():
@@ -102,12 +91,9 @@ def init_db():
     conn.close()
 
 
-# ============================================================
-# تنظیمات کاربر
-# ============================================================
-
-def get_user_time(user_id: int):
+def get_user_time(user_id):
     conn = get_db()
+
     row = conn.execute(
         """
         SELECT remind_time
@@ -116,13 +102,18 @@ def get_user_time(user_id: int):
         """,
         (user_id,),
     ).fetchone()
+
     conn.close()
 
-    return row["remind_time"] if row else DEFAULT_TIME
+    if row:
+        return row["remind_time"]
+
+    return DEFAULT_TIME
 
 
-def set_user_time(user_id: int, hhmm: str):
+def set_user_time(user_id, hhmm):
     conn = get_db()
+
     conn.execute(
         """
         INSERT INTO user_settings
@@ -135,32 +126,30 @@ def set_user_time(user_id: int, hhmm: str):
         """,
         (user_id, hhmm, DEFAULT_TZ),
     )
+
     conn.commit()
     conn.close()
 
 
-# ============================================================
-# کارها
-# ============================================================
-
 def add_task(
-    user_id: int,
-    text: str,
-    category: str = "عمومی",
-    priority: str = "متوسط",
-    repeat_type: str = "none",
+    user_id,
+    text,
+    category="عمومی",
+    priority="متوسط",
+    repeat_type="none",
 ):
     text = text.strip()
+
     if not text:
         return False
 
     conn = get_db()
+
     now = datetime.now(TEHRAN).isoformat()
 
     conn.execute(
         """
-        INSERT INTO tasks
-        (
+        INSERT INTO tasks (
             user_id,
             text,
             created_at,
@@ -183,17 +172,63 @@ def add_task(
 
     conn.commit()
     conn.close()
+
     return True
 
 
-def get_pending_tasks(user_id: int):
+def get_task(user_id, task_id):
     conn = get_db()
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM tasks
+        WHERE user_id = ?
+        AND id = ?
+        """,
+        (user_id, task_id),
+    ).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_all_tasks(user_id):
+    conn = get_db()
+
     rows = conn.execute(
         """
         SELECT *
         FROM tasks
         WHERE user_id = ?
-          AND status = 'pending'
+        ORDER BY
+            CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+            CASE priority
+                WHEN 'زیاد' THEN 1
+                WHEN 'متوسط' THEN 2
+                WHEN 'کم' THEN 3
+                ELSE 4
+            END,
+            id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def get_pending_tasks(user_id):
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM tasks
+        WHERE user_id = ?
+        AND status = 'pending'
         ORDER BY
             CASE priority
                 WHEN 'زیاد' THEN 1
@@ -201,46 +236,19 @@ def get_pending_tasks(user_id: int):
                 WHEN 'کم' THEN 3
                 ELSE 4
             END,
-            id
+            id DESC
         """,
         (user_id,),
     ).fetchall()
+
     conn.close()
+
     return rows
 
 
-def get_all_tasks(user_id: int):
+def complete_task(user_id, task_id):
     conn = get_db()
-    rows = conn.execute(
-        """
-        SELECT *
-        FROM tasks
-        WHERE user_id = ?
-        ORDER BY id DESC
-        """,
-        (user_id,),
-    ).fetchall()
-    conn.close()
-    return rows
 
-
-def get_task(user_id: int, task_id: int):
-    conn = get_db()
-    row = conn.execute(
-        """
-        SELECT *
-        FROM tasks
-        WHERE user_id = ?
-          AND id = ?
-        """,
-        (user_id, task_id),
-    ).fetchone()
-    conn.close()
-    return row
-
-
-def complete_task(user_id: int, task_id: int):
-    conn = get_db()
     now = datetime.now(TEHRAN).isoformat()
 
     cur = conn.execute(
@@ -250,19 +258,26 @@ def complete_task(user_id: int, task_id: int):
             status = 'done',
             completed_at = ?
         WHERE user_id = ?
-          AND id = ?
-          AND status = 'pending'
+        AND id = ?
+        AND status = 'pending'
         """,
-        (now, user_id, task_id),
+        (
+            now,
+            user_id,
+            task_id,
+        ),
     )
 
     conn.commit()
-    success = cur.rowcount > 0
+
+    result = cur.rowcount > 0
+
     conn.close()
-    return success
+
+    return result
 
 
-def reopen_task(user_id: int, task_id: int):
+def reopen_task(user_id, task_id):
     conn = get_db()
 
     cur = conn.execute(
@@ -272,597 +287,312 @@ def reopen_task(user_id: int, task_id: int):
             status = 'pending',
             completed_at = NULL
         WHERE user_id = ?
-          AND id = ?
+        AND id = ?
         """,
-        (user_id, task_id),
+        (
+            user_id,
+            task_id,
+        ),
     )
 
     conn.commit()
-    success = cur.rowcount > 0
+
+    result = cur.rowcount > 0
+
     conn.close()
-    return success
+
+    return result
 
 
-def delete_task(user_id: int, task_id: int):
+def delete_task(user_id, task_id):
     conn = get_db()
 
     cur = conn.execute(
         """
         DELETE FROM tasks
         WHERE user_id = ?
-          AND id = ?
+        AND id = ?
         """,
-        (user_id, task_id),
+        (
+            user_id,
+            task_id,
+        ),
     )
 
     conn.commit()
-    success = cur.rowcount > 0
+
+    result = cur.rowcount > 0
+
     conn.close()
-    return success
+
+    return result
 
 
-def clear_pending_tasks(user_id: int):
+def clear_pending_tasks(user_id):
     conn = get_db()
 
     cur = conn.execute(
         """
         DELETE FROM tasks
         WHERE user_id = ?
-          AND status = 'pending'
+        AND status = 'pending'
         """,
         (user_id,),
     )
 
     conn.commit()
-    deleted = cur.rowcount
+
+    count = cur.rowcount
+
     conn.close()
-    return deleted
+
+    return count
 
 
-# ============================================================
-# کارهای تکراری
-# ============================================================
-
-def create_recurring_tasks():
-    today = datetime.now(TEHRAN).date()
-
+def search_tasks(user_id, text):
     conn = get_db()
 
-    recurring = conn.execute(
+    rows = conn.execute(
         """
         SELECT *
         FROM tasks
-        WHERE repeat_type != 'none'
-        """
-    ).fetchall()
-
-    for task in recurring:
-        try:
-            created_date = datetime.fromisoformat(
-                task["created_at"]
-            ).astimezone(TEHRAN).date()
-        except Exception:
-            continue
-
-        if task["repeat_type"] == "روزانه":
-            should_create = True
-        elif task["repeat_type"] == "هفتگی":
-            should_create = created_date.weekday() == today.weekday()
-        else:
-            should_create = False
-
-        if not should_create:
-            continue
-
-        exists = conn.execute(
-            """
-            SELECT id
-            FROM tasks
-            WHERE user_id = ?
-              AND text = ?
-              AND repeat_type = ?
-              AND date(created_at) = ?
-            """,
-            (
-                task["user_id"],
-                task["text"],
-                task["repeat_type"],
-                today.isoformat(),
-            ),
-        ).fetchone()
-
-        if exists:
-            continue
-
-        conn.execute(
-            """
-            INSERT INTO tasks
-            (
-                user_id,
-                text,
-                created_at,
-                status,
-                category,
-                priority,
-                repeat_type
-            )
-            VALUES (?, ?, ?, 'pending', ?, ?, ?)
-            """,
-            (
-                task["user_id"],
-                task["text"],
-                datetime.now(TEHRAN).isoformat(),
-                task["category"],
-                task["priority"],
-                task["repeat_type"],
-            ),
-        )
-
-    conn.commit()
-    conn.close()
-
-
-# ============================================================
-# امتیاز و گزارش
-# ============================================================
-
-def get_daily_score(user_id: int):
-    conn = get_db()
-    today = datetime.now(TEHRAN).date().isoformat()
-
-    total = conn.execute(
-        """
-        SELECT COUNT(*) AS count
-        FROM tasks
         WHERE user_id = ?
-          AND date(created_at) = ?
-        """,
-        (user_id, today),
-    ).fetchone()["count"]
-
-    done = conn.execute(
-        """
-        SELECT COUNT(*) AS count
-        FROM tasks
-        WHERE user_id = ?
-          AND date(created_at) = ?
-          AND status = 'done'
-        """,
-        (user_id, today),
-    ).fetchone()["count"]
-
-    conn.close()
-
-    if total == 0:
-        return 0, 0, 0
-
-    return round((done / total) * 100), done, total
-
-
-def get_period_report(user_id: int, start, end):
-    conn = get_db()
-
-    row = conn.execute(
-        """
-        SELECT
-            COUNT(*) AS total,
-            SUM(
-                CASE
-                    WHEN status = 'done' THEN 1
-                    ELSE 0
-                END
-            ) AS done
-        FROM tasks
-        WHERE user_id = ?
-          AND date(created_at) BETWEEN ? AND ?
+        AND text LIKE ?
+        ORDER BY id DESC
         """,
         (
             user_id,
-            start.isoformat(),
-            end.isoformat(),
+            f"%{text}%",
         ),
-    ).fetchone()
+    ).fetchall()
 
     conn.close()
 
-    total = row["total"] or 0
-    done = row["done"] or 0
-    score = round((done / total) * 100) if total else 0
-
-    return done, total, score
+    return rows
 
 
-def get_weekly_report(user_id: int):
-    today = datetime.now(TEHRAN).date()
-    start = today - timedelta(days=6)
-    done, total, score = get_period_report(user_id, start, today)
-    return start, today, done, total, score
+def get_stats(user_id):
+    conn = get_db()
+
+    total = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM tasks
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()[0]
+
+    pending = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM tasks
+        WHERE user_id = ?
+        AND status = 'pending'
+        """,
+        (user_id,),
+    ).fetchone()[0]
+
+    done = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM tasks
+        WHERE user_id = ?
+        AND status = 'done'
+        """,
+        (user_id,),
+    ).fetchone()[0]
+
+    conn.close()
+
+    return total, pending, done
 
 
-def get_monthly_report(user_id: int):
-    today = datetime.now(TEHRAN).date()
-    start = today.replace(day=1)
-    done, total, score = get_period_report(user_id, start, today)
-    return start, today, done, total, score
+def main_keyboard():
+    keyboard = [
+        ["➕ افزودن کار", "📋 کارهای من"],
+        ["✅ انجام‌شده", "🔎 جستجو"],
+        ["⏰ یادآوری", "📊 آمار"],
+        ["🗑 پاک کردن", "ℹ️ راهنما"],
+    ]
 
-
-# ============================================================
-# منوی اصلی
-# ============================================================
-
-def main_menu():
     return ReplyKeyboardMarkup(
-        [
-            ["➕ افزودن کار", "📋 کارهای من"],
-            ["📊 امتیاز امروز", "📅 گزارش هفتگی"],
-            ["📈 گزارش ماهانه", "💡 پیشنهاد کار"],
-            ["⏰ تنظیم یادآوری", "⚙️ تنظیمات"],
-        ],
+        keyboard,
         resize_keyboard=True,
     )
 
 
-# ============================================================
-# نمایش کارها
-# ============================================================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.effective_user.first_name or "دوست من"
 
-def task_keyboard(rows):
-    keyboard = []
-
-    for task in rows:
-        icon = "☑️" if task["status"] == "done" else "☐"
-
-        priority_icon = {
-            "زیاد": "🔴",
-            "متوسط": "🟡",
-            "کم": "🟢",
-        }.get(task["priority"], "⚪")
-
-        title = f"{icon} {priority_icon} {task['text']}"
-
-        if len(title) > 55:
-            title = title[:52] + "..."
-
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    title,
-                    callback_data=f"toggle:{task['id']}",
-                )
-            ]
-        )
-
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    "🗑 حذف",
-                    callback_data=f"delete:{task['id']}",
-                )
-            ]
-        )
-
-    return InlineKeyboardMarkup(keyboard)
-
-
-def format_tasks(rows):
-    if not rows:
-        return "📋 کاری ثبت نشده است."
-
-    lines = ["📋 کارهای تو", ""]
-
-    for index, task in enumerate(rows, start=1):
-        status = "☑️" if task["status"] == "done" else "☐"
-
-        priority = {
-            "زیاد": "🔴",
-            "متوسط": "🟡",
-            "کم": "🟢",
-        }.get(task["priority"], "⚪")
-
-        repeat = ""
-        if task["repeat_type"] != "none":
-            repeat = f" 🔁{task['repeat_type']}"
-
-        lines.append(
-            f"{index}. {status} {priority} {task['text']}"
-            f" | {task['category']}{repeat}"
-        )
-
-        if task["status"] == "done" and task["completed_at"]:
-            try:
-                completed = datetime.fromisoformat(
-                    task["completed_at"]
-                ).astimezone(TEHRAN)
-
-                lines.append(
-                    "   انجام شد: "
-                    f"{completed.strftime('%Y/%m/%d %H:%M')}"
-                )
-            except Exception:
-                pass
-
-    return "\n".join(lines)
-
-
-async def show_tasks(update, context):
-    user_id = update.effective_user.id
-    rows = get_all_tasks(user_id)
-
-    await update.message.reply_text(
-        format_tasks(rows),
-        reply_markup=task_keyboard(rows) if rows else None,
+    text = (
+        f"سلام {name} 👋\n\n"
+        "به ربات مدیریت کارها خوش آمدی.\n\n"
+        "از منوی پایین استفاده کن."
     )
 
-
-# ============================================================
-# /start و /help
-# ============================================================
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    set_user_time(user_id, get_user_time(user_id))
-    schedule_reminder_for_user(context.application, user_id)
-
     await update.message.reply_text(
-        "سلام 👋\n\n"
-        "من ربات مدیریت کارهای روزانه هستم.\n\n"
-        "از منوی پایین استفاده کن.",
-        reply_markup=main_menu(),
+        text,
+        reply_markup=main_keyboard(),
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "راهنما:\n\n"
-        "/add متن کار\n"
-        "/list\n"
-        "/done شماره\n"
-        "/clear\n"
-        "/settime 08:30\n"
-        "/mytime\n"
-        "/weekly\n"
-        "/monthly",
-        reply_markup=main_menu(),
+    text = (
+        "راهنمای ربات\n\n"
+        "/start شروع ربات\n"
+        "/help راهنما\n"
+        "/add متن کار افزودن سریع\n"
+        "/list نمایش کارها\n"
+        "/done شماره انجام کار\n"
+        "/reopen شماره بازکردن کار\n"
+        "/delete شماره حذف کار\n"
+        "/search متن جستجو\n"
+        "/stats آمار\n"
+        "/time 09:00 تنظیم یادآوری\n"
+        "/clear حذف کارهای انجام‌نشده\n"
+        "/cancel لغو عملیات"
     )
-
-
-# ============================================================
-# افزودن کار
-# ============================================================
-
-async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "متن کار را بفرست.\n\n"
-        "مثال:\n"
-        "ورزش ۳۰ دقیقه"
-    )
-    return ADD_TEXT
-
-
-async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-
-    if not text:
-        await update.message.reply_text("متن کار نمی‌تواند خالی باشد.")
-        return ADD_TEXT
-
-    context.user_data["task_text"] = text
-
-    keyboard = [
-        [
-            InlineKeyboardButton("🏠 شخصی", callback_data="cat:شخصی"),
-            InlineKeyboardButton("💼 کار", callback_data="cat:کار"),
-        ],
-        [
-            InlineKeyboardButton("🏃 ورزش", callback_data="cat:ورزش"),
-            InlineKeyboardButton("📚 مطالعه", callback_data="cat:مطالعه"),
-        ],
-        [
-            InlineKeyboardButton("🛒 خرید", callback_data="cat:خرید"),
-            InlineKeyboardButton("📌 عمومی", callback_data="cat:عمومی"),
-        ],
-    ]
 
     await update.message.reply_text(
-        "دسته‌بندی کار را انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-    return ADD_CATEGORY
-
-
-async def add_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    category = query.data.split(":", 1)[1]
-    context.user_data["category"] = category
-
-    keyboard = [
-        [
-            InlineKeyboardButton("🔴 زیاد", callback_data="priority:زیاد"),
-            InlineKeyboardButton("🟡 متوسط", callback_data="priority:متوسط"),
-            InlineKeyboardButton("🟢 کم", callback_data="priority:کم"),
-        ]
-    ]
-
-    await query.edit_message_text(
-        "اولویت کار را انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-    return ADD_PRIORITY
-
-
-async def add_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    priority = query.data.split(":", 1)[1]
-    context.user_data["priority"] = priority
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "بدون تکرار",
-                callback_data="repeat:none",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "هر روز",
-                callback_data="repeat:روزانه",
-            ),
-            InlineKeyboardButton(
-                "هر هفته",
-                callback_data="repeat:هفتگی",
-            ),
-        ],
-    ]
-
-    await query.edit_message_text(
-        "تکرار کار را انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-    return ADD_REPEAT
-
-
-async def add_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    repeat_type = query.data.split(":", 1)[1]
-    user_id = query.from_user.id
-
-    text = context.user_data.get("task_text", "")
-    category = context.user_data.get("category", "عمومی")
-    priority = context.user_data.get("priority", "متوسط")
-
-    if not text:
-        await query.edit_message_text("خطا: متن کار پیدا نشد.")
-        context.user_data.clear()
-        return ConversationHandler.END
-
-    add_task(
-        user_id,
         text,
-        category,
-        priority,
-        repeat_type,
+        reply_markup=main_keyboard(),
     )
 
-    context.user_data.clear()
 
-    await query.edit_message_text("✅ کار با موفقیت ثبت شد.")
+def format_task(row):
+    status = "✅" if row["status"] == "done" else "⏳"
 
-    await query.message.reply_text(
-        "از منوی پایین ادامه بده.",
-        reply_markup=main_menu(),
+    category = row["category"] or "عمومی"
+    priority = row["priority"] or "متوسط"
+
+    repeat_names = {
+        "none": "بدون تکرار",
+        "daily": "روزانه",
+        "weekly": "هفتگی",
+    }
+
+    repeat = repeat_names.get(
+        row["repeat_type"],
+        "بدون تکرار",
     )
 
-    return ConversationHandler.END
+    return (
+        f"{status} {row['text']}\n"
+        f"🆔 شماره: {row['id']}\n"
+        f"📁 دسته: {category}\n"
+        f"⚡ اولویت: {priority}\n"
+        f"🔁 تکرار: {repeat}"
+    )
 
 
-async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
+async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rows = get_all_tasks(update.effective_user.id)
+
+    if not rows:
+        await update.message.reply_text(
+            "هنوز کاری ثبت نکردی.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    text = "📋 کارهای تو\n\n"
+
+    for row in rows:
+        text += format_task(row)
+        text += "\n\n"
+
+    if len(text) > 4000:
+        text = text[:3900] + "\n\n..."
 
     await update.message.reply_text(
-        "افزودن کار لغو شد.",
-        reply_markup=main_menu(),
+        text,
+        reply_markup=main_keyboard(),
     )
 
-    return ConversationHandler.END
 
+async def done_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = get_db()
 
-# ============================================================
-# دکمه‌های کار
-# ============================================================
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM tasks
+        WHERE user_id = ?
+        AND status = 'done'
+        ORDER BY id DESC
+        """,
+        (update.effective_user.id,),
+    ).fetchall()
 
-async def task_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+    conn.close()
 
-    user_id = query.from_user.id
-
-    try:
-        action, task_id_text = query.data.split(":", 1)
-        task_id = int(task_id_text)
-    except (ValueError, AttributeError):
-        await query.answer("دکمه نامعتبر است.", show_alert=True)
-        return
-
-    if action == "toggle":
-        task = get_task(user_id, task_id)
-
-        if not task:
-            await query.answer("کار پیدا نشد.", show_alert=True)
-            return
-
-        if task["status"] == "done":
-            reopen_task(user_id, task_id)
-        else:
-            complete_task(user_id, task_id)
-
-    elif action == "delete":
-        if not delete_task(user_id, task_id):
-            await query.answer("کار پیدا نشد.", show_alert=True)
-            return
-    else:
-        return
-
-    rows = get_all_tasks(user_id)
-
-    try:
-        await query.edit_message_text(
-            format_tasks(rows),
-            reply_markup=task_keyboard(rows) if rows else None,
+    if not rows:
+        await update.message.reply_text(
+            "هنوز کاری انجام نشده است.",
+            reply_markup=main_keyboard(),
         )
-    except Exception as exc:
-        logger.debug("Could not edit task message: %s", exc)
+        return
 
+    text = "✅ کارهای انجام‌شده\n\n"
 
-# ============================================================
-# دستورات قدیمی
-# ============================================================
+    for row in rows:
+        text += format_task(row)
+        text += "\n\n"
+
+    if len(text) > 4000:
+        text = text[:3900] + "\n\n..."
+
+    await update.message.reply_text(
+        text,
+        reply_markup=main_keyboard(),
+    )
+
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = " ".join(context.args).strip()
-
-    if not text:
-        await update.message.reply_text("مثال:\n/add خرید نان")
+    if not context.args:
+        await update.message.reply_text(
+            "مثال:\n/add خرید نان"
+        )
         return
 
-    add_task(user_id, text)
+    text = " ".join(context.args)
+
+    add_task(
+        update.effective_user.id,
+        text,
+    )
 
     await update.message.reply_text(
         f"✅ کار ثبت شد:\n{text}",
-        reply_markup=main_menu(),
+        reply_markup=main_keyboard(),
     )
 
 
-async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await show_tasks(update, context)
-
-
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
     if not context.args:
-        await update.message.reply_text("مثال:\n/done 12")
+        await update.message.reply_text(
+            "مثال:\n/done 12"
+        )
         return
 
     try:
         task_id = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("شماره کار درست نیست.")
+        await update.message.reply_text(
+            "شماره کار باید عدد باشد."
+        )
         return
 
-    if complete_task(user_id, task_id):
+    result = complete_task(
+        update.effective_user.id,
+        task_id,
+    )
+
+    if result:
         await update.message.reply_text(
-            "☑️ کار انجام شد و سابقه آن حفظ شد."
+            "✅ کار انجام شد.",
+            reply_markup=main_keyboard(),
         )
     else:
         await update.message.reply_text(
@@ -870,471 +600,674 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def reopen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "مثال:\n/reopen 12"
+        )
+        return
+
+    try:
+        task_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text(
+            "شماره کار باید عدد باشد."
+        )
+        return
+
+    result = reopen_task(
+        update.effective_user.id,
+        task_id,
+    )
+
+    if result:
+        await update.message.reply_text(
+            "🔄 کار دوباره فعال شد.",
+            reply_markup=main_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            "کار پیدا نشد."
+        )
+
+
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "مثال:\n/delete 12"
+        )
+        return
+
+    try:
+        task_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text(
+            "شماره کار باید عدد باشد."
+        )
+        return
+
+    result = delete_task(
+        update.effective_user.id,
+        task_id,
+    )
+
+    if result:
+        await update.message.reply_text(
+            "🗑 کار حذف شد.",
+            reply_markup=main_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            "کار پیدا نشد."
+        )
+
+
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    deleted = clear_pending_tasks(user_id)
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "بله، حذف کن",
+                callback_data="clear_yes",
+            ),
+            InlineKeyboardButton(
+                "لغو",
+                callback_data="clear_no",
+            ),
+        ]
+    ]
 
     await update.message.reply_text(
-        f"🗑 {deleted} کار انجام‌نشده پاک شد.\n"
-        "سابقه کارهای انجام‌شده باقی ماند."
+        "همه کارهای انجام‌نشده حذف شوند؟",
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 
-# ============================================================
-# ساعت یادآوری
-# ============================================================
-
-async def settime_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("مثال:\n/settime 08:30")
+        await update.message.reply_text(
+            "مثال:\n/search خرید"
+        )
+        return
+
+    query = " ".join(context.args)
+
+    rows = search_tasks(
+        update.effective_user.id,
+        query,
+    )
+
+    if not rows:
+        await update.message.reply_text(
+            "نتیجه‌ای پیدا نشد."
+        )
+        return
+
+    text = f"🔎 نتیجه جستجو برای «{query}»\n\n"
+
+    for row in rows:
+        text += format_task(row)
+        text += "\n\n"
+
+    if len(text) > 4000:
+        text = text[:3900] + "\n\n..."
+
+    await update.message.reply_text(
+        text,
+        reply_markup=main_keyboard(),
+    )
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total, pending, done = get_stats(
+        update.effective_user.id
+    )
+
+    percent = 0
+
+    if total:
+        percent = int((done / total) * 100)
+
+    text = (
+        "📊 آمار کارها\n\n"
+        f"📋 کل کارها: {total}\n"
+        f"⏳ انجام‌نشده: {pending}\n"
+        f"✅ انجام‌شده: {done}\n"
+        f"📈 درصد انجام: {percent}%"
+    )
+
+    await update.message.reply_text(
+        text,
+        reply_markup=main_keyboard(),
+    )
+
+
+def valid_time(value):
+    return bool(
+        re.fullmatch(
+            r"(?:[01]\d|2[0-3]):[0-5]\d",
+            value,
+        )
+    )
+
+
+async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        current = get_user_time(
+            update.effective_user.id
+        )
+
+        await update.message.reply_text(
+            f"⏰ ساعت فعلی: {current}\n\n"
+            "برای تغییر:\n"
+            "/time 09:30"
+        )
         return
 
     hhmm = context.args[0]
 
-    if not re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", hhmm):
+    if not valid_time(hhmm):
         await update.message.reply_text(
-            "فرمت ساعت درست نیست.\n"
-            "مثال: /settime 21:15"
+            "فرمت ساعت اشتباه است.\n"
+            "مثال:\n"
+            "/time 09:30"
         )
         return
 
-    set_user_time(user_id, hhmm)
-    schedule_reminder_for_user(context.application, user_id)
-
-    await update.message.reply_text(
-        f"⏰ ساعت یادآوری روی {hhmm} تنظیم شد."
-    )
-
-
-async def mytime_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    await update.message.reply_text(
-        f"⏰ ساعت یادآوری تو: {get_user_time(user_id)}"
-    )
-
-
-# ============================================================
-# گزارش‌ها
-# ============================================================
-
-async def daily_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    score, done, total = get_daily_score(user_id)
-
-    await update.message.reply_text(
-        "📊 امتیاز امروز\n\n"
-        f"انجام‌شده: {done}\n"
-        f"کل کارها: {total}\n"
-        f"امتیاز: {score}%"
-    )
-
-
-async def weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    start, end, done, total, score = get_weekly_report(user_id)
-
-    await update.message.reply_text(
-        "📅 گزارش هفتگی\n\n"
-        f"از {start.strftime('%Y/%m/%d')}\n"
-        f"تا {end.strftime('%Y/%m/%d')}\n\n"
-        f"کل کارها: {total}\n"
-        f"انجام‌شده: {done}\n"
-        f"امتیاز: {score}%"
-    )
-
-
-async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    start, end, done, total, score = get_monthly_report(user_id)
-
-    await update.message.reply_text(
-        "📈 گزارش ماهانه\n\n"
-        f"از {start.strftime('%Y/%m/%d')}\n"
-        f"تا {end.strftime('%Y/%m/%d')}\n\n"
-        f"کل کارها: {total}\n"
-        f"انجام‌شده: {done}\n"
-        f"امتیاز: {score}%"
-    )
-
-
-# ============================================================
-# پیشنهاد کار
-# ============================================================
-
-SUGGESTIONS = [
-    "ورزش ۳۰ دقیقه",
-    "مطالعه ۲۰ دقیقه",
-    "نوشیدن آب",
-    "مرتب کردن اتاق",
-    "خرید روزانه",
-    "پیاده‌روی",
-    "بررسی کارهای فردا",
-    "مطالعه کتاب",
-    "تمرین زبان",
-    "رسیدگی به ماشین",
-]
-
-
-async def suggestions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = []
-
-    for i, item in enumerate(SUGGESTIONS):
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    f"➕ {item}",
-                    callback_data=f"suggest:{i}",
-                )
-            ]
-        )
-
-    await update.message.reply_text(
-        "💡 یک کار را برای افزودن انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-async def suggestion_button(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    try:
-        index = int(query.data.split(":", 1)[1])
-    except (ValueError, IndexError):
-        return
-
-    if not 0 <= index < len(SUGGESTIONS):
-        return
-
-    user_id = query.from_user.id
-
-    add_task(
-        user_id,
-        SUGGESTIONS[index],
-        "عمومی",
-        "متوسط",
-        "none",
-    )
-
-    await query.edit_message_text(
-        f"✅ اضافه شد:\n{SUGGESTIONS[index]}"
-    )
-
-
-# ============================================================
-# یادآوری روزانه
-# ============================================================
-
-async def send_daily_reminder(context: ContextTypes.DEFAULT_TYPE):
-    user_id = context.job.data["user_id"]
-
-    try:
-        create_recurring_tasks()
-        rows = get_pending_tasks(user_id)
-
-        if not rows:
-            text = (
-                "☀️ صبح بخیر!\n\n"
-                "امروز کاری برای انجام نداری. 😊"
-            )
-        else:
-            text = (
-                "☀️ صبح بخیر!\n\n"
-                "📋 کارهای امروز:\n\n"
-                f"{format_tasks(rows)}"
-            )
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=text,
-            reply_markup=task_keyboard(rows) if rows else main_menu(),
-        )
-
-    except Exception as exc:
-        logger.exception(
-            "Error sending reminder to user %s: %s",
-            user_id,
-            exc,
-        )
-
-
-def remove_user_reminders(application: Application, user_id: int):
-    jobs = application.job_queue.get_jobs_by_name(
-        f"daily_reminder_{user_id}"
-    )
-
-    for job in jobs:
-        job.schedule_removal()
-
-
-def schedule_reminder_for_user(application: Application, user_id: int):
-    if application.job_queue is None:
-        logger.error(
-            "JobQueue is unavailable. Install python-telegram-bot with "
-            "the job-queue extra."
-        )
-        return
-
-    remove_user_reminders(application, user_id)
-
-    hhmm = get_user_time(user_id)
-
-    hour, minute = map(int, hhmm.split(":"))
-
-    from datetime import time as dt_time
-
-    reminder_time = dt_time(
-        hour=hour,
-        minute=minute,
-        tzinfo=TEHRAN,
-    )
-
-    application.job_queue.run_daily(
-        send_daily_reminder,
-        time=reminder_time,
-        data={"user_id": user_id},
-        name=f"daily_reminder_{user_id}",
-    )
-
-    logger.info(
-        "Daily reminder scheduled for user %s at %s",
-        user_id,
+    set_user_time(
+        update.effective_user.id,
         hhmm,
     )
 
+    await update.message.reply_text(
+        f"⏰ ساعت یادآوری روی {hhmm} تنظیم شد.",
+        reply_markup=main_keyboard(),
+    )
 
-# ============================================================
-# تنظیمات
-# ============================================================
 
-async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TEHRAN)
+    current_time = now.strftime("%H:%M")
+
+    conn = get_db()
+
+    users = conn.execute(
+        """
+        SELECT user_id, remind_time
+        FROM user_settings
+        WHERE remind_time = ?
+        """,
+        (current_time,),
+    ).fetchall()
+
+    conn.close()
+
+    for user in users:
+        tasks = get_pending_tasks(user["user_id"])
+
+        if not tasks:
+            continue
+
+        text = "⏰ یادآوری کارهای امروز\n\n"
+
+        for task in tasks:
+            text += (
+                f"⏳ {task['text']}\n"
+                f"⚡ اولویت: {task['priority']}\n"
+                f"🆔 شماره: {task['id']}\n\n"
+            )
+
+        try:
+            await context.bot.send_message(
+                chat_id=user["user_id"],
+                text=text,
+            )
+        except Exception as error:
+            logger.error(
+                "Reminder error: %s",
+                error,
+            )
+
+
+async def add_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📝 متن کار را بفرست.\n\n"
+        "مثال:\n"
+        "خرید نان و شیر"
+    )
+
+    return ADD_TEXT
+
+
+async def add_text_received(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    text = update.message.text.strip()
+
+    if not text:
+        await update.message.reply_text(
+            "متن کار خالی است. دوباره بفرست."
+        )
+        return ADD_TEXT
+
+    context.user_data["new_task_text"] = text
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "⏰ تغییر ساعت یادآوری",
-                callback_data="settings:time",
-            )
+                "📚 عمومی",
+                callback_data="cat_عمومی",
+            ),
+            InlineKeyboardButton(
+                "💼 کار",
+                callback_data="cat_کار",
+            ),
         ],
         [
             InlineKeyboardButton(
-                "📋 نمایش ساعت فعلی",
-                callback_data="settings:showtime",
-            )
+                "🏠 شخصی",
+                callback_data="cat_شخصی",
+            ),
+            InlineKeyboardButton(
+                "🛒 خرید",
+                callback_data="cat_خرید",
+            ),
         ],
     ]
 
     await update.message.reply_text(
-        "⚙️ تنظیمات",
+        "📁 دسته کار را انتخاب کن.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
+    return ADD_CATEGORY
 
-async def settings_button(
+
+async def add_category_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
     query = update.callback_query
     await query.answer()
 
-    action = query.data.split(":", 1)[1]
-    user_id = query.from_user.id
+    category = query.data.replace(
+        "cat_",
+        "",
+        1,
+    )
 
-    if action == "showtime":
-        await query.message.reply_text(
-            f"⏰ ساعت یادآوری تو: {get_user_time(user_id)}"
+    context.user_data["new_task_category"] = category
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🔴 زیاد",
+                callback_data="pri_زیاد",
+            ),
+            InlineKeyboardButton(
+                "🟡 متوسط",
+                callback_data="pri_متوسط",
+            ),
+            InlineKeyboardButton(
+                "🟢 کم",
+                callback_data="pri_کم",
+            ),
+        ]
+    ]
+
+    await query.edit_message_text(
+        "⚡ اولویت را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    return ADD_PRIORITY
+
+
+async def add_priority_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    priority = query.data.replace(
+        "pri_",
+        "",
+        1,
+    )
+
+    context.user_data["new_task_priority"] = priority
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "بدون تکرار",
+                callback_data="rep_none",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "روزانه",
+                callback_data="rep_daily",
+            ),
+            InlineKeyboardButton(
+                "هفتگی",
+                callback_data="rep_weekly",
+            ),
+        ],
+    ]
+
+    await query.edit_message_text(
+        "🔁 نوع تکرار را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+    return ADD_REPEAT
+
+
+async def add_repeat_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    repeat_type = query.data.replace(
+        "rep_",
+        "",
+        1,
+    )
+
+    task_text = context.user_data.get(
+        "new_task_text",
+        "",
+    )
+
+    category = context.user_data.get(
+        "new_task_category",
+        "عمومی",
+    )
+
+    priority = context.user_data.get(
+        "new_task_priority",
+        "متوسط",
+    )
+
+    if not task_text:
+        await query.edit_message_text(
+            "خطا در ثبت کار. دوباره تلاش کن."
         )
-        return
 
-    if action == "time":
-        await query.message.reply_text(
-            "برای تغییر ساعت، این دستور را بفرست:\n\n"
-            "/settime 08:30"
+        context.user_data.clear()
+
+        return ConversationHandler.END
+
+    add_task(
+        query.from_user.id,
+        task_text,
+        category,
+        priority,
+        repeat_type,
+    )
+
+    repeat_names = {
+        "none": "بدون تکرار",
+        "daily": "روزانه",
+        "weekly": "هفتگی",
+    }
+
+    repeat_name = repeat_names.get(
+        repeat_type,
+        "بدون تکرار",
+    )
+
+    await query.edit_message_text(
+        "✅ کار ثبت شد.\n\n"
+        f"📝 {task_text}\n"
+        f"📁 دسته: {category}\n"
+        f"⚡ اولویت: {priority}\n"
+        f"🔁 تکرار: {repeat_name}"
+    )
+
+    context.user_data.clear()
+
+    return ConversationHandler.END
+
+
+async def cancel_add(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    context.user_data.clear()
+
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text(
+            "❌ عملیات لغو شد."
+        )
+    else:
+        await update.message.reply_text(
+            "❌ عملیات لغو شد.",
+            reply_markup=main_keyboard(),
+        )
+
+    return ConversationHandler.END
+
+
+async def callback_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "clear_yes":
+        count = clear_pending_tasks(
+            query.from_user.id
+        )
+
+        await query.edit_message_text(
+            f"🗑 تعداد {count} کار حذف شد."
+        )
+
+    elif query.data == "clear_no":
+        await query.edit_message_text(
+            "❌ حذف لغو شد."
         )
 
 
-# ============================================================
-# مدیریت پیام‌های منوی اصلی
-# ============================================================
-
-async def menu_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-
-    if text == "➕ افزودن کار":
-        return await add_start(update, context)
+async def text_buttons(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    text = update.message.text
 
     if text == "📋 کارهای من":
-        return await show_tasks(update, context)
+        await list_tasks(update, context)
+        return
 
-    if text == "📊 امتیاز امروز":
-        return await daily_score(update, context)
+    if text == "✅ انجام‌شده":
+        await done_list(update, context)
+        return
 
-    if text == "📅 گزارش هفتگی":
-        return await weekly_report(update, context)
+    if text == "📊 آمار":
+        await stats_command(update, context)
+        return
 
-    if text == "📈 گزارش ماهانه":
-        return await monthly_report(update, context)
-
-    if text == "💡 پیشنهاد کار":
-        return await suggestions(update, context)
-
-    if text == "⏰ تنظیم یادآوری":
-        user_id = update.effective_user.id
+    if text == "🔎 جستجو":
         await update.message.reply_text(
-            "⏰ ساعت فعلی یادآوری:\n\n"
-            f"{get_user_time(user_id)}\n\n"
-            "برای تغییر:\n"
-            "/settime 08:30"
+            "برای جستجو بنویس:\n\n"
+            "/search متن"
         )
         return
 
-    if text == "⚙️ تنظیمات":
-        return await settings_command(update, context)
+    if text == "⏰ یادآوری":
+        await time_command(update, context)
+        return
+
+    if text == "🗑 پاک کردن":
+        await clear_command(update, context)
+        return
+
+    if text == "ℹ️ راهنما":
+        await help_command(update, context)
+        return
 
     await update.message.reply_text(
-        "از منوی پایین یک گزینه انتخاب کن.",
-        reply_markup=main_menu(),
+        "از منوی پایین استفاده کن.",
+        reply_markup=main_keyboard(),
     )
 
 
-# ============================================================
-# خطا
-# ============================================================
-
-async def error_handler(update, context):
-    logger.exception(
-        "Unhandled exception while processing update",
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    logger.error(
+        "Bot error:",
         exc_info=context.error,
     )
 
 
-# ============================================================
-# اجرای ربات
-# ============================================================
-
 def main():
-    if not BOT_TOKEN or BOT_TOKEN == "PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE":
+    if not BOT_TOKEN:
         raise RuntimeError(
-            "BOT_TOKEN is not set. Add BOT_TOKEN to Railway Variables."
+            "BOT_TOKEN در Variables تنظیم نشده است."
         )
 
     init_db()
 
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
 
-    # مکالمه افزودن کار
     add_conversation = ConversationHandler(
         entry_points=[
-            CommandHandler("addtask", add_start),
+            MessageHandler(
+                filters.Regex("^➕ افزودن کار$"),
+                add_menu,
+            )
         ],
         states={
             ADD_TEXT: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
-                    add_text,
+                    add_text_received,
                 )
             ],
             ADD_CATEGORY: [
                 CallbackQueryHandler(
-                    add_category,
-                    pattern=r"^cat:",
+                    add_category_callback,
+                    pattern=r"^cat_",
                 )
             ],
             ADD_PRIORITY: [
                 CallbackQueryHandler(
-                    add_priority,
-                    pattern=r"^priority:",
+                    add_priority_callback,
+                    pattern=r"^pri_",
                 )
             ],
             ADD_REPEAT: [
                 CallbackQueryHandler(
-                    add_repeat,
-                    pattern=r"^repeat:",
+                    add_repeat_callback,
+                    pattern=r"^rep_",
                 )
             ],
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_add),
+            CommandHandler(
+                "cancel",
+                cancel_add,
+            ),
+            CallbackQueryHandler(
+                cancel_add,
+                pattern=r"^cancel_add$",
+            ),
         ],
         allow_reentry=True,
     )
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-
-    application.add_handler(add_conversation)
-
     application.add_handler(
-        CallbackQueryHandler(
-            add_category,
-            pattern=r"^cat:",
-        )
-    )
-    application.add_handler(
-        CallbackQueryHandler(
-            add_priority,
-            pattern=r"^priority:",
-        )
-    )
-    application.add_handler(
-        CallbackQueryHandler(
-            add_repeat,
-            pattern=r"^repeat:",
-        )
+        CommandHandler("start", start)
     )
 
     application.add_handler(
-        CallbackQueryHandler(
-            task_button,
-            pattern=r"^(toggle|delete):",
-        )
+        CommandHandler("help", help_command)
     )
 
     application.add_handler(
-        CallbackQueryHandler(
-            suggestion_button,
-            pattern=r"^suggest:",
-        )
+        CommandHandler("add", add_command)
     )
 
     application.add_handler(
-        CallbackQueryHandler(
-            settings_button,
-            pattern=r"^settings:",
-        )
+        CommandHandler("list", list_tasks)
     )
 
-    application.add_handler(CommandHandler("add", add_command))
-    application.add_handler(CommandHandler("list", list_command))
-    application.add_handler(CommandHandler("done", done_command))
-    application.add_handler(CommandHandler("clear", clear_command))
-    application.add_handler(CommandHandler("settime", settime_command))
-    application.add_handler(CommandHandler("mytime", mytime_command))
-    application.add_handler(CommandHandler("weekly", weekly_report))
-    application.add_handler(CommandHandler("monthly", monthly_report))
-    application.add_handler(CommandHandler("settings", settings_command))
+    application.add_handler(
+        CommandHandler("done", done_command)
+    )
+
+    application.add_handler(
+        CommandHandler("reopen", reopen_command)
+    )
+
+    application.add_handler(
+        CommandHandler("delete", delete_command)
+    )
+
+    application.add_handler(
+        CommandHandler("clear", clear_command)
+    )
+
+    application.add_handler(
+        CommandHandler("search", search_command)
+    )
+
+    application.add_handler(
+        CommandHandler("stats", stats_command)
+    )
+
+    application.add_handler(
+        CommandHandler("time", time_command)
+    )
+
+    application.add_handler(
+        CommandHandler("cancel", cancel_add)
+    )
+
+    application.add_handler(
+        add_conversation
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(callback_handler)
+    )
 
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            menu_message,
+            text_buttons,
         )
     )
 
-    application.add_error_handler(error_handler)
+    application.add_error_handler(
+        error_handler
+    )
 
-    logger.info("Bot is starting...")
+    if application.job_queue:
+        application.job_queue.run_repeating(
+            daily_reminder,
+            interval=60,
+            first=10,
+        )
+
+    logger.info("Bot started.")
 
     application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
     )
 
 
