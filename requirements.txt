@@ -1,1 +1,1 @@
-python-telegram-bot[job-queue]==22.3
+python-telegram-bot[job-queue]>=21.0
