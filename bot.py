@@ -2,6 +2,7 @@
 import logging
 from functools import wraps
 import base64
+import asyncio
 import io
 import json
 import os
@@ -1663,7 +1664,7 @@ AUTO_TOPIC_TREE_FA = {
     ],
 }
 
-AUTO_INTERVALS_MIN = [5, 10, 20, 30, 60, 90, 120, 180]
+AUTO_INTERVALS_MIN = [1, 5, 10, 15, 20, 30, 60, 120, 360, 720, 1440]
 
 def ai_generate_post(topic):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -1671,6 +1672,7 @@ def ai_generate_post(topic):
     if api_key:
         try:
             prompt = (
+                f"شناسه تولید: {datetime.now(TZ).isoformat()}-{random.randint(1000,999999)}. "
                 f"یک پست فارسی کوتاه و مفید برای کانال MyTasks درباره «{topic}» بنویس. "
                 "حداکثر 90 کلمه. یک تیتر کوتاه، 2 یا 3 نکته کاربردی و در پایان یک تمرین یک‌خطی بده. "
                 "لحن دوستانه و حرفه‌ای باشد. از توضیح اضافه، مقدمه طولانی، ادعاهای قطعی پزشکی یا مالی "
@@ -2109,8 +2111,9 @@ async def channel_panel_callback(update, context):
                 reply_markup=channel_keyboard(),
             )
     elif action == "new":
-        context.user_data["channel_state"] = "content"
-        await q.message.reply_text("📝 متن پست را بفرست:")
+        context.user_data.pop("channel_draft", None)
+        context.user_data.pop("channel_new_state", None)
+        await q.message.reply_text("📝 موضوع پست را انتخاب کن:", reply_markup=channel_new_topic_keyboard())
     elif action == "list":
         c = db()
         rows = c.execute(
@@ -2129,6 +2132,81 @@ async def channel_panel_callback(update, context):
             text_out, parse_mode="HTML", reply_markup=channel_keyboard()
         )
 
+
+def channel_new_topic_keyboard():
+    rows=[[InlineKeyboardButton(c,callback_data=f"chnewcat:{i}")] for i,c in enumerate(FINAL_CHANNEL_TOPICS.keys())]
+    rows.append([InlineKeyboardButton("↩️ بازگشت",callback_data="chnew:back")]); return InlineKeyboardMarkup(rows)
+
+def channel_new_subtopic_keyboard(ci):
+    cats=list(FINAL_CHANNEL_TOPICS.keys()); rows=[[InlineKeyboardButton(s,callback_data=f"chnewsub:{ci}:{i}")] for i,s in enumerate(FINAL_CHANNEL_TOPICS[cats[ci]])]
+    rows.append([InlineKeyboardButton("↩️ دسته‌ها",callback_data="chnew:topics")]); return InlineKeyboardMarkup(rows)
+
+def channel_new_preview_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ ویرایش متن",callback_data="chnew:edit")],
+        [InlineKeyboardButton("⏱ ۱ دقیقه",callback_data="chnew:in:1"),InlineKeyboardButton("⏱ ۵ دقیقه",callback_data="chnew:in:5")],
+        [InlineKeyboardButton("⏱ ۱۰ دقیقه",callback_data="chnew:in:10"),InlineKeyboardButton("⏱ ۱۵ دقیقه",callback_data="chnew:in:15")],
+        [InlineKeyboardButton("⏱ ۳۰ دقیقه",callback_data="chnew:in:30"),InlineKeyboardButton("🕐 زمان دلخواه",callback_data="chnew:custom")],
+        [InlineKeyboardButton("❌ لغو",callback_data="chnew:cancel"),InlineKeyboardButton("↩️ مدیریت کانال",callback_data="chnew:back")],
+    ])
+
+async def channel_new_show_preview(message,context):
+    d=context.user_data.get("channel_draft") or {}; content=d.get("content","")
+    text=f"👁 <b>پیش‌نمایش پست</b>\\n\\n📂 {html.escape(d.get('category',''))}\\n↳ {html.escape(d.get('subtopic',''))}\\n\\n{html.escape(content)}\\n\\n👇 تأیید کن و زمان انتشار را انتخاب کن."
+    await message.reply_text(text,parse_mode="HTML",reply_markup=channel_new_preview_keyboard())
+
+async def channel_new_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); a=q.data.split(":",1)[1]
+    if a in ("back","cancel"):
+        context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
+        await q.message.reply_text("📡 مدیریت کانال",reply_markup=channel_keyboard()); return
+    if a=="topics": await q.message.reply_text("📝 موضوع پست را انتخاب کن:",reply_markup=channel_new_topic_keyboard()); return
+    if a=="edit":
+        context.user_data["channel_new_state"]="edit"
+        await q.message.reply_text("✏️ متن جدید را بفرست.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ پیش‌نمایش",callback_data="chnew:preview")]])); return
+    if a=="preview": await channel_new_show_preview(q.message,context); return
+    if a=="custom":
+        context.user_data["channel_new_state"]="custom_time"
+        await q.message.reply_text("🕐 تاریخ و ساعت را وارد کن؛ مثال: 2026-08-20 18:30",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ پیش‌نمایش",callback_data="chnew:preview")]])); return
+    if a.startswith("in:"):
+        minutes=int(a.split(":")[1]); cfg=get_channel_config(); d=context.user_data.get("channel_draft")
+        if not cfg or not cfg["channel_id"]: await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        if not d: await q.message.reply_text("❌ پیش‌نویس پیدا نشد.",reply_markup=channel_keyboard()); return
+        run_at=datetime.now(TZ)+timedelta(minutes=minutes)
+        pid=add_channel_post(d["content"],"once",None,None,run_at.isoformat(),uid)
+        context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
+        await q.message.reply_text(f"✅ پست تأیید شد.\\n⏰ انتشار: {run_at.strftime('%Y-%m-%d %H:%M')}\\n🆔 #{pid}",reply_markup=channel_keyboard())
+
+async def channel_new_category_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); await q.message.reply_text("↳ زیرموضوع را انتخاب کن:",reply_markup=channel_new_subtopic_keyboard(int(q.data.split(":")[1])))
+
+async def channel_new_subtopic_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); _,ci,si=q.data.split(":"); category=list(FINAL_CHANNEL_TOPICS.keys())[int(ci)]; sub=FINAL_CHANNEL_TOPICS[category][int(si)]
+    content=ai_generate_post(sub)
+    context.user_data["channel_draft"]={"category":category,"subtopic":sub,"content":content}
+    await channel_new_show_preview(q.message,context)
+
+async def channel_new_text_save(update,context):
+    state=context.user_data.get("channel_new_state")
+    if state not in ("edit","custom_time"): return False
+    text=update.message.text.strip()
+    if state=="edit":
+        d=context.user_data.get("channel_draft") or {}; d["content"]=text; context.user_data["channel_draft"]=d; context.user_data.pop("channel_new_state",None); await channel_new_show_preview(update.message,context); return True
+    try:
+        dt=datetime.strptime(text,"%Y-%m-%d %H:%M").replace(tzinfo=TZ)
+        d=context.user_data.get("channel_draft")
+        if dt<=datetime.now(TZ) or not d: raise ValueError
+        pid=add_channel_post(d["content"],"once",None,None,dt.isoformat(),update.effective_user.id)
+        context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
+        await update.message.reply_text(f"✅ پست تأیید و زمان‌بندی شد.\\n⏰ {dt.strftime('%Y-%m-%d %H:%M')}\\n🆔 #{pid}",reply_markup=channel_keyboard())
+    except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30")
+    return True
 
 @subscription_required
 async def channel_schedule_callback(update,context):
@@ -2544,6 +2622,9 @@ async def text_router(update, context):
         return
     if await final_admin_text(update, context):
         return
+    if await channel_new_text_save(update, context):
+        return
+
     if await channel_text_save(update, context):
         return
 
@@ -2689,9 +2770,76 @@ async def support_text(update,context):
     uid=update.effective_user.id; now=datetime.now(TZ).isoformat(); text=update.message.text.strip(); c=db(); cur=c.execute("INSERT INTO tickets(user_id,subject,created_at,updated_at) VALUES(?,?,?,?)",(uid,text[:80],now,now)); c.execute("INSERT INTO ticket_messages(ticket_id,sender_id,message,created_at) VALUES(?,?,?,?)",(cur.lastrowid,uid,text,now)); c.commit(); c.close(); context.user_data.pop("support_new",None); await update.message.reply_text(f"🎫 تیکت #{cur.lastrowid} ثبت شد."); return True
 
 async def referral(update,context):
-    uid=update.effective_user.id; c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]; c.close(); code=r["referral_code"] if r else hashlib.sha256(str(uid).encode()).hexdigest()[:10]; me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code; await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}")
+    uid=update.effective_user.id
+    c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone()
+    n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]
+    c.close()
+    code=r["referral_code"] if r else hashlib.sha256(str(uid).encode()).hexdigest()[:10]
+    me=await context.bot.get_me()
+    link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code
+    await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}")
 
-async def prices(update,context): await update.message.reply_text("📈 قیمت آنلاین\n\nدلار | یورو | طلا | سکه | BTC | ETH | شاخص‌ها\n\nزیرساخت آماده اتصال به منبع آنلاین قیمت است.")
+async def prices(update, context):
+    if not final_feature_enabled("online_prices"):
+        await update.effective_message.reply_text("این قابلیت فعلاً غیرفعال است.")
+        return
+    kb=InlineKeyboardMarkup([
+        [InlineKeyboardButton("💵 دلار",callback_data="price:usd"),InlineKeyboardButton("💶 یورو",callback_data="price:eur")],
+        [InlineKeyboardButton("🪙 طلا",callback_data="price:gold"),InlineKeyboardButton("🟡 سکه",callback_data="price:coin")],
+        [InlineKeyboardButton("📊 شاخص‌ها",callback_data="price:indices")],
+        [InlineKeyboardButton("↩️ بازگشت",callback_data="price:back")],
+    ])
+    await update.effective_message.reply_text("📈 <b>قیمت آنلاین</b>\n\nمورد موردنظر را انتخاب کن:",parse_mode="HTML",reply_markup=kb)
+
+def _market_find_value(obj,candidates):
+    if isinstance(obj,dict):
+        for k,v in obj.items():
+            kl=str(k).lower()
+            if any(c in kl for c in candidates):
+                if isinstance(v,(str,int,float)): return str(v)
+                if isinstance(v,dict):
+                    for vk in ("p","price","current","value","close","last"):
+                        if vk in v and isinstance(v[vk],(str,int,float)): return str(v[vk])
+        for v in obj.values():
+            got=_market_find_value(v,candidates)
+            if got is not None:return got
+    elif isinstance(obj,list):
+        for v in obj:
+            got=_market_find_value(v,candidates)
+            if got is not None:return got
+    return None
+
+def _clean_market_number(value):
+    s=str(value).strip().replace(",","").replace("٬","")
+    try:
+        n=float(s)
+        return f"{int(n):,}" if n.is_integer() else f"{n:,.2f}"
+    except Exception:return str(value)
+
+def fetch_tgju_market(kind):
+    req=urllib.request.Request("https://call1.tgju.org/ajax.json",headers={"User-Agent":"MyTasksBot/1.0"})
+    with urllib.request.urlopen(req,timeout=12) as resp:data=json.loads(resp.read().decode("utf-8",errors="replace"))
+    specs={
+        "usd":(["price_dollar_rl","dollar_rl","usd"],"دلار"),
+        "eur":(["price_eur","eur","euro"],"یورو"),
+        "gold":(["geram18","gold18","gold"],"طلای ۱۸ عیار"),
+        "coin":(["sekee_emami","seke_emami","coin"],"سکه امامی"),
+        "indices":(["bourse","index"],"شاخص بورس"),
+    }
+    candidates,label=specs[kind]; value=_market_find_value(data,candidates)
+    if value is None: raise RuntimeError("قیمت در منبع آنلاین پیدا نشد")
+    return label,_clean_market_number(value)
+
+async def price_callback(update,context):
+    q=update.callback_query; await q.answer(); kind=q.data.split(":",1)[1]
+    if kind=="back": await q.message.reply_text("🏠 منوی اصلی"); return
+    try:
+        label,value=await asyncio.to_thread(fetch_tgju_market,kind)
+        await q.message.reply_text(f"📈 <b>{label}</b>\n\n💰 قیمت فعلی: <b>{value}</b>\n\n🌐 منبع: TGJU\n🕐 استعلام در لحظه درخواست انجام شد.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی",callback_data=f"price:{kind}")],[InlineKeyboardButton("↩️ بازگشت",callback_data="price:back")]]))
+    except Exception as exc:
+        logger.exception("online price lookup failed: %s",exc)
+        await q.message.reply_text("❌ فعلاً دریافت قیمت از منبع آنلاین انجام نشد.\nچند ثانیه بعد دوباره تلاش کن.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ بازگشت",callback_data="price:back")]]))
+
 
 async def build_daily_report():
     d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
@@ -2752,6 +2900,10 @@ def main():
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(channel_new_callback, pattern=r"^chnew:"))
+    app.add_handler(CallbackQueryHandler(channel_new_category_callback, pattern=r"^chnewcat:"))
+    app.add_handler(CallbackQueryHandler(channel_new_subtopic_callback, pattern=r"^chnewsub:"))
+    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
     app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
     app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
