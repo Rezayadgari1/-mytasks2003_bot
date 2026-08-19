@@ -4,6 +4,7 @@ from functools import wraps
 import base64
 import io
 import json
+import asyncio
 import os
 import re
 import sqlite3
@@ -221,8 +222,8 @@ T = {
             ["📅 جدول هفتگی", "📊 آمار من"],
             ["👤 پروفایل", "🏆 دستاوردها"],
             ["⭐ XP", "🤝 دعوت دوستان"],
-            ["📈 قیمت آنلاین", "🎫 پشتیبانی"],
-            ["⚙️ تنظیمات"],
+            ["📈 قیمت آنلاین", "🤖 چت با AI"],
+            ["🎫 پشتیبانی", "⚙️ تنظیمات"],
         ],
         "today": "🎯 اهداف امروز",
         "no_goals": "🎯 {name} عزیز، هنوز هدفی ثبت نکردی.\nاز «➕ هدف جدید» شروع کنیم؟",
@@ -265,9 +266,10 @@ T = {
             ["🎯 Today's Goals", "➕ New Goal"],
             ["🏆 Ready Goals", "✏️ Edit Goals"],
             ["📅 Weekly Table", "📊 My Stats"],
-            ["👤 Profile", "⭐ XP"],
-            ["🤝 Referrals", "🎫 Support"],
-            ["⚙️ Settings"],
+            ["👤 Profile", "🏆 Achievements"],
+            ["⭐ XP", "🤝 Referrals"],
+            ["📈 Online Prices", "🤖 AI Chat"],
+            ["🎫 Support", "⚙️ Settings"],
         ],
         "today": "🎯 Today's Goals",
         "no_goals": "🎯 {name}, you have no goals yet.\nLet's start with «➕ New Goal».",
@@ -376,6 +378,11 @@ def init_db():
     goal_columns = {r["name"] for r in c.execute("PRAGMA table_info(goals)").fetchall()}
     if "priority" not in goal_columns:
         c.execute("ALTER TABLE goals ADD COLUMN priority INTEGER NOT NULL DEFAULT 2")
+    if "duration_minutes" not in goal_columns:
+        c.execute("ALTER TABLE goals ADD COLUMN duration_minutes INTEGER")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_settings(
+        user_id INTEGER PRIMARY KEY, reminders_enabled INTEGER NOT NULL DEFAULT 1,
+        ai_daily_used INTEGER NOT NULL DEFAULT 0, ai_used_date TEXT)""")
 
     columns = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     if "first_name" not in columns:
@@ -407,8 +414,12 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER,asset TEXT,created_at TEXT NOT NULL,PRIMARY KEY(user_id,asset))""")
     c.execute("""CREATE TABLE IF NOT EXISTS daily_reports(report_date TEXT PRIMARY KEY,data TEXT NOT NULL,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS health_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,service TEXT,status TEXT,details TEXT,created_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS auto_pending(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, topic TEXT NOT NULL,
+        content TEXT NOT NULL, publish_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL)""")
     now_iso=datetime.now(TZ).isoformat()
-    for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data"]:
+    for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
     c.commit()
     c.close()
@@ -508,11 +519,11 @@ def parse_time(s):
     return None
 
 
-def add_goal(uid, name, category, reminder, priority=2):
+def add_goal(uid, name, category, reminder, priority=2, duration_minutes=None):
     c = db()
     c.execute(
-        "INSERT INTO goals(user_id,name,category,reminder_time,priority,created_at) VALUES(?,?,?,?,?,?)",
-        (uid, name, category, reminder, priority, datetime.now(TZ).isoformat()),
+        "INSERT INTO goals(user_id,name,category,reminder_time,priority,duration_minutes,created_at) VALUES(?,?,?,?,?,?,?)",
+        (uid, name, category, reminder, priority, duration_minutes, datetime.now(TZ).isoformat()),
     )
     c.commit()
     c.close()
@@ -824,6 +835,7 @@ def categories_keyboard(uid, prefix="newcat"):
     rows = []
     for i, key in enumerate(data.keys()):
         rows.append([InlineKeyboardButton(key, callback_data=f"{prefix}:{i}")])
+    rows.append([InlineKeyboardButton("✏️ هدف خودم را بنویسم" if lang(uid)=="fa" else "✏️ Write my own goal", callback_data=f"{prefix}:custom")])
     rows.append([InlineKeyboardButton(T[lang(uid)]["back"], callback_data="newback")])
     return InlineKeyboardMarkup(rows)
 
@@ -998,18 +1010,51 @@ async def gender_callback(update, context):
     )
 
 
+def settings_keyboard(uid):
+    fa=lang(uid)=="fa"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language",callback_data="settings:language")],
+        [InlineKeyboardButton("🔔 اعلان‌ها" if fa else "🔔 Notifications",callback_data="settings:notifications")],
+        [InlineKeyboardButton("🎯 اهداف" if fa else "🎯 Goals",callback_data="settings:goals")],
+        [InlineKeyboardButton("🤖 هوش مصنوعی" if fa else "🤖 AI",callback_data="settings:ai")],
+        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="settings:main")],
+    ])
+
 async def settings(update, context):
-    uid = update.effective_user.id
-    log_activity(uid, "settings")
-    await update.message.reply_text(
-        T[lang(uid)]["settings"],
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🇮🇷 فارسی", callback_data="language:fa"),
-                InlineKeyboardButton("🇬🇧 English", callback_data="language:en"),
-            ]
-        ]),
-    )
+    uid=update.effective_user.id; log_activity(uid,"settings")
+    await update.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
+
+async def goals_navigation_callback(update, context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id
+    action=q.data.split(":",1)[1]
+    if action=="main":
+        context.user_data.clear()
+        await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+
+
+async def settings_language_callback(update, context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(":",1)[1]
+    set_lang(uid,value); log_activity(uid,"language_change")
+    await q.message.reply_text(T[value]["language_saved"],reply_markup=settings_keyboard(uid))
+
+
+async def settings_callback(update, context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; action=q.data.split(":",1)[1]; fa=lang(uid)=="fa"
+    if action=="language":
+        await q.message.reply_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+    if action=="notifications":
+        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); c.close()
+        state=bool(r["reminders_enabled"])
+        await q.message.reply_text(("🔔 یادآوری‌ها: " + ("روشن" if state else "خاموش")) if fa else ("🔔 Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تغییر وضعیت",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+    if action=="toggle_reminders":
+        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.reply_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
+    if action=="goals":
+        await q.message.reply_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
+    if action=="ai":
+        await q.message.reply_text(("🤖 چت با AI از منوی اصلی در دسترس است. برای استفاده، OPENAI_API_KEY را در Railway تنظیم کن." if fa else "🤖 AI Chat is available from the main menu. Set OPENAI_API_KEY in Railway to use it."),reply_markup=settings_keyboard(uid)); return
+    if action in ("back","main"):
+        if action=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+        else: await q.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
 def edit_time_keyboard(uid):
@@ -1088,17 +1133,40 @@ async def new_goal_pick(update, context):
 
 
 
+def duration_keyboard(uid):
+    fa = lang(uid) == "fa"
+    labels = [(5,"۵ دقیقه"),(10,"۱۰ دقیقه"),(20,"۲۰ دقیقه"),(30,"۳۰ دقیقه"),(60,"۱ ساعت"),(120,"۲ ساعت"),(0,"♾️ بدون محدودیت")]
+    rows=[]
+    for i in range(0,len(labels),2):
+        pair=labels[i:i+2]
+        rows.append([InlineKeyboardButton((label if fa else ({5:"5 min",10:"10 min",20:"20 min",30:"30 min",60:"1 hour",120:"2 hours",0:"♾️ No limit"}[m])),callback_data=f"duration:{m}") for m,label in pair])
+    rows.append([InlineKeyboardButton("✏️ زمان دلخواه" if fa else "✏️ Custom",callback_data="duration:custom")])
+    rows.append([InlineKeyboardButton(T[lang(uid)]["back"],callback_data="newback")])
+    return InlineKeyboardMarkup(rows)
+
+
 @subscription_required
 async def priority_callback(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
-    value = int(q.data.split(":")[1])
-    context.user_data["priority"] = value
+    context.user_data["priority"] = int(q.data.split(":")[1])
     await q.message.reply_text(
-        T[lang(uid)]["choose_time"],
-        reply_markup=time_keyboard(uid),
+        "⏱ مدت انجام هدف را انتخاب کن:" if lang(uid)=="fa" else "⏱ How long should this goal take?",
+        reply_markup=duration_keyboard(uid),
     )
+
+
+@subscription_required
+async def duration_callback(update, context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id
+    value=q.data.split(":",1)[1]
+    if value=="custom":
+        context.user_data["awaiting_custom_duration"]=True
+        await q.message.reply_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).")
+        return
+    context.user_data["duration_minutes"] = None if value=="0" else int(value)
+    await q.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
 
 
 @subscription_required
@@ -1124,13 +1192,42 @@ async def time_callback(update, context):
         return
 
     priority = context.user_data.get("priority", 2)
-    add_goal(uid, name, category, reminder, priority)
+    duration = context.user_data.get("duration_minutes")
+    add_goal(uid, name, category, reminder, priority, duration)
     context.user_data.clear()
     log_activity(uid, "goal_created")
     await q.message.reply_text(
         T[lang(uid)]["goal_added"].format(name=display_name(uid)),
         reply_markup=keyboard(uid),
     )
+
+
+async def custom_duration_save(update, context):
+    uid=update.effective_user.id
+    if not context.user_data.get("awaiting_custom_duration"): return False
+    try:
+        minutes=int(normalize_digits(update.message.text.strip()))
+        if minutes<1 or minutes>1440: raise ValueError
+    except ValueError:
+        await update.message.reply_text("❌ عدد نامعتبر است؛ بین ۱ تا ۱۴۴۰ دقیقه." if lang(uid)=="fa" else "❌ Enter a number from 1 to 1440 minutes.")
+        return True
+    context.user_data["duration_minutes"]=minutes
+    context.user_data.pop("awaiting_custom_duration",None)
+    await update.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
+    return True
+
+
+async def custom_goal_save(update, context):
+    uid=update.effective_user.id
+    if not context.user_data.get("awaiting_custom_goal"): return False
+    name=update.message.text.strip()
+    if not name:
+        return True
+    context.user_data["name"]=name
+    context.user_data["category"]="🎯 هدف دلخواه" if lang(uid)=="fa" else "🎯 Custom"
+    context.user_data.pop("awaiting_custom_goal",None)
+    await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=="fa" else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
+    return True
 
 
 async def custom_time_save(update, context):
@@ -1151,7 +1248,8 @@ async def custom_time_save(update, context):
         return False
 
     priority = context.user_data.get("priority", 2)
-    add_goal(uid, name, category, reminder, priority)
+    duration = context.user_data.get("duration_minutes")
+    add_goal(uid, name, category, reminder, priority, duration)
     context.user_data.clear()
     log_activity(uid, "goal_created")
     await update.message.reply_text(
@@ -1186,6 +1284,7 @@ async def today(update, context):
                 callback_data=f"detail:{g['id']}",
             )
         ])
+    buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
     await update.message.reply_text(
         T[lang(uid)]["today"],
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -1217,7 +1316,7 @@ async def detail(update, context):
                 "📋 Steps" if lang(uid) == "en" else "📋 مراحل",
                 callback_data=f"steps:{gid}",
             ),
-        ]]),
+        ], [InlineKeyboardButton("↩️ اهداف امروز" if lang(uid)=="fa" else "↩️ Today's Goals",callback_data="goals:main")]]),
     )
 
 
@@ -1257,12 +1356,11 @@ async def edit_menu(update, context):
             reply_markup=keyboard(uid),
         )
         return
+    edit_buttons=[[InlineKeyboardButton(g["name"], callback_data=f"edit:{g['id']}")] for g in goals]
+    edit_buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
     await update.message.reply_text(
         T[lang(uid)]["edit"].format(name=display_name(uid)),
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(g["name"], callback_data=f"edit:{g['id']}")]
-            for g in goals
-        ]),
+        reply_markup=InlineKeyboardMarkup(edit_buttons),
     )
 
 
@@ -1288,6 +1386,7 @@ async def edit_goal(update, context):
             "🗑 Delete" if lang(uid) == "en" else "🗑 حذف",
             callback_data=f"delete:{gid}",
         )],
+        [InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")],
     ]
     await q.message.reply_text(
         f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}",
@@ -1663,7 +1762,7 @@ AUTO_TOPIC_TREE_FA = {
     ],
 }
 
-AUTO_INTERVALS_MIN = [5, 10, 20, 30, 60, 90, 120, 180]
+AUTO_INTERVALS_MIN = [5, 10, 15, 20, 30, 60, 120, 180, 240, 360, 720, 1440]
 
 def ai_generate_post(topic):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -1765,6 +1864,15 @@ async def get_identity_handles(bot, channel):
     return bot_identity, channel_identity
 
 
+def content_feedback_keyboard(topic):
+    key=re.sub(r"\s+","_",str(topic))[:50]
+    return InlineKeyboardMarkup([[InlineKeyboardButton("👍 مفید بود",callback_data=f"feedback:up:{key}"),InlineKeyboardButton("👎 مناسب نبود",callback_data=f"feedback:down:{key}")]])
+
+async def feedback_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id; await q.answer("ثبت شد")
+    _,rating,topic=q.data.split(":",2); score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
+
+
 async def send_auto_channel_post(context, channel, topic):
     content = ai_generate_post(topic)
     bot_username, channel_username = await get_identity_handles(context.bot, channel)
@@ -1779,7 +1887,7 @@ async def send_auto_channel_post(context, channel, topic):
                 caption=content,
             )
         else:
-            msg = await context.bot.send_message(chat_id=channel, text=content)
+            msg = await context.bot.send_message(chat_id=channel, text=content, reply_markup=content_feedback_keyboard(topic))
         return msg
     except Exception:
         # If image generation/upload fails, never lose the scheduled post.
@@ -1810,43 +1918,56 @@ def set_auto_setting(key, value):
 
 
 async def auto_channel_job(context):
-    cfg = get_channel_config()
-    channel = cfg["channel_id"] if cfg else ""
-    if not channel or get_auto_setting("enabled", "0") != "1":
-        return
-
-    now = datetime.now(TZ)
-    interval = int(get_auto_setting("interval_minutes", "60") or 60)
-    interval = min(AUTO_INTERVALS_MIN, key=lambda x: abs(x - interval))
-    next_run_raw = get_auto_setting("next_run", "")
-    if next_run_raw:
-        try:
-            next_run = datetime.fromisoformat(next_run_raw)
-            if next_run.tzinfo is None:
-                next_run = next_run.replace(tzinfo=TZ)
-            if now < next_run:
-                return
-        except ValueError:
-            pass
-
-    # Lock the next run before the network calls so two Railway instances
-    # cannot publish the same scheduled post at the same time.
-    next_run = now + timedelta(minutes=interval)
-    set_auto_setting("next_run", next_run.isoformat())
-
-    category, topic = get_auto_topic()
+    cfg=get_channel_config(); channel=cfg["channel_id"] if cfg else ""
+    if not channel or get_auto_setting("enabled","0")!="1": return
+    now=datetime.now(TZ); interval=int(get_auto_setting("interval_minutes","60") or 60)
+    next_raw=get_auto_setting("next_run","")
+    try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
+    except ValueError: next_run=now+timedelta(minutes=interval)
+    if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
+    approval=feature_enabled("approval") and bool(ADMIN_IDS)
+    if approval:
+        preview_at=next_run-timedelta(minutes=5)
+        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
+        if now>=preview_at and now<next_run and not pending:
+            category,topic=get_auto_topic(); content=ai_generate_post(topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
+            c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
+            kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
+            for admin_id in ADMIN_IDS:
+                try: await context.bot.send_message(admin_id,f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {category}\n🕐 انتشار در: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
+                except Exception as e: logger.error("Approval preview failed: %s",e)
+            return
+        if now<next_run: return
+        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
+        if pending and pending["status"]=="approved":
+            try:
+                image=await generate_topic_image(pending["topic"]); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
+                if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
+                else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
+                log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
+            except Exception as e: logger.error("Approved auto post failed: %s",e)
+        c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
+        set_auto_setting("last_run",now.isoformat()); set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat()); return
+    if now<next_run: return
+    next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
+    category,topic=get_auto_topic()
     try:
-        msg = await send_auto_channel_post(context, channel, topic)
-        set_auto_setting("last_run", now.isoformat())
-        set_auto_setting("last_message_id", str(msg.message_id))
-        set_auto_setting("last_category", category)
-        set_auto_setting("last_topic", topic)
-        log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0, "auto_channel_post")
-        logger.info("Automatic channel post published: %s", msg.message_id)
+        msg=await send_auto_channel_post(context,channel,topic); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
     except Exception as e:
-        # Retry on the next interval rather than silently disabling automation.
-        set_auto_setting("next_run", now.isoformat())
-        logger.error("Automatic channel post failed: %s", e)
+        set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
+
+
+async def approval_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); r=c.execute("SELECT * FROM auto_pending WHERE id=?",(pid,)).fetchone();
+    if not r: c.close(); await q.message.reply_text("❌ پیش‌نمایش پیدا نشد."); return
+    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.reply_text("✅ پست برای انتشار تأیید شد.")
+
+async def approval_reject_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.reply_text("❌ پست رد شد و منتشر نمی‌شود.")
 
 
 def channel_keyboard():
@@ -1907,6 +2028,7 @@ def auto_channel_keyboard():
         ],
         [InlineKeyboardButton(topic_text[:60], callback_data="auto:category")],
         [InlineKeyboardButton("📋 وضعیت و زمان بعدی", callback_data="auto:info")],
+        [InlineKeyboardButton("📚 راهنمای استفاده", callback_data="auto:guide")],
         [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")],
     ]
     return InlineKeyboardMarkup(rows)
@@ -1939,9 +2061,13 @@ def auto_interval_keyboard():
     for i in range(0, len(AUTO_INTERVALS_MIN), 2):
         pair = AUTO_INTERVALS_MIN[i:i + 2]
         rows.append([
-            InlineKeyboardButton(f"هر {m} دقیقه", callback_data=f"autoint:{m}")
+            InlineKeyboardButton(
+                f"هر {m // 60} ساعت" if m >= 60 and m % 60 == 0 else f"هر {m} دقیقه",
+                callback_data=f"autoint:{m}"
+            )
             for m in pair
         ])
+    rows.append([InlineKeyboardButton("✏️ زمان دلخواه", callback_data="autoint:custom")])
     rows.append([InlineKeyboardButton("⬅️ انتشار خودکار", callback_data="auto:back")])
     return InlineKeyboardMarkup(rows)
 
@@ -1969,7 +2095,7 @@ async def auto_channel_callback(update, context):
 
     elif action == "interval":
         await q.message.reply_text(
-            "⏱ فاصله انتشار را انتخاب کن.\nکمترین ۵ دقیقه و بیشترین ۱۸۰ دقیقه است:",
+            "⏱ فاصله انتشار را انتخاب کن.\nاز ۵ دقیقه تا ۲۴ ساعت، یا زمان دلخواه:",
             reply_markup=auto_interval_keyboard()
         )
 
@@ -1977,6 +2103,21 @@ async def auto_channel_callback(update, context):
         await q.message.reply_text(
             "🧠 دسته‌بندی کامل را انتخاب کن:",
             reply_markup=auto_category_keyboard()
+        )
+
+    elif action == "guide":
+        await q.message.reply_text(
+            "📚 <b>راهنمای انتشار خودکار MyTasks</b>\n\n"
+            "1️⃣ اول از بخش «🧠 موضوع» دسته موردنظر را انتخاب کن.\n"
+            "2️⃣ سپس زیرشاخه را انتخاب کن؛ مثلاً سرمایه‌گذاری ← ارز و دلار.\n"
+            "3️⃣ بعد از انتخاب موضوع، ربات از تو می‌پرسد هر چند دقیقه یک پست منتشر شود.\n"
+            "4️⃣ زمان را از ۵ دقیقه تا ۲۴ ساعت انتخاب کن یا زمان دلخواه وارد کن.\n"
+            "5️⃣ با انتخاب زمان، انتشار خودکار روشن می‌شود.\n\n"
+            "⏸ برای توقف، روی «خودکار روشن» بزن.\n"
+            "⚙️ برای تغییر موضوع یا فاصله انتشار، دوباره همان گزینه را انتخاب کن.\n"
+            "↩️ در همه بخش‌ها امکان برگشت وجود دارد.",
+            parse_mode="HTML",
+            reply_markup=auto_channel_keyboard(),
         )
 
     elif action == "info":
@@ -2009,7 +2150,10 @@ async def auto_category_callback(update, context):
     if value == "random":
         set_auto_setting("category", "random")
         set_auto_setting("subcategory", "random")
-        await q.message.reply_text("🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.", reply_markup=auto_channel_keyboard())
+        await q.message.reply_text(
+            "🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
+            reply_markup=auto_interval_keyboard(),
+        )
         return
     idx = int(value)
     category = list(AUTO_TOPIC_TREE_FA.keys())[idx]
@@ -2036,8 +2180,8 @@ async def auto_subcategory_callback(update, context):
     set_auto_setting("category", category)
     set_auto_setting("subcategory", sub)
     await q.message.reply_text(
-        f"✅ موضوع تنظیم شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}",
-        reply_markup=auto_channel_keyboard()
+        f"✅ موضوع انتخاب شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
+        reply_markup=auto_interval_keyboard()
     )
 
 
@@ -2048,7 +2192,14 @@ async def auto_interval_callback(update, context):
         await q.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
     await q.answer()
-    minutes = int(q.data.split(":")[1])
+    raw_minutes = q.data.split(":", 1)[1]
+    if raw_minutes == "custom":
+        context.user_data["auto_wait_interval"] = True
+        await q.message.reply_text(
+            "✏️ فاصله دلخواه را به دقیقه وارد کن.\nمثال: 45\nحداقل ۵ و حداکثر ۱۴۴۰ دقیقه (۲۴ ساعت)."
+        )
+        return
+    minutes = int(raw_minutes)
     set_auto_setting("interval_minutes", str(minutes))
     set_auto_setting("enabled", "1")
     set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
@@ -2488,6 +2639,9 @@ async def reminder_job(context):
     c.close()
 
     for g in goals:
+        sc=db(); rr=sc.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(g["user_id"],)).fetchone(); sc.close()
+        if rr and not rr["reminders_enabled"]:
+            continue
         if get_status(g["user_id"], g["id"]) == "done":
             continue
         uid = g["user_id"]
@@ -2525,6 +2679,24 @@ async def text_router(update, context):
     if not await require_subscription(update, context):
         return
     text = update.message.text.strip()
+    if context.user_data.get("auto_wait_interval"):
+        try:
+            minutes = int(text)
+            if minutes < 5 or minutes > 1440:
+                raise ValueError
+        except ValueError:
+            await update.message.reply_text("❌ عدد نامعتبر است. فقط عددی بین ۵ تا ۱۴۴۰ دقیقه وارد کن.")
+            return
+        set_auto_setting("interval_minutes", str(minutes))
+        set_auto_setting("enabled", "1")
+        set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
+        context.user_data.pop("auto_wait_interval", None)
+        await update.message.reply_text(
+            f"✅ انتشار خودکار روی هر {minutes} دقیقه تنظیم شد و روشن است.",
+            reply_markup=auto_channel_keyboard(),
+        )
+        return
+
     if context.user_data.get("auto_wait_time"):
         value = parse_time(text)
         if not value:
@@ -2550,6 +2722,12 @@ async def text_router(update, context):
     if await admin_broadcast_save(update, context):
         return
 
+    if await ai_chat_text(update, context):
+        return
+    if await custom_goal_save(update, context):
+        return
+    if await custom_duration_save(update, context):
+        return
     if await custom_time_save(update, context):
         return
 
@@ -2560,36 +2738,37 @@ async def text_router(update, context):
         return
 
     menu = T[lang(uid)]["menu"]
-    if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
+    if text in ("🎯 اهداف امروز", "🎯 Today's Goals"):
         await today(update, context)
-    elif text in (menu[0][1], "➕ هدف جدید", "➕ New Goal"):
+    elif text in ("➕ هدف جدید", "➕ New Goal"):
         await new_goal(update, context)
-    elif text in (menu[1][0], "🏆 اهداف آماده", "🏆 Ready Goals"):
+    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals"):
         await ready_menu(update, context)
-    elif text in (menu[1][1], "✏️ ویرایش اهداف", "✏️ Edit Goals"):
+    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals"):
         await edit_menu(update, context)
-    elif text in (menu[2][0], "📅 جدول هفتگی", "📅 Weekly Table"):
+    elif text in ("📅 جدول هفتگی", "📅 Weekly Table"):
         await weekly(update, context)
-    elif text in (menu[2][1], "📊 آمار من", "📊 My Stats"):
+    elif text in ("📊 آمار من", "📊 My Stats"):
         await stats(update, context)
-    elif text in (menu[3][0], "👤 پروفایل", "👤 Profile"):
+    elif text in ("👤 پروفایل", "👤 Profile"):
         await profile(update, context)
-    elif text in (menu[3][1], "🏆 دستاوردها", "🏆 Achievements"):
+    elif text in ("🏆 دستاوردها", "🏆 Achievements"):
         await achievements(update, context)
-    elif text in (menu[4][0], "⚙️ تنظیمات", "⚙️ Settings"):
+    elif text in ("⭐ XP",):
+        await xp_command(update, context)
+    elif text in ("🤝 دعوت دوستان", "🤝 Referrals"):
+        await referral(update, context)
+    elif text in ("📈 قیمت آنلاین", "📈 Online Prices"):
+        await prices(update, context)
+    elif text in ("🤖 چت با AI", "🤖 AI Chat"):
+        await ai_chat_start(update, context)
+    elif text in ("🎫 پشتیبانی", "🎫 Support"):
+        await support_start(update, context)
+    elif text in ("⚙️ تنظیمات", "⚙️ Settings"):
         await settings(update, context)
     elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
         await admin_command(update, context)
-    elif text == "⭐ XP":
-        await xp_command(update, context)
-    elif text == "🤝 دعوت دوستان":
-        await referral(update, context)
-    elif text == "📈 قیمت آنلاین":
-        await prices(update, context)
-    elif text in ("🎫 پشتیبانی", "🎫 Support"):
-        await support_start(update, context)
-    elif text == "🤝 Referrals":
-        await referral(update, context)
+
     else:
         log_activity(uid, "text_message")
 
@@ -2691,7 +2870,84 @@ async def support_text(update,context):
 async def referral(update,context):
     uid=update.effective_user.id; c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]; c.close(); code=r["referral_code"] if r else hashlib.sha256(str(uid).encode()).hexdigest()[:10]; me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code; await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}")
 
-async def prices(update,context): await update.message.reply_text("📈 قیمت آنلاین\n\nدلار | یورو | طلا | سکه | BTC | ETH | شاخص‌ها\n\nزیرساخت آماده اتصال به منبع آنلاین قیمت است.")
+def prices_keyboard(uid):
+    fa=lang(uid)=="fa"
+    labels=[("usd","💵 دلار" if fa else "💵 USD"),("eur","💶 یورو" if fa else "💶 EUR"),("gold18","🪙 طلای ۱۸" if fa else "🪙 18K Gold"),("coin","🪙 سکه امامی" if fa else "🪙 Coin"),("btc","₿ BTC"),("eth","Ξ ETH"),("sp500","📊 S&P 500"),("nasdaq","📊 Nasdaq"),("dow","📊 Dow Jones")]
+    rows=[]
+    for i in range(0,len(labels),2): rows.append([InlineKeyboardButton(a,callback_data=f"price:{k}") for k,a in labels[i:i+2]])
+    rows.append([InlineKeyboardButton("🔄 بروزرسانی همه" if fa else "🔄 Refresh all",callback_data="price:all")])
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="price:main")])
+    return InlineKeyboardMarkup(rows)
+
+async def fetch_url_json(url):
+    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 MyTasksBot/1.0"})
+    with urllib.request.urlopen(req,timeout=15) as r: return json.loads(r.read().decode("utf-8"))
+
+def tgju_value(url):
+    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+    with urllib.request.urlopen(req,timeout=15) as r: html=r.read().decode("utf-8","ignore")
+    # Common TGJU price page pattern: the first numeric market value in the page.
+    vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,٫٬]+)',html,re.I)
+    if not vals: vals=re.findall(r'([0-9]{1,3}(?:,[0-9]{3})+)',html)
+    if not vals: raise ValueError("price not found")
+    return vals[0]
+
+async def fetch_price(asset):
+    if asset=="btc" or asset=="eth":
+        ids="bitcoin" if asset=="btc" else "ethereum"
+        data=await asyncio.to_thread(fetch_url_json,f"https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd")
+        return f"${data[ids]['usd']:,.2f}"
+    if asset in ("sp500","nasdaq","dow"):
+        symbols={"sp500":"%5EGSPC","nasdaq":"%5EIXIC","dow":"%5EDJI"}
+        data=await asyncio.to_thread(fetch_url_json,f"https://query1.finance.yahoo.com/v8/finance/chart/{symbols[asset]}?range=1d&interval=1m")
+        meta=data["chart"]["result"][0]["meta"]; return f"{meta.get('regularMarketPrice',0):,.2f} USD"
+    urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
+    return await asyncio.to_thread(tgju_value,urls[asset]) + (" تومان" if asset in ("usd","eur","gold18","coin") else "")
+
+async def price_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
+    if asset=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+    names={"usd":"دلار","eur":"یورو","gold18":"طلای ۱۸ عیار","coin":"سکه امامی","btc":"BTC","eth":"ETH","sp500":"S&P 500","nasdaq":"Nasdaq","dow":"Dow Jones"}
+    assets=list(names) if asset=="all" else [asset]
+    lines=["📈 قیمت آنلاین",""]
+    for a in assets:
+        try: lines.append(f"{names[a]}: {await fetch_price(a)}")
+        except Exception as e: lines.append(f"{names[a]}: ❌ دریافت نشد") ; logger.warning("Price %s failed: %s",a,e)
+    await q.message.reply_text("\n".join(lines),reply_markup=prices_keyboard(uid))
+
+async def prices(update,context):
+    uid=update.effective_user.id
+    await update.message.reply_text("📈 قیمت آنلاین\n\nیکی را انتخاب کن:",reply_markup=prices_keyboard(uid))
+
+async def ai_chat_start(update,context):
+    uid=update.effective_user.id
+    if not feature_enabled("ai"):
+        await update.message.reply_text("🤖 چت AI فعلاً غیرفعال است." if lang(uid)=="fa" else "🤖 AI Chat is currently disabled."); return
+    context.user_data["ai_chat"]=True
+    await update.message.reply_text("🤖 سوالت را بفرست. برای خروج «🏠 منوی اصلی» را بزن." if lang(uid)=="fa" else "🤖 Send your question. Use the Main Menu button to exit.")
+
+async def ai_chat_text(update,context):
+    if not context.user_data.get("ai_chat"): return False
+    uid=update.effective_user.id; text=update.message.text.strip()
+    if text in ("🏠 منوی اصلی","🏠 Main Menu"):
+        context.user_data.pop("ai_chat",None); await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return True
+    api_key=os.environ.get("OPENAI_API_KEY","").strip()
+    if not api_key:
+        await update.message.reply_text("❌ OPENAI_API_KEY در Railway تنظیم نشده است." if lang(uid)=="fa" else "❌ OPENAI_API_KEY is not configured in Railway.")
+        return True
+    c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT ai_daily_used,ai_used_date FROM user_settings WHERE user_id=?",(uid,)).fetchone(); today=datetime.now(TZ).date().isoformat(); used=r["ai_daily_used"] if r and r["ai_used_date"]==today else 0; limit=100 if is_vip(uid) else 10
+    if used>=limit: c.close(); await update.message.reply_text("⛔ سهمیه AI امروز تمام شده است." if lang(uid)=="fa" else "⛔ Your AI quota for today is used up."); return True
+    c.execute("UPDATE user_settings SET ai_daily_used=?,ai_used_date=? WHERE user_id=?",(used+1,today,uid)); c.commit(); c.close()
+    try:
+        payload=json.dumps({"model":os.environ.get("OPENAI_MODEL","gpt-5-mini"),"input":f"پاسخ کوتاه، مفید و امن به این سوال کاربر بده: {text}","max_output_tokens":500}).encode("utf-8")
+        req=urllib.request.Request("https://api.openai.com/v1/responses",data=payload,headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},method="POST")
+        with urllib.request.urlopen(req,timeout=35) as resp: data=json.loads(resp.read().decode("utf-8"))
+        answer=data.get("output_text","").strip() or "پاسخی دریافت نشد."
+        await update.message.reply_text(answer,reply_markup=keyboard(uid))
+    except Exception as e:
+        logger.error("AI chat failed: %s",e); await update.message.reply_text("❌ فعلاً پاسخ AI دریافت نشد؛ دوباره تلاش کن.")
+    return True
+
 
 async def build_daily_report():
     d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
@@ -2756,13 +3012,21 @@ def main():
     app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
     app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
     app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
+    app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
+    app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
+    app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
     app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
     app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
     app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
     app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
+    app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
+    app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
+    app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
+    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
+    app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
     app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
     app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
