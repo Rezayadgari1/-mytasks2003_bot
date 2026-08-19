@@ -2948,7 +2948,90 @@ async def my_id(update, context):
     )
 
 
+# ================= MYTASKS_TEST_LOGGER_V2 =================
+MYTASKS_TEST_MODE = True
+MYTASKS_TEST_LOG_FILE = os.getenv("MYTASKS_TEST_LOG_FILE", "mytasks_test.log")
+
+try:
+    from logging.handlers import RotatingFileHandler
+    _test_file_handler = RotatingFileHandler(
+        MYTASKS_TEST_LOG_FILE, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+    )
+    _test_file_handler.setLevel(logging.DEBUG)
+    _test_file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    ))
+    logging.getLogger().addHandler(_test_file_handler)
+    logging.getLogger().setLevel(logging.DEBUG)
+except Exception:
+    pass
+
+for _name in ("httpx", "httpcore", "apscheduler"):
+    try:
+        logging.getLogger(_name).setLevel(logging.WARNING)
+    except Exception:
+        pass
+
+def test_log(event, update=None, **extra):
+    try:
+        uid = getattr(getattr(update, "effective_user", None), "id", None) if update else None
+        cid = getattr(getattr(update, "effective_chat", None), "id", None) if update else None
+        payload = {"event": event, "user_id": uid, "chat_id": cid}
+        payload.update(extra)
+        logger.info("[TEST] %s", json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        pass
+
+async def test_error_handler(update, context):
+    test_log("UNHANDLED_ERROR", update, error=repr(context.error))
+    try:
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️ خطای داخلی ثبت شد.\n↩️ /start را بزن یا از «بازگشت» استفاده کن."
+            )
+    except Exception:
+        pass
+
+def _wrap_test_logging(func):
+    import functools
+    if getattr(func, "_mytasks_test_wrapped", False):
+        return func
+    @functools.wraps(func)
+    async def _wrapped(*args, **kwargs):
+        update = args[0] if args else kwargs.get("update")
+        test_log("HANDLER_START", update, handler=func.__name__)
+        try:
+            result = await func(*args, **kwargs)
+            test_log("HANDLER_OK", update, handler=func.__name__)
+            return result
+        except Exception as exc:
+            test_log("HANDLER_ERROR", update, handler=func.__name__, error=repr(exc))
+            raise
+    _wrapped._mytasks_test_wrapped = True
+    return _wrapped
+
+async def debug_test_command(update, context):
+    test_log("DEBUG_COMMAND", update)
+    jobs = []
+    try:
+        jq = context.application.job_queue
+        if jq:
+            jobs = [getattr(j, "name", None) for j in jq.jobs()]
+    except Exception:
+        pass
+    await update.effective_message.reply_text(
+        "🧪 حالت تست فعال است\n\n"
+        f"User ID: {update.effective_user.id}\n"
+        f"Chat ID: {update.effective_chat.id}\n"
+        f"Jobها: {len(jobs)}\n"
+        f"Log: {MYTASKS_TEST_LOG_FILE}"
+    )
+
 def main():
+    # Test-only handlers are registered after their definitions.
+    app.add_handler(CommandHandler("debug", debug_test_command))
+    app.add_error_handler(test_error_handler)
+
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
 
@@ -2962,10 +3045,6 @@ def main():
         set_auto_setting("subcategory", "random")
 
     app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_error_handler(test_error_handler)
-
-    app.add_handler(CommandHandler("debug", debug_test_command))
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", my_id))
@@ -3170,86 +3249,6 @@ FINAL_USER_POST_ACTIONS = [
     "❌ لغو",
     "🏠 منوی اصلی",
 ]
-
-# ================= MYTASKS_TEST_LOGGER_V2 =================
-MYTASKS_TEST_MODE = True
-MYTASKS_TEST_LOG_FILE = os.getenv("MYTASKS_TEST_LOG_FILE", "mytasks_test.log")
-
-try:
-    from logging.handlers import RotatingFileHandler
-    _test_file_handler = RotatingFileHandler(
-        MYTASKS_TEST_LOG_FILE, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
-    )
-    _test_file_handler.setLevel(logging.DEBUG)
-    _test_file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-    ))
-    logging.getLogger().addHandler(_test_file_handler)
-    logging.getLogger().setLevel(logging.DEBUG)
-except Exception:
-    pass
-
-for _name in ("httpx", "httpcore", "apscheduler"):
-    try:
-        logging.getLogger(_name).setLevel(logging.WARNING)
-    except Exception:
-        pass
-
-def test_log(event, update=None, **extra):
-    try:
-        uid = getattr(getattr(update, "effective_user", None), "id", None) if update else None
-        cid = getattr(getattr(update, "effective_chat", None), "id", None) if update else None
-        payload = {"event": event, "user_id": uid, "chat_id": cid}
-        payload.update(extra)
-        logger.info("[TEST] %s", json.dumps(payload, ensure_ascii=False, default=str))
-    except Exception:
-        pass
-
-async def test_error_handler(update, context):
-    test_log("UNHANDLED_ERROR", update, error=repr(context.error))
-    try:
-        if update and update.effective_message:
-            await update.effective_message.reply_text(
-                "⚠️ خطای داخلی ثبت شد.\n↩️ /start را بزن یا از «بازگشت» استفاده کن."
-            )
-    except Exception:
-        pass
-
-def _wrap_test_logging(func):
-    import functools
-    if getattr(func, "_mytasks_test_wrapped", False):
-        return func
-    @functools.wraps(func)
-    async def _wrapped(*args, **kwargs):
-        update = args[0] if args else kwargs.get("update")
-        test_log("HANDLER_START", update, handler=func.__name__)
-        try:
-            result = await func(*args, **kwargs)
-            test_log("HANDLER_OK", update, handler=func.__name__)
-            return result
-        except Exception as exc:
-            test_log("HANDLER_ERROR", update, handler=func.__name__, error=repr(exc))
-            raise
-    _wrapped._mytasks_test_wrapped = True
-    return _wrapped
-
-async def debug_test_command(update, context):
-    test_log("DEBUG_COMMAND", update)
-    jobs = []
-    try:
-        jq = context.application.job_queue
-        if jq:
-            jobs = [getattr(j, "name", None) for j in jq.jobs()]
-    except Exception:
-        pass
-    await update.effective_message.reply_text(
-        "🧪 حالت تست فعال است\n\n"
-        f"User ID: {update.effective_user.id}\n"
-        f"Chat ID: {update.effective_chat.id}\n"
-        f"Jobها: {len(jobs)}\n"
-        f"Log: {MYTASKS_TEST_LOG_FILE}"
-    )
-
 
 # ================= IMPORTANT HANDLER TEST WRAPPERS =================
 
