@@ -1562,6 +1562,7 @@ async def stats(update, context):
         (uid,),
     ).fetchone()["n"]
     c.close()
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     await update.message.reply_text(
         T[lang(uid)]["stats"].format(
             name=display_name(uid),
@@ -1575,6 +1576,7 @@ async def stats(update, context):
             if lang(uid) == "fa"
             else f"\n🔥 Current streak: {streak} days"
         )
+        + f"\n📅 تاریخ گزارش: {d}"
     )
     log_activity(uid, "stats")
 
@@ -2816,19 +2818,87 @@ def _clean_market_number(value):
         return f"{int(n):,}" if n.is_integer() else f"{n:,.2f}"
     except Exception:return str(value)
 
+def _fetch_url_text(url, timeout=15):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/126 Safari/537.36"
+            ),
+            "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fa-IR,fa;q=0.9,en;q=0.6",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _extract_tgju_profile_price(html_text):
+    # TGJU profile pages expose the current price as visible text:
+    # «نرخ فعلی: 1,886,000». We intentionally take the first current-rate
+    # value rather than an arbitrary number elsewhere on the page.
+    patterns = [
+        r"نرخ\s*فعلی\s*:?\s*</?[^>]*>\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)",
+        r"نرخ\s*فعلی\s*:\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)",
+        r'"current"\s*:\s*"?(?P<v>[0-9۰-۹][0-9۰-۹,\u066c\.]*)',
+        r'"price"\s*:\s*"?(?P<v2>[0-9۰-۹][0-9۰-۹,\u066c\.]*)',
+    ]
+    for pat in patterns:
+        m = re.search(pat, html_text, re.I | re.S)
+        if m:
+            value = next((g for g in m.groups() if g), None)
+            if value:
+                return _clean_market_number(
+                    value.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+                )
+    # Fallback on the rendered phrase stripped of tags.
+    clean = re.sub(r"<[^>]+>", " ", html_text)
+    clean = re.sub(r"\s+", " ", clean)
+    m = re.search(r"نرخ\s*فعلی\s*:?\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)", clean)
+    if m:
+        return _clean_market_number(
+            m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
+        )
+    return None
+
+
 def fetch_tgju_market(kind):
-    req=urllib.request.Request("https://call1.tgju.org/ajax.json",headers={"User-Agent":"MyTasksBot/1.0"})
-    with urllib.request.urlopen(req,timeout=12) as resp:data=json.loads(resp.read().decode("utf-8",errors="replace"))
-    specs={
-        "usd":(["price_dollar_rl","dollar_rl","usd"],"دلار"),
-        "eur":(["price_eur","eur","euro"],"یورو"),
-        "gold":(["geram18","gold18","gold"],"طلای ۱۸ عیار"),
-        "coin":(["sekee_emami","seke_emami","coin"],"سکه امامی"),
-        "indices":(["bourse","index"],"شاخص بورس"),
+    specs = {
+        "usd": ("price_dollar_rl", "دلار", "https://www.tgju.org/profile/price_dollar_rl"),
+        "eur": ("price_eur", "یورو", "https://www.tgju.org/profile/price_eur"),
+        "gold": ("geram18", "طلای ۱۸ عیار", "https://www.tgju.org/profile/geram18"),
+        "coin": ("sekee", "سکه امامی", "https://www.tgju.org/profile/sekee"),
+        # TGJU's public page for the Tehran index is on the شاخص‌بان domain.
+        "indices": ("bourse", "شاخص بورس", "https://www.shakhesban.com/markets"),
     }
-    candidates,label=specs[kind]; value=_market_find_value(data,candidates)
-    if value is None: raise RuntimeError("قیمت در منبع آنلاین پیدا نشد")
-    return label,_clean_market_number(value)
+    if kind not in specs:
+        raise ValueError("مورد قیمت نامعتبر است")
+
+    symbol, label, profile_url = specs[kind]
+
+    # Primary: TGJU public JSON endpoint.
+    try:
+        raw = _fetch_url_text("https://call1.tgju.org/ajax.json", timeout=12)
+        data = json.loads(raw)
+        candidates = [symbol]
+        value = _market_find_value(data, candidates)
+        if value is not None:
+            return label, _clean_market_number(value)
+    except Exception as exc:
+        logger.warning("TGJU JSON source failed for %s: %s", kind, exc)
+
+    # Fallback: the actual public profile page.
+    try:
+        page = _fetch_url_text(profile_url, timeout=15)
+        value = _extract_tgju_profile_price(page)
+        if value is not None:
+            return label, value
+    except Exception as exc:
+        logger.warning("TGJU profile source failed for %s: %s", kind, exc)
+
+    raise RuntimeError(f"قیمت آنلاین {label} از منابع در دسترس دریافت نشد")
+
 
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); kind=q.data.split(":",1)[1]
@@ -2892,6 +2962,10 @@ def main():
         set_auto_setting("subcategory", "random")
 
     app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_error_handler(test_error_handler)
+
+    app.add_handler(CommandHandler("debug", debug_test_command))
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", my_id))
@@ -3096,3 +3170,116 @@ FINAL_USER_POST_ACTIONS = [
     "❌ لغو",
     "🏠 منوی اصلی",
 ]
+
+# ================= MYTASKS_TEST_LOGGER_V2 =================
+MYTASKS_TEST_MODE = True
+MYTASKS_TEST_LOG_FILE = os.getenv("MYTASKS_TEST_LOG_FILE", "mytasks_test.log")
+
+try:
+    from logging.handlers import RotatingFileHandler
+    _test_file_handler = RotatingFileHandler(
+        MYTASKS_TEST_LOG_FILE, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+    )
+    _test_file_handler.setLevel(logging.DEBUG)
+    _test_file_handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    ))
+    logging.getLogger().addHandler(_test_file_handler)
+    logging.getLogger().setLevel(logging.DEBUG)
+except Exception:
+    pass
+
+for _name in ("httpx", "httpcore", "apscheduler"):
+    try:
+        logging.getLogger(_name).setLevel(logging.WARNING)
+    except Exception:
+        pass
+
+def test_log(event, update=None, **extra):
+    try:
+        uid = getattr(getattr(update, "effective_user", None), "id", None) if update else None
+        cid = getattr(getattr(update, "effective_chat", None), "id", None) if update else None
+        payload = {"event": event, "user_id": uid, "chat_id": cid}
+        payload.update(extra)
+        logger.info("[TEST] %s", json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        pass
+
+async def test_error_handler(update, context):
+    test_log("UNHANDLED_ERROR", update, error=repr(context.error))
+    try:
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "⚠️ خطای داخلی ثبت شد.\n↩️ /start را بزن یا از «بازگشت» استفاده کن."
+            )
+    except Exception:
+        pass
+
+def _wrap_test_logging(func):
+    import functools
+    if getattr(func, "_mytasks_test_wrapped", False):
+        return func
+    @functools.wraps(func)
+    async def _wrapped(*args, **kwargs):
+        update = args[0] if args else kwargs.get("update")
+        test_log("HANDLER_START", update, handler=func.__name__)
+        try:
+            result = await func(*args, **kwargs)
+            test_log("HANDLER_OK", update, handler=func.__name__)
+            return result
+        except Exception as exc:
+            test_log("HANDLER_ERROR", update, handler=func.__name__, error=repr(exc))
+            raise
+    _wrapped._mytasks_test_wrapped = True
+    return _wrapped
+
+async def debug_test_command(update, context):
+    test_log("DEBUG_COMMAND", update)
+    jobs = []
+    try:
+        jq = context.application.job_queue
+        if jq:
+            jobs = [getattr(j, "name", None) for j in jq.jobs()]
+    except Exception:
+        pass
+    await update.effective_message.reply_text(
+        "🧪 حالت تست فعال است\n\n"
+        f"User ID: {update.effective_user.id}\n"
+        f"Chat ID: {update.effective_chat.id}\n"
+        f"Jobها: {len(jobs)}\n"
+        f"Log: {MYTASKS_TEST_LOG_FILE}"
+    )
+
+
+# ================= IMPORTANT HANDLER TEST WRAPPERS =================
+
+try:
+    start = _wrap_test_logging(start)
+except Exception:
+    pass
+
+try:
+    price_callback = _wrap_test_logging(price_callback)
+except Exception:
+    pass
+
+try:
+    channel_new_callback = _wrap_test_logging(channel_new_callback)
+except Exception:
+    pass
+
+try:
+    channel_new_subtopic_callback = _wrap_test_logging(channel_new_subtopic_callback)
+except Exception:
+    pass
+
+try:
+    channel_new_show_preview = _wrap_test_logging(channel_new_show_preview)
+except Exception:
+    pass
+
+
+# ================= MYTASKS_STATS_SAFE_V11 =================
+# Marker for the corrected statistics path:
+# current streak is calculated per goal and no undefined local is referenced.
+MYTASKS_STATS_SAFE_V11 = True
