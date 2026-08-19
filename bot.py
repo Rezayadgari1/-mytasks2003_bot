@@ -27,14 +27,19 @@ TZ = ZoneInfo("Asia/Tehran")
 
 # Set admin Telegram IDs in environment:
 # ADMIN_IDS=123456789,987654321
-ADMIN_IDS = {
-    int(x.strip())
-    for x in os.environ.get("ADMIN_IDS", "").split(",")
-    if x.strip().isdigit()
-}
-_single_admin_id = os.environ.get("ADMIN_ID", "").strip()
-if _single_admin_id.isdigit():
-    ADMIN_IDS.add(int(_single_admin_id))
+def _parse_admin_ids():
+    values = []
+    for raw in (os.environ.get("ADMIN_IDS", ""), os.environ.get("ADMIN_ID", "")):
+        raw = raw.strip().strip("\"").strip("'")
+        if not raw:
+            continue
+        for part in raw.split(","):
+            part = part.strip().strip("\"").strip("'")
+            if part.isdigit():
+                values.append(int(part))
+    return set(values)
+
+ADMIN_IDS = _parse_admin_ids()
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -1575,7 +1580,10 @@ async def admin_panel_callback(update, context):
 async def admin_command(update, context):
     uid = update.effective_user.id
     if not admin_guard(uid):
-        await update.message.reply_text("⛔ دسترسی به پنل مدیریت ندارید.\n\nاگر مدیر ربات هستی، /myid را بزن و شناسه‌ات را در ADMIN_ID قرار بده.")
+        await update.message.reply_text(
+            f"⛔ دسترسی به پنل مدیریت ندارید.\n\n🆔 ID شما: {uid}\n\n"
+            "این ID را در Railway → Variables در ADMIN_IDS یا ADMIN_ID قرار بده و سرویس را Restart/Redeploy کن."
+        )
         return
     log_activity(uid, "admin_open")
     await update.message.reply_text(
@@ -1778,7 +1786,7 @@ async def my_id(update, context):
     uid = update.effective_user.id
     await update.message.reply_text(
         f"🆔 شناسه تلگرام شما: <code>{uid}</code>\n\n"
-        "این عدد را داخل ADMIN_ID قرار بده و ربات را دوباره اجرا کن.",
+        "این عدد را در Railway → Variables داخل ADMIN_IDS یا ADMIN_ID قرار بده و سرویس را Restart/Redeploy کن.",
         parse_mode="HTML",
     )
 
