@@ -1,5 +1,6 @@
 
 import logging
+from functools import wraps
 import os
 import re
 import sqlite3
@@ -12,6 +13,7 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
 )
+from telegram.constants import ChatMemberStatus
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -24,6 +26,12 @@ from telegram.ext import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
 TZ = ZoneInfo("Asia/Tehran")
+
+# اجباری بودن عضویت در کانال برای استفاده از ربات.
+# کانال از تنظیمات «مدیریت کانال» خوانده می‌شود؛ برای لینک عضویت خصوصی
+# می‌توان REQUIRED_CHANNEL_URL را در Variables تنظیم کرد.
+REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
+
 
 # Set admin Telegram IDs in environment:
 # ADMIN_IDS=123456789,987654321
@@ -46,6 +54,16 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+def subscription_required(func):
+    @wraps(func)
+    async def wrapper(update, context, *args, **kwargs):
+        if not await require_subscription(update, context):
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
+
 
 GOALS_FA = {
     "🩺 سلامتی": [
@@ -237,8 +255,7 @@ T = {
             ["🎯 Today's Goals", "➕ New Goal"],
             ["🏆 Ready Goals", "✏️ Edit Goals"],
             ["📅 Weekly Table", "📊 My Stats"],
-            ["👤 Profile", "🏆 Achievements"],
-            ["⚙️ Settings"],
+            ["👤 Profile", "⚙️ Settings"],
         ],
         "today": "🎯 Today's Goals",
         "no_goals": "🎯 {name}, you have no goals yet.\nLet's start with «➕ New Goal».",
@@ -598,6 +615,7 @@ def achievement_check(uid):
         (uid,),
     ).fetchone()["n"]
     c.close()
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
 
     found = []
     if total_goals >= 1 and unlock_achievement(uid, "first_goal"):
@@ -640,6 +658,7 @@ def snooze_keyboard(uid, gid):
     ])
 
 
+@subscription_required
 async def snooze_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -692,6 +711,7 @@ async def snooze_send(context):
         logger.error("Snooze send error: %s", e)
 
 
+@subscription_required
 async def snooze_menu(update, context):
     q = update.callback_query
     await q.answer()
@@ -704,6 +724,7 @@ async def snooze_menu(update, context):
     )
 
 
+@subscription_required
 async def steps_menu(update, context):
     q = update.callback_query
     await q.answer()
@@ -726,6 +747,7 @@ async def steps_menu(update, context):
     )
 
 
+@subscription_required
 async def step_add_start(update, context):
     q = update.callback_query
     await q.answer()
@@ -755,6 +777,7 @@ async def step_save(update, context):
     return True
 
 
+@subscription_required
 async def step_toggle(update, context):
     q = update.callback_query
     await q.answer()
@@ -805,10 +828,91 @@ def gender_keyboard(uid):
     ])
 
 
+def required_channel():
+    cfg = get_channel_config()
+    return cfg["channel_id"] if cfg and cfg["channel_id"] else ""
+
+
+def required_channel_url():
+    if REQUIRED_CHANNEL_URL:
+        return REQUIRED_CHANNEL_URL
+    channel = required_channel()
+    if channel.startswith("@"):
+        return f"https://t.me/{channel[1:]}"
+    return ""
+
+
+async def is_channel_member(bot, uid):
+    channel = required_channel()
+    if not channel:
+        return True
+    # مدیر ربات نیازی به عضویت اجباری ندارد.
+    if uid in ADMIN_IDS:
+        return True
+    try:
+        member = await bot.get_chat_member(chat_id=channel, user_id=uid)
+        return member.status in {
+            ChatMemberStatus.MEMBER,
+            ChatMemberStatus.ADMINISTRATOR,
+            ChatMemberStatus.OWNER,
+        } or (member.status == ChatMemberStatus.RESTRICTED and bool(getattr(member, "is_member", False)))
+    except Exception as e:
+        logger.error("Membership check failed for %s in %s: %s", uid, channel, e)
+        return False
+
+
+def subscription_keyboard():
+    url = required_channel_url()
+    rows = []
+    if url:
+        rows.append([InlineKeyboardButton("📢 عضویت در کانال", url=url)])
+    rows.append([InlineKeyboardButton("✅ عضو شدم؛ بررسی کن", callback_data="subcheck")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def require_subscription(update, context):
+    uid = update.effective_user.id
+    if await is_channel_member(context.bot, uid):
+        return True
+
+    url = required_channel_url()
+    if url:
+        text = (
+            "🔒 برای استفاده از امکانات ربات، ابتدا عضو کانال شوید.\n\n"
+            "بعد از عضویت روی «✅ عضو شدم؛ بررسی کن» بزنید."
+        )
+    else:
+        text = (
+            "🔒 برای استفاده از امکانات ربات، ابتدا عضو کانال شوید.\n\n"
+            "لینک عضویت کانال هنوز برای ربات تنظیم نشده است. مدیر باید REQUIRED_CHANNEL_URL را تنظیم کند."
+        )
+    if update.callback_query:
+        await update.callback_query.answer("ابتدا عضو کانال شوید.", show_alert=True)
+        await update.callback_query.message.reply_text(text, reply_markup=subscription_keyboard())
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=subscription_keyboard())
+    return False
+
+
+async def subscription_check_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if await is_channel_member(context.bot, uid):
+        await q.answer("✅ عضویت تأیید شد.")
+        await q.message.reply_text(
+            "✅ عضویت شما تأیید شد. حالا می‌توانید از همه امکانات ربات استفاده کنید.",
+            reply_markup=keyboard(uid),
+        )
+    else:
+        await q.answer("❌ هنوز عضویت شما تأیید نشده است.", show_alert=True)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     name = update.effective_user.first_name or "دوست من"
     register_user(uid, name)
+    if not await require_subscription(update, context):
+        return
     info = user_info(uid)
 
     if info["gender"] is None:
@@ -834,6 +938,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_activity(uid, "start")
 
 
+@subscription_required
 async def language_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -848,6 +953,7 @@ async def language_callback(update, context):
     await q.message.reply_text(T[value]["gender"])
 
 
+@subscription_required
 async def gender_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -902,6 +1008,7 @@ async def new_goal(update, context):
     )
 
 
+@subscription_required
 async def new_category(update, context):
     q = update.callback_query
     await q.answer()
@@ -920,6 +1027,7 @@ async def new_category(update, context):
     )
 
 
+@subscription_required
 async def new_back(update, context):
     q = update.callback_query
     await q.answer()
@@ -931,6 +1039,7 @@ async def new_back(update, context):
     )
 
 
+@subscription_required
 async def new_goal_pick(update, context):
     q = update.callback_query
     await q.answer()
@@ -948,6 +1057,7 @@ async def new_goal_pick(update, context):
 
 
 
+@subscription_required
 async def priority_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -960,6 +1070,7 @@ async def priority_callback(update, context):
     )
 
 
+@subscription_required
 async def time_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -1050,6 +1161,7 @@ async def today(update, context):
     )
 
 
+@subscription_required
 async def detail(update, context):
     q = update.callback_query
     await q.answer()
@@ -1078,6 +1190,7 @@ async def detail(update, context):
     )
 
 
+@subscription_required
 async def mark(update, context):
     q = update.callback_query
     await q.answer()
@@ -1121,6 +1234,7 @@ async def edit_menu(update, context):
     )
 
 
+@subscription_required
 async def edit_goal(update, context):
     q = update.callback_query
     await q.answer()
@@ -1149,6 +1263,7 @@ async def edit_goal(update, context):
     )
 
 
+@subscription_required
 async def rename_start(update, context):
     q = update.callback_query
     await q.answer()
@@ -1181,6 +1296,7 @@ async def rename_save(update, context):
     return True
 
 
+@subscription_required
 async def change_reminder(update, context):
     q = update.callback_query
     await q.answer()
@@ -1196,6 +1312,7 @@ async def change_reminder(update, context):
 
 
 
+@subscription_required
 async def edit_time_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -1205,7 +1322,7 @@ async def edit_time_callback(update, context):
         return
     value = q.data.split(":", 1)[1]
     if value == "custom":
-        context.user_data["awaiting_edit_time"] = True
+        context.user_data["awaiting_custom_edit_time"] = True
         await q.message.reply_text(T[lang(uid)]["custom_time"])
         return
     reminder = None if value == "none" else parse_time(value)
@@ -1224,6 +1341,7 @@ async def edit_time_callback(update, context):
     )
 
 
+@subscription_required
 async def time_change_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -1274,6 +1392,7 @@ async def custom_edit_time_save(update, context):
     return True
 
 
+@subscription_required
 async def delete_start(update, context):
     q = update.callback_query
     await q.answer()
@@ -1294,6 +1413,7 @@ async def delete_start(update, context):
     )
 
 
+@subscription_required
 async def delete_confirm(update, context):
     q = update.callback_query
     await q.answer()
@@ -1301,7 +1421,6 @@ async def delete_confirm(update, context):
     gid = int(q.data.split(":")[1])
     c = db()
     c.execute("DELETE FROM goal_days WHERE user_id=? AND goal_id=?", (uid, gid))
-    c.execute("DELETE FROM goal_steps WHERE user_id=? AND goal_id=?", (uid, gid))
     c.execute("DELETE FROM goals WHERE user_id=? AND id=?", (uid, gid))
     c.commit()
     c.close()
@@ -1312,6 +1431,7 @@ async def delete_confirm(update, context):
     )
 
 
+@subscription_required
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
@@ -1409,7 +1529,6 @@ async def stats(update, context):
         (uid,),
     ).fetchone()["n"]
     c.close()
-    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     await update.message.reply_text(
         T[lang(uid)]["stats"].format(
             name=display_name(uid),
@@ -1594,6 +1713,7 @@ def auto_channel_keyboard():
     ])
 
 
+@subscription_required
 async def auto_channel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -1622,65 +1742,30 @@ async def auto_channel_callback(update, context):
             reply_markup=auto_channel_keyboard()
         )
 
-async def channel_panel_callback(update, context):
-    q = update.callback_query
-    uid = q.from_user.id
-    if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-    await q.answer()
-    action = q.data.split(":", 1)[1]
-    cfg = get_channel_config()
-    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
-
-    if action == "main":
-        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
-    elif action == "set":
-        context.user_data["channel_state"] = "set"
-        await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
-    elif action == "auto":
+@subscription_required
+async def channel_panel_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); a=q.data.split(":",1)[1]; cfg=get_channel_config(); channel=cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
+    if a=="auto":
         await q.message.reply_text(
             "🤖 <b>انتشار خودکار</b>\n\n"
             "ربات می‌تواند درباره موفقیت، هدف‌گذاری، رشد فردی و آموزش، "
             "هر روز یا هر هفته یک پست جدید تولید و در کانال منتشر کند.",
-            parse_mode="HTML",
-            reply_markup=auto_channel_keyboard(),
+            parse_mode="HTML", reply_markup=auto_channel_keyboard()
         )
-    elif action == "test":
-        if channel == "تنظیم نشده":
-            await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
-            return
-        try:
-            chat = await context.bot.get_chat(channel)
-            await q.message.reply_text(
-                f"✅ اتصال موفق است.\n📢 {chat.title or channel}",
-                reply_markup=channel_keyboard(),
-            )
-        except Exception as e:
-            logger.error("Channel test: %s", e)
-            await q.message.reply_text(
-                "❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",
-                reply_markup=channel_keyboard(),
-            )
-    elif action == "new":
-        context.user_data["channel_state"] = "content"
-        await q.message.reply_text("📝 متن پست را بفرست:")
-    elif action == "list":
-        c = db()
-        rows = c.execute(
-            "SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20"
-        ).fetchall()
-        c.close()
-        text = "📋 <b>پست‌های فعال</b>\n\n"
-        if rows:
-            text += "\n".join(
-                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
-                for r in rows
-            )
-        else:
-            text += "موردی نیست."
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=channel_keyboard())
+    elif a=="main":
+        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
+        if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
+    elif a=="test":
+        if channel=="تنظیم نشده": await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        try: chat=await context.bot.get_chat(channel); await q.message.reply_text(f"✅ اتصال موفق است.\n📢 {chat.title or channel}",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Channel test: %s",e); await q.message.reply_text("❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",reply_markup=channel_keyboard())
+    elif a=="new": context.user_data["channel_state"]="content"; await q.message.reply_text("📝 متن پست را بفرست:")
+    elif a=="list":
+        c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20").fetchall(); c.close(); text="📋 <b>پست‌های فعال</b>\n\n"+("\n".join(f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}" for r in rows) if rows else "موردی نیست."); await q.message.reply_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
 
+@subscription_required
 async def channel_schedule_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
@@ -1695,6 +1780,7 @@ async def channel_schedule_callback(update,context):
     elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.reply_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
     elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.reply_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
 
+@subscription_required
 async def channel_daily_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
@@ -1702,11 +1788,13 @@ async def channel_daily_callback(update,context):
     if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
     await save_channel_post(context,uid,"daily",v,None,None,q.message)
 
+@subscription_required
 async def channel_weekday_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.reply_text("⏰ ساعت هفتگی:",reply_markup=channel_time_keyboard("chwtime"))
 
+@subscription_required
 async def channel_weektime_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
@@ -1807,6 +1895,7 @@ def admin_keyboard():
     ])
 
 
+@subscription_required
 async def admin_panel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -1867,7 +1956,7 @@ async def admin_panel_callback(update, context):
         ).fetchall()
         c.close()
         text = "📈 <b>فعالیت‌ها</b>\n\n"
-        text += "\n".join(f"• {r['activity']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        text += "\n".join(f"• {r['action']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
         await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "reminders":
@@ -1957,6 +2046,7 @@ async def admin(update, context):
     log_activity(uid, "admin_panel")
 
 
+@subscription_required
 async def admin_broadcast_start(update, context):
     q = update.callback_query
     await q.answer()
@@ -2067,6 +2157,8 @@ async def reminder_job(context):
 async def text_router(update, context):
     uid = update.effective_user.id
     register_user(uid, update.effective_user.first_name or "")
+    if not await require_subscription(update, context):
+        return
     text = update.message.text.strip()
     if context.user_data.get("auto_wait_time"):
         value = parse_time(text)
@@ -2097,23 +2189,23 @@ async def text_router(update, context):
         return
 
     menu = T[lang(uid)]["menu"]
-    if text in ("🎯 اهداف امروز", "🎯 Today's Goals") or text == menu[0][0]:
+    if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
         await today(update, context)
-    elif text in ("➕ هدف جدید", "➕ New Goal") or text == menu[0][1]:
+    elif text in (menu[0][1], "➕ هدف جدید", "➕ New Goal"):
         await new_goal(update, context)
-    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals") or text == menu[1][0]:
+    elif text in (menu[1][0], "🏆 اهداف آماده", "🏆 Ready Goals"):
         await ready_menu(update, context)
-    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals") or text == menu[1][1]:
+    elif text in (menu[1][1], "✏️ ویرایش اهداف", "✏️ Edit Goals"):
         await edit_menu(update, context)
-    elif text in ("📅 جدول هفتگی", "📅 Weekly Table") or text == menu[2][0]:
+    elif text in (menu[2][0], "📅 جدول هفتگی", "📅 Weekly Table"):
         await weekly(update, context)
-    elif text in ("📊 آمار من", "📊 My Stats") or text == menu[2][1]:
+    elif text in (menu[2][1], "📊 آمار من", "📊 My Stats"):
         await stats(update, context)
-    elif text in ("👤 پروفایل", "👤 Profile") or (len(menu) > 3 and text == menu[3][0]):
+    elif text in (menu[3][0], "👤 پروفایل", "👤 Profile"):
         await profile(update, context)
-    elif text in ("🏆 دستاوردها", "🏆 Achievements") or (len(menu) > 3 and len(menu[3]) > 1 and text == menu[3][1]):
+    elif text in (menu[3][1], "🏆 دستاوردها", "🏆 Achievements"):
         await achievements(update, context)
-    elif text in ("⚙️ تنظیمات", "⚙️ Settings") or (len(menu) > 4 and text == menu[4][0]):
+    elif text in (menu[4][0], "⚙️ تنظیمات", "⚙️ Settings"):
         await settings(update, context)
     elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
         await admin_command(update, context)
@@ -2146,6 +2238,7 @@ def main():
     app.add_handler(CommandHandler("myid", my_id))
     app.add_handler(CommandHandler("admin", admin_command))
 
+    app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
     app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
