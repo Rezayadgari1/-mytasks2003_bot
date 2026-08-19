@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -22,6 +23,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
+
 TEHRAN = ZoneInfo("Asia/Tehran")
 
 logging.basicConfig(
@@ -31,11 +33,24 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================
+# مراحل
+# ============================================================
+
 ADD_NAME = 1
 ADD_CATEGORY = 2
 ADD_TIME = 3
 ADD_DAYS = 4
 
+EDIT_NAME = 10
+EDIT_TIME = 11
+EDIT_DAYS = 12
+
+
+# ============================================================
+# اهداف آماده
+# ============================================================
 
 READY_GOALS = {
     "سلامتی": [
@@ -48,6 +63,7 @@ READY_GOALS = {
         "نخوردن نوشابه",
         "رسیدگی به بهداشت شخصی",
     ],
+
     "ورزش و تناسب اندام": [
         "۳۰ دقیقه ورزش",
         "۵۰۰۰ قدم پیاده‌روی",
@@ -59,6 +75,7 @@ READY_GOALS = {
         "۱۵ دقیقه حرکات کششی",
         "۳۰ دقیقه دوچرخه‌سواری",
     ],
+
     "تغذیه": [
         "خوردن صبحانه",
         "خوردن ناهار سالم",
@@ -70,24 +87,27 @@ READY_GOALS = {
         "خوردن یک وعده میوه",
         "خوردن سبزیجات",
     ],
+
     "مطالعه و آموزش": [
         "۳۰ دقیقه مطالعه",
         "۲۰ دقیقه مطالعه",
         "یادگیری زبان",
         "یادگیری ۱۰ لغت جدید",
         "دیدن یک درس آموزشی",
-        "تمرین مهارت جدید",
+        "یادگیری یک مهارت جدید",
         "مطالعه کتاب",
         "مرور مطالب",
     ],
+
     "کار و شغل": [
         "برنامه‌ریزی کارهای امروز",
         "انجام مهم‌ترین کار روز",
-        "بررسی ایمیل‌ها",
+        "بررسی کارهای امروز",
         "مرتب کردن فایل‌ها",
         "یادداشت کارهای فردا",
         "۳۰ دقیقه کار بدون حواس‌پرتی",
     ],
+
     "مالی": [
         "ثبت هزینه‌های امروز",
         "بررسی حساب بانکی",
@@ -96,6 +116,7 @@ READY_GOALS = {
         "حذف یک هزینه غیرضروری",
         "بررسی بودجه ماهانه",
     ],
+
     "خانه و زندگی": [
         "مرتب کردن اتاق",
         "مرتب کردن میز",
@@ -105,6 +126,7 @@ READY_GOALS = {
         "مرتب کردن کمد",
         "خارج کردن زباله",
     ],
+
     "ذهن و تمرکز": [
         "۱۰ دقیقه تمرکز",
         "۱۰ دقیقه مدیتیشن",
@@ -114,6 +136,7 @@ READY_GOALS = {
         "۳۰ دقیقه بدون موبایل",
         "۳۰ دقیقه بدون شبکه اجتماعی",
     ],
+
     "خواب و استراحت": [
         "خواب قبل از ساعت ۱۲",
         "بیدار شدن در ساعت مشخص",
@@ -122,6 +145,7 @@ READY_GOALS = {
         "آماده شدن برای خواب",
         "استراحت کوتاه در طول روز",
     ],
+
     "روابط اجتماعی": [
         "تماس با خانواده",
         "پیام دادن به یک دوست",
@@ -129,13 +153,14 @@ READY_GOALS = {
         "احوالپرسی از یک نفر",
         "دیدار با دوستان",
     ],
+
     "سرگرمی": [
         "۳۰ دقیقه بازی",
         "دیدن فیلم",
         "گوش دادن به موسیقی",
-        "مطالعه مطالب مورد علاقه",
         "انجام سرگرمی مورد علاقه",
     ],
+
     "کنترل موبایل": [
         "کم کردن زمان موبایل",
         "۳۰ دقیقه بدون موبایل",
@@ -144,6 +169,7 @@ READY_GOALS = {
         "ندیدن موبایل هنگام غذا",
         "ندیدن موبایل قبل از خواب",
     ],
+
     "عادت‌های شخصی": [
         "مرتب کردن تخت",
         "مسواک زدن",
@@ -153,13 +179,14 @@ READY_GOALS = {
         "رسیدگی به ظاهر",
         "مرتب کردن وسایل شخصی",
     ],
+
     "معنوی": [
-        "مطالعه روزانه",
         "زمان آرامش و تفکر",
         "شکرگزاری",
         "انجام کار خیر",
         "کمک به یک نفر",
     ],
+
     "خودرو": [
         "بررسی بنزین خودرو",
         "بررسی باد لاستیک",
@@ -168,6 +195,7 @@ READY_GOALS = {
         "بررسی چراغ‌های خودرو",
         "بررسی آب رادیاتور",
     ],
+
     "نظم و نظافت": [
         "مرتب کردن اتاق",
         "مرتب کردن میز",
@@ -177,6 +205,7 @@ READY_GOALS = {
         "مرتب کردن فایل‌های گوشی",
         "مرتب کردن فایل‌های کامپیوتر",
     ],
+
     "اهداف شخصی": [
         "انجام یک کار عقب‌افتاده",
         "یادگیری یک چیز جدید",
@@ -188,6 +217,10 @@ READY_GOALS = {
 }
 
 
+# ============================================================
+# دیتابیس
+# ============================================================
+
 def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
@@ -197,24 +230,28 @@ def get_db():
 def init_db():
     conn = get_db()
 
-    conn.execute(
-        """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            language TEXT NOT NULL DEFAULT 'fa',
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS goals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             category TEXT NOT NULL DEFAULT 'عمومی',
             reminder_time TEXT,
-            repeat_type TEXT NOT NULL DEFAULT 'daily',
             repeat_days TEXT NOT NULL DEFAULT '0,1,2,3,4,5,6',
             enabled INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         )
-        """
-    )
+    """)
 
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS goal_days (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             goal_id INTEGER NOT NULL,
@@ -224,12 +261,59 @@ def init_db():
             completed_at TEXT,
             UNIQUE(goal_id, goal_date)
         )
-        """
-    )
+    """)
 
     conn.commit()
     conn.close()
 
+
+# ============================================================
+# زبان
+# ============================================================
+
+def get_language(user_id):
+    conn = get_db()
+
+    row = conn.execute(
+        "SELECT language FROM users WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+
+    conn.close()
+
+    if row:
+        return row["language"]
+
+    return None
+
+
+def save_language(user_id, language):
+    conn = get_db()
+
+    now = datetime.now(TEHRAN).isoformat()
+
+    conn.execute("""
+        INSERT INTO users (
+            user_id,
+            language,
+            created_at
+        )
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET language = excluded.language
+    """, (
+        user_id,
+        language,
+        now,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# ابزارها
+# ============================================================
 
 def today():
     return datetime.now(TEHRAN).date()
@@ -239,18 +323,106 @@ def date_string(value):
     return value.strftime("%Y-%m-%d")
 
 
-def weekday_name(value):
-    names = {
-        0: "دوشنبه",
-        1: "سه‌شنبه",
-        2: "چهارشنبه",
-        3: "پنجشنبه",
-        4: "جمعه",
-        5: "شنبه",
-        6: "یکشنبه",
-    }
-    return names[value.weekday()]
+def normalize_digits(text):
+    table = str.maketrans(
+        "۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩",
+        "01234567890123456789",
+    )
+    return text.translate(table)
 
+
+def parse_time(text):
+    text = normalize_digits(text.strip())
+
+    text = text.replace(".", ":")
+    text = text.replace("٫", ":")
+    text = text.replace("：", ":")
+
+    text = re.sub(r"\s+", "", text)
+
+    if text.isdigit():
+        if len(text) == 1:
+            hour = int(text)
+            minute = 0
+        elif len(text) == 2:
+            hour = int(text)
+            minute = 0
+        elif len(text) == 3:
+            hour = int(text[0])
+            minute = int(text[1:])
+        elif len(text) == 4:
+            hour = int(text[:2])
+            minute = int(text[2:])
+        else:
+            return None
+    else:
+        match = re.fullmatch(
+            r"(\d{1,2}):(\d{1,2})",
+            text,
+        )
+
+        if not match:
+            return None
+
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+
+    if hour < 0 or hour > 23:
+        return None
+
+    if minute < 0 or minute > 59:
+        return None
+
+    return f"{hour:02d}:{minute:02d}"
+
+
+def day_name(index):
+    names = [
+        "دوشنبه",
+        "سه‌شنبه",
+        "چهارشنبه",
+        "پنجشنبه",
+        "جمعه",
+        "شنبه",
+        "یکشنبه",
+    ]
+
+    return names[index]
+
+
+def days_text(days):
+    if days == "0,1,2,3,4,5,6":
+        return "هر روز"
+
+    result = []
+
+    for value in days.split(","):
+        if value.isdigit():
+            number = int(value)
+
+            if 0 <= number <= 6:
+                result.append(day_name(number))
+
+    return "، ".join(result)
+
+
+def main_keyboard():
+    keyboard = [
+        ["🎯 اهداف امروز", "➕ هدف جدید"],
+        ["🏆 اهداف آماده", "✏️ ویرایش اهداف"],
+        ["📅 جدول هفتگی", "📊 آمار من"],
+        ["⚙️ تنظیمات"],
+    ]
+
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+    )
+
+
+# ============================================================
+# اهداف
+# ============================================================
 
 def add_goal(
     user_id,
@@ -261,31 +433,25 @@ def add_goal(
 ):
     conn = get_db()
 
-    now = datetime.now(TEHRAN).isoformat()
-
-    cur = conn.execute(
-        """
+    cur = conn.execute("""
         INSERT INTO goals (
             user_id,
             name,
             category,
             reminder_time,
-            repeat_type,
             repeat_days,
             enabled,
             created_at
         )
-        VALUES (?, ?, ?, ?, 'weekly', ?, 1, ?)
-        """,
-        (
-            user_id,
-            name,
-            category,
-            reminder_time,
-            repeat_days,
-            now,
-        ),
-    )
+        VALUES (?, ?, ?, ?, ?, 1, ?)
+    """, (
+        user_id,
+        name,
+        category,
+        reminder_time,
+        repeat_days,
+        datetime.now(TEHRAN).isoformat(),
+    ))
 
     goal_id = cur.lastrowid
 
@@ -295,71 +461,134 @@ def add_goal(
     return goal_id
 
 
-def get_goals(user_id):
-    conn = get_db()
-
-    rows = conn.execute(
-        """
-        SELECT *
-        FROM goals
-        WHERE user_id = ?
-        ORDER BY id DESC
-        """,
-        (user_id,),
-    ).fetchall()
-
-    conn.close()
-
-    return rows
-
-
 def get_goal(user_id, goal_id):
     conn = get_db()
 
-    row = conn.execute(
-        """
+    row = conn.execute("""
         SELECT *
         FROM goals
         WHERE user_id = ?
         AND id = ?
-        """,
-        (
-            user_id,
-            goal_id,
-        ),
-    ).fetchone()
+    """, (
+        user_id,
+        goal_id,
+    )).fetchone()
 
     conn.close()
 
     return row
 
 
+def get_goals(user_id):
+    conn = get_db()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM goals
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """, (user_id,)).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def update_goal_name(user_id, goal_id, name):
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE goals
+        SET name = ?
+        WHERE user_id = ?
+        AND id = ?
+    """, (
+        name,
+        user_id,
+        goal_id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def update_goal_time(user_id, goal_id, reminder_time):
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE goals
+        SET reminder_time = ?
+        WHERE user_id = ?
+        AND id = ?
+    """, (
+        reminder_time,
+        user_id,
+        goal_id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def update_goal_days(user_id, goal_id, repeat_days):
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE goals
+        SET repeat_days = ?
+        WHERE user_id = ?
+        AND id = ?
+    """, (
+        repeat_days,
+        user_id,
+        goal_id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def toggle_goal(user_id, goal_id):
+    conn = get_db()
+
+    conn.execute("""
+        UPDATE goals
+        SET enabled =
+            CASE
+                WHEN enabled = 1 THEN 0
+                ELSE 1
+            END
+        WHERE user_id = ?
+        AND id = ?
+    """, (
+        user_id,
+        goal_id,
+    ))
+
+    conn.commit()
+    conn.close()
+
+
 def delete_goal(user_id, goal_id):
     conn = get_db()
 
-    conn.execute(
-        """
+    conn.execute("""
         DELETE FROM goal_days
         WHERE user_id = ?
         AND goal_id = ?
-        """,
-        (
-            user_id,
-            goal_id,
-        ),
-    )
+    """, (
+        user_id,
+        goal_id,
+    ))
 
-    cur = conn.execute(
-        """
+    cur = conn.execute("""
         DELETE FROM goals
         WHERE user_id = ?
         AND id = ?
-        """,
-        (
-            user_id,
-            goal_id,
-        ),
-    )
+    """, (
+        user_id,
+        goal_id,
+    ))
 
     conn.commit()
 
@@ -370,14 +599,39 @@ def delete_goal(user_id, goal_id):
     return result
 
 
-def set_goal_status(
+# ============================================================
+# وضعیت روزانه
+# ============================================================
+
+def get_status(user_id, goal_id, goal_date):
+    conn = get_db()
+
+    row = conn.execute("""
+        SELECT status
+        FROM goal_days
+        WHERE user_id = ?
+        AND goal_id = ?
+        AND goal_date = ?
+    """, (
+        user_id,
+        goal_id,
+        goal_date,
+    )).fetchone()
+
+    conn.close()
+
+    if row:
+        return row["status"]
+
+    return "pending"
+
+
+def set_status(
     user_id,
     goal_id,
     goal_date,
     status,
 ):
-    conn = get_db()
-
     completed_at = None
 
     if status == "done":
@@ -385,8 +639,9 @@ def set_goal_status(
             TEHRAN
         ).isoformat()
 
-    conn.execute(
-        """
+    conn = get_db()
+
+    conn.execute("""
         INSERT INTO goal_days (
             goal_id,
             user_id,
@@ -399,162 +654,635 @@ def set_goal_status(
         DO UPDATE SET
             status = excluded.status,
             completed_at = excluded.completed_at
-        """,
-        (
-            goal_id,
-            user_id,
-            goal_date,
-            status,
-            completed_at,
-        ),
-    )
+    """, (
+        goal_id,
+        user_id,
+        goal_date,
+        status,
+        completed_at,
+    ))
 
     conn.commit()
     conn.close()
 
 
-def get_goal_status(
-    user_id,
-    goal_id,
-    goal_date,
-):
-    conn = get_db()
+# ============================================================
+# شروع
+# ============================================================
 
-    row = conn.execute(
-        """
-        SELECT status
-        FROM goal_days
-        WHERE user_id = ?
-        AND goal_id = ?
-        AND goal_date = ?
-        """,
-        (
-            user_id,
-            goal_id,
-            goal_date,
-        ),
-    ).fetchone()
+async def start(update, context):
+    user_id = update.effective_user.id
 
-    conn.close()
+    language = get_language(user_id)
 
-    if not row:
-        return "pending"
+    if language:
+        await update.message.reply_text(
+            "🎯 به ربات اهداف روزانه خوش آمدی.",
+            reply_markup=main_keyboard(),
+        )
+        return
 
-    return row["status"]
-
-
-def get_week_status(
-    user_id,
-    goal_id,
-):
-    conn = get_db()
-
-    start = today() - timedelta(days=6)
-    end = today()
-
-    rows = conn.execute(
-        """
-        SELECT goal_date, status
-        FROM goal_days
-        WHERE user_id = ?
-        AND goal_id = ?
-        AND goal_date BETWEEN ? AND ?
-        """,
-        (
-            user_id,
-            goal_id,
-            date_string(start),
-            date_string(end),
-        ),
-    ).fetchall()
-
-    conn.close()
-
-    return {
-        row["goal_date"]: row["status"]
-        for row in rows
-    }
-
-
-def selected_days_text(days):
-    if days == "0,1,2,3,4,5,6":
-        return "هر روز"
-
-    names = {
-        "0": "دوشنبه",
-        "1": "سه‌شنبه",
-        "2": "چهارشنبه",
-        "3": "پنجشنبه",
-        "4": "جمعه",
-        "5": "شنبه",
-        "6": "یکشنبه",
-    }
-
-    result = []
-
-    for item in days.split(","):
-        if item in names:
-            result.append(names[item])
-
-    return "، ".join(result)
-
-
-def main_keyboard():
     keyboard = [
-        ["🎯 اهداف امروز", "➕ هدف جدید"],
-        ["🏆 اهداف آماده", "📅 جدول هفتگی"],
-        ["📊 آمار من", "⚙️ تنظیمات"],
+        [
+            InlineKeyboardButton(
+                "🇮🇷 فارسی",
+                callback_data="lang:fa",
+            ),
+            InlineKeyboardButton(
+                "🇬🇧 English",
+                callback_data="lang:en",
+            ),
+        ]
     ]
 
-    return ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-    )
-
-
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    text = (
-        "🎯 مدیریت اهداف روزانه\n\n"
-        "هدف‌های خودت را ثبت کن.\n"
-        "برای هر هدف زمان یادآوری تعیین کن.\n"
-        "هر روز وضعیت هدف را ثبت کن.\n"
-        "جدول هفتگی پیشرفتت را ببین."
-    )
-
     await update.message.reply_text(
+        "🤖 خوش آمدی!\n\n"
+        "🌐 زبان ربات را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+    )
+
+
+async def language_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    language = query.data.split(":")[1]
+
+    save_language(
+        query.from_user.id,
+        language,
+    )
+
+    if language == "en":
+        text = (
+            "🎯 Welcome!\n\n"
+            "Your language is set to English."
+        )
+    else:
+        text = (
+            "🎯 خوش آمدی!\n\n"
+            "زبان ربات روی فارسی تنظیم شد."
+        )
+
+    await query.message.reply_text(
         text,
         reply_markup=main_keyboard(),
     )
 
 
-async def help_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    text = (
-        "راهنمای ربات\n\n"
-        "/start شروع ربات\n"
-        "/addgoal افزودن هدف\n"
-        "/goals اهداف من\n"
-        "/today اهداف امروز\n"
-        "/week جدول هفتگی\n"
-        "/stats آمار\n"
-        "/cancel لغو عملیات"
-    )
+# ============================================================
+# اهداف آماده
+# ============================================================
+
+async def ready_menu(update, context):
+    buttons = []
+
+    for category in READY_GOALS:
+        buttons.append([
+            InlineKeyboardButton(
+                f"📁 {category}",
+                callback_data=f"rcat:{category}",
+            )
+        ])
 
     await update.message.reply_text(
+        "🏆 اهداف آماده\n\n"
+        "دسته مورد نظر را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_category(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    category = query.data.split(":", 1)[1]
+
+    context.user_data["ready_category"] = category
+    context.user_data["ready_selected"] = []
+
+    goals = READY_GOALS[category]
+
+    buttons = []
+
+    for index, name in enumerate(goals):
+        buttons.append([
+            InlineKeyboardButton(
+                f"⬜ {name}",
+                callback_data=f"rsel:{index}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "➕ افزودن اهداف انتخاب‌شده",
+            callback_data="radd",
+        )
+    ])
+
+    await query.message.reply_text(
+        f"📁 {category}\n\n"
+        "چند هدف را انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_select(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    category = context.user_data.get(
+        "ready_category"
+    )
+
+    if not category:
+        return
+
+    index = int(
+        query.data.split(":")[1]
+    )
+
+    selected = context.user_data.get(
+        "ready_selected",
+        [],
+    )
+
+    if index in selected:
+        selected.remove(index)
+    else:
+        selected.append(index)
+
+    context.user_data["ready_selected"] = selected
+
+    goals = READY_GOALS[category]
+
+    buttons = []
+
+    for i, name in enumerate(goals):
+        icon = "✅" if i in selected else "⬜"
+
+        buttons.append([
+            InlineKeyboardButton(
+                f"{icon} {name}",
+                callback_data=f"rsel:{i}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            f"➕ افزودن {len(selected)} هدف",
+            callback_data="radd",
+        )
+    ])
+
+    await query.edit_message_reply_markup(
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        )
+    )
+
+
+async def ready_add(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    category = context.user_data.get(
+        "ready_category"
+    )
+
+    selected = context.user_data.get(
+        "ready_selected",
+        [],
+    )
+
+    if not selected:
+        await query.message.reply_text(
+            "❌ حداقل یک هدف را انتخاب کن."
+        )
+        return
+
+    goals = READY_GOALS[category]
+
+    selected_names = [
+        goals[index]
+        for index in selected
+    ]
+
+    context.user_data["pending_names"] = selected_names
+    context.user_data["pending_category"] = category
+
+    text = "🎯 اهداف انتخاب‌شده\n\n"
+
+    for number, name in enumerate(
+        selected_names,
+        1,
+    ):
+        text += f"{number}. {name}\n"
+
+    text += (
+        "\nآیا این اهداف را اضافه کنم؟"
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ تأیید و ادامه",
+                callback_data="rconfirm",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "✏️ تغییر انتخاب",
+                callback_data="rback",
+            ),
+            InlineKeyboardButton(
+                "❌ لغو",
+                callback_data="rcancel",
+            ),
+        ],
+    ]
+
+    await query.message.reply_text(
         text,
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_confirm(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    names = context.user_data.get(
+        "pending_names",
+        [],
+    )
+
+    category = context.user_data.get(
+        "pending_category",
+        "عمومی",
+    )
+
+    if not names:
+        return
+
+    context.user_data["adding_ready"] = True
+    context.user_data["pending_names"] = names
+    context.user_data["pending_category"] = category
+
+    await query.message.reply_text(
+        "⏰ زمان یادآوری را وارد کن.\n\n"
+        "نمونه‌های قابل قبول:\n"
+        "18:00\n"
+        "۱۸:۰۰\n"
+        "1800\n"
+        "۱۸۰۰\n"
+        "8:30\n"
+        "۸۳۰\n\n"
+        "اگر یادآوری نمی‌خواهی بنویس:\n"
+        "بدون یادآوری"
+    )
+
+
+async def ready_back(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    category = context.user_data.get(
+        "ready_category"
+    )
+
+    if not category:
+        return
+
+    selected = context.user_data.get(
+        "ready_selected",
+        [],
+    )
+
+    goals = READY_GOALS[category]
+
+    buttons = []
+
+    for i, name in enumerate(goals):
+        icon = "✅" if i in selected else "⬜"
+
+        buttons.append([
+            InlineKeyboardButton(
+                f"{icon} {name}",
+                callback_data=f"rsel:{i}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            f"➕ افزودن {len(selected)} هدف",
+            callback_data="radd",
+        )
+    ])
+
+    await query.message.reply_text(
+        "✏️ انتخاب اهداف را تغییر بده.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_cancel(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data.clear()
+
+    await query.message.reply_text(
+        "❌ انتخاب اهداف لغو شد.",
         reply_markup=main_keyboard(),
     )
 
 
-async def add_goal_start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+async def ready_time_handler(update, context):
+    if not context.user_data.get(
+        "adding_ready"
+    ):
+        return False
+
+    value = update.message.text.strip()
+
+    if value == "بدون یادآوری":
+        reminder = None
+    else:
+        reminder = parse_time(value)
+
+        if reminder is None:
+            await update.message.reply_text(
+                "❌ ساعت اشتباه است.\n\n"
+                "نمونه:\n"
+                "18:00\n"
+                "۱۸:۰۰\n"
+                "1800\n"
+                "۱۸۰۰"
+            )
+            return True
+
+    context.user_data["pending_time"] = reminder
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "📅 هر روز",
+                callback_data="rday:all",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📅 انتخاب روزها",
+                callback_data="rday:choose",
+            )
+        ],
+    ]
+
+    await update.message.reply_text(
+        "📅 روزهای تکرار هدف‌ها را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+    return True
+
+
+async def ready_days(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    value = query.data.split(":")[1]
+
+    if value == "all":
+        await show_ready_final(
+            query,
+            context,
+            "0,1,2,3,4,5,6",
+        )
+        return
+
+    context.user_data["ready_days"] = []
+
+    buttons = []
+
+    for index in range(7):
+        buttons.append([
+            InlineKeyboardButton(
+                day_name(index),
+                callback_data=f"rchoose:{index}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "✅ ثبت روزها",
+            callback_data="rfinish",
+        )
+    ])
+
+    await query.message.reply_text(
+        "📅 روزها را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_choose_day(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    value = query.data.split(":")[1]
+
+    selected = context.user_data.get(
+        "ready_days",
+        [],
+    )
+
+    if value not in selected:
+        selected.append(value)
+    else:
+        selected.remove(value)
+
+    context.user_data["ready_days"] = selected
+
+    await query.answer(
+        "انتخاب شد."
+    )
+
+
+async def ready_finish_days(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    selected = context.user_data.get(
+        "ready_days",
+        [],
+    )
+
+    if not selected:
+        await query.message.reply_text(
+            "❌ حداقل یک روز را انتخاب کن."
+        )
+        return
+
+    selected.sort(
+        key=lambda x: int(x)
+    )
+
+    await show_ready_final(
+        query,
+        context,
+        ",".join(selected),
+    )
+
+
+async def show_ready_final(
+    query,
+    context,
+    days,
 ):
+    names = context.user_data.get(
+        "pending_names",
+        [],
+    )
+
+    category = context.user_data.get(
+        "pending_category",
+        "عمومی",
+    )
+
+    reminder = context.user_data.get(
+        "pending_time"
+    )
+
+    text = "🎯 بررسی نهایی اهداف\n\n"
+
+    for number, name in enumerate(
+        names,
+        1,
+    ):
+        text += (
+            f"{number}. {name}\n"
+            f"   📁 {category}\n"
+            f"   ⏰ {reminder or 'بدون یادآوری'}\n"
+            f"   📅 {days_text(days)}\n\n"
+        )
+
+    text += "این اهداف ثبت شوند؟"
+
+    context.user_data["final_days"] = days
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ ثبت اهداف",
+                callback_data="rfinal",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "✏️ تغییر",
+                callback_data="rchange",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ لغو",
+                callback_data="rcancel",
+            )
+        ],
+    ]
+
+    await query.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def ready_final(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+
+    names = context.user_data.get(
+        "pending_names",
+        [],
+    )
+
+    category = context.user_data.get(
+        "pending_category",
+        "عمومی",
+    )
+
+    reminder = context.user_data.get(
+        "pending_time"
+    )
+
+    days = context.user_data.get(
+        "final_days",
+        "0,1,2,3,4,5,6",
+    )
+
+    for name in names:
+        add_goal(
+            user_id,
+            name,
+            category,
+            reminder,
+            days,
+        )
+
+    count = len(names)
+
+    context.user_data.clear()
+
+    await query.message.reply_text(
+        f"✅ {count} هدف ثبت شد.\n\n"
+        "🎯 اهداف به لیست تو اضافه شدند.",
+        reply_markup=main_keyboard(),
+    )
+
+
+async def ready_change(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data.pop(
+        "pending_time",
+        None,
+    )
+    context.user_data.pop(
+        "final_days",
+        None,
+    )
+
+    await ready_back(
+        update,
+        context,
+    )
+
+
+# ============================================================
+# افزودن هدف دستی
+# ============================================================
+
+async def add_start(update, context):
     await update.message.reply_text(
         "🎯 نام هدف را بفرست.\n\n"
         "مثال:\n"
@@ -564,10 +1292,7 @@ async def add_goal_start(
     return ADD_NAME
 
 
-async def add_goal_name(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def add_name(update, context):
     name = update.message.text.strip()
 
     if not name:
@@ -576,28 +1301,24 @@ async def add_goal_name(
         )
         return ADD_NAME
 
-    context.user_data["goal_name"] = name
+    context.user_data["manual_name"] = name
 
     buttons = []
 
-    for category in READY_GOALS.keys():
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    category,
-                    callback_data=f"newcat:{category}",
-                )
-            ]
-        )
-
-    buttons.append(
-        [
+    for category in READY_GOALS:
+        buttons.append([
             InlineKeyboardButton(
-                "📌 عمومی",
-                callback_data="newcat:عمومی",
+                category,
+                callback_data=f"mcat:{category}",
             )
-        ]
-    )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "عمومی",
+            callback_data="mcat:عمومی",
+        )
+    ])
 
     await update.message.reply_text(
         "📁 دسته هدف را انتخاب کن.",
@@ -609,81 +1330,60 @@ async def add_goal_name(
     return ADD_CATEGORY
 
 
-async def new_category_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def manual_category(update, context):
     query = update.callback_query
     await query.answer()
 
     category = query.data.split(":", 1)[1]
 
-    context.user_data["goal_category"] = category
+    context.user_data["manual_category"] = category
 
-    await query.edit_message_text(
-        "⏰ ساعت یادآوری را بفرست.\n\n"
-        "مثال:\n"
-        "18:00\n\n"
-        "اگر یادآوری نمی‌خواهی، بنویس:\n"
+    await query.message.reply_text(
+        "⏰ ساعت یادآوری را وارد کن.\n\n"
+        "18:00\n"
+        "۱۸:۰۰\n"
+        "1800\n"
+        "۱۸۰۰\n\n"
+        "یا:\n"
         "بدون یادآوری"
     )
 
     return ADD_TIME
 
 
-async def goal_time_received(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def manual_time(update, context):
     value = update.message.text.strip()
 
     if value == "بدون یادآوری":
         reminder = None
     else:
-        try:
-            datetime.strptime(
-                value,
-                "%H:%M",
-            )
-            reminder = value
-        except ValueError:
+        reminder = parse_time(value)
+
+        if reminder is None:
             await update.message.reply_text(
-                "فرمت ساعت اشتباه است.\n"
-                "مثال: 18:00"
+                "❌ ساعت اشتباه است."
             )
             return ADD_TIME
 
-    context.user_data["goal_time"] = reminder
+    context.user_data["manual_time"] = reminder
 
     buttons = [
         [
             InlineKeyboardButton(
                 "هر روز",
-                callback_data="days:all",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "شنبه تا چهارشنبه",
-                callback_data="days:work",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "پنجشنبه و جمعه",
-                callback_data="days:weekend",
+                callback_data="mday:all",
             )
         ],
         [
             InlineKeyboardButton(
                 "انتخاب روزها",
-                callback_data="days:choose",
+                callback_data="mday:choose",
             )
         ],
     ]
 
     await update.message.reply_text(
-        "📅 هدف در چه روزهایی تکرار شود؟",
+        "📅 روزهای تکرار را انتخاب کن.",
         reply_markup=InlineKeyboardMarkup(
             buttons
         ),
@@ -692,109 +1392,77 @@ async def goal_time_received(
     return ADD_DAYS
 
 
-async def days_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def manual_days(update, context):
     query = update.callback_query
     await query.answer()
 
-    value = query.data.split(":", 1)[1]
+    value = query.data.split(":")[1]
 
     if value == "all":
         days = "0,1,2,3,4,5,6"
 
-    elif value == "work":
-        days = "0,1,2,3,5"
+        await save_manual_goal(
+            query,
+            context,
+            days,
+        )
 
-    elif value == "weekend":
-        days = "4,6"
+        return ConversationHandler.END
 
-    else:
-        buttons = []
+    context.user_data["manual_days"] = []
 
-        names = [
-            ("دوشنبه", "0"),
-            ("سه‌شنبه", "1"),
-            ("چهارشنبه", "2"),
-            ("پنجشنبه", "3"),
-            ("جمعه", "4"),
-            ("شنبه", "5"),
-            ("یکشنبه", "6"),
-        ]
+    buttons = []
 
-        for name, number in names:
-            buttons.append(
-                [
-                    InlineKeyboardButton(
-                        name,
-                        callback_data=f"selectday:{number}",
-                    )
-                ]
+    for index in range(7):
+        buttons.append([
+            InlineKeyboardButton(
+                day_name(index),
+                callback_data=f"mchoose:{index}",
             )
+        ])
 
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    "✅ پایان انتخاب",
-                    callback_data="days:finish",
-                )
-            ]
+    buttons.append([
+        InlineKeyboardButton(
+            "✅ ثبت",
+            callback_data="mfinish",
         )
+    ])
 
-        context.user_data["selected_days"] = []
-
-        await query.edit_message_text(
-            "روزها را یکی‌یکی انتخاب کن.",
-            reply_markup=InlineKeyboardMarkup(
-                buttons
-            ),
-        )
-
-        return ADD_DAYS
-
-    await finish_goal_creation(
-        query,
-        context,
-        days,
+    await query.message.reply_text(
+        "روزها را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
     )
 
-    return ConversationHandler.END
+    return ADD_DAYS
 
 
-async def select_day_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def manual_choose(update, context):
     query = update.callback_query
     await query.answer()
 
-    value = query.data.split(":", 1)[1]
+    value = query.data.split(":")[1]
 
     selected = context.user_data.get(
-        "selected_days",
+        "manual_days",
         [],
     )
 
     if value not in selected:
         selected.append(value)
+    else:
+        selected.remove(value)
 
-    context.user_data["selected_days"] = selected
-
-    await query.answer(
-        "روز انتخاب شد."
-    )
+    context.user_data["manual_days"] = selected
 
 
-async def finish_days_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def manual_finish(update, context):
     query = update.callback_query
     await query.answer()
 
     selected = context.user_data.get(
-        "selected_days",
+        "manual_days",
         [],
     )
 
@@ -808,38 +1476,28 @@ async def finish_days_callback(
         key=lambda x: int(x)
     )
 
-    days = ",".join(selected)
-
-    await finish_goal_creation(
+    await save_manual_goal(
         query,
         context,
-        days,
+        ",".join(selected),
     )
 
     return ConversationHandler.END
 
 
-async def finish_goal_creation(
+async def save_manual_goal(
     query,
     context,
     days,
 ):
-    name = context.user_data.get(
-        "goal_name",
-        "",
-    )
+    user_id = query.from_user.id
 
-    category = context.user_data.get(
-        "goal_category",
-        "عمومی",
-    )
-
-    reminder = context.user_data.get(
-        "goal_time"
-    )
+    name = context.user_data["manual_name"]
+    category = context.user_data["manual_category"]
+    reminder = context.user_data["manual_time"]
 
     goal_id = add_goal(
-        query.from_user.id,
+        user_id,
         name,
         category,
         reminder,
@@ -853,80 +1511,88 @@ async def finish_goal_creation(
         f"🎯 {name}\n"
         f"📁 {category}\n"
         f"⏰ {reminder or 'بدون یادآوری'}\n"
-        f"📅 {selected_days_text(days)}",
+        f"📅 {days_text(days)}",
         reply_markup=main_keyboard(),
     )
 
-    await send_goal_details(
-        query,
-        goal_id,
-    )
 
+# ============================================================
+# اهداف امروز
+# ============================================================
 
-async def send_goal_details(
-    query,
-    goal_id,
-):
-    goal = get_goal(
-        query.from_user.id,
-        goal_id,
-    )
+async def today_command(update, context):
+    user_id = update.effective_user.id
 
-    if not goal:
-        return
-
-    await query.message.reply_text(
-        f"🎯 {goal['name']}\n\n"
-        f"📁 دسته: {goal['category']}\n"
-        f"⏰ زمان: {goal['reminder_time'] or 'خاموش'}\n"
-        f"📅 {selected_days_text(goal['repeat_days'])}"
-    )
-
-
-async def goals_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    goals = get_goals(
-        update.effective_user.id
-    )
+    goals = get_goals(user_id)
 
     if not goals:
         await update.message.reply_text(
-            "هنوز هدفی ثبت نکردی.",
-            reply_markup=main_keyboard(),
+            "🎯 هنوز هدفی نداری."
         )
         return
+
+    current = today()
+    weekday = current.weekday()
 
     buttons = []
 
     for goal in goals:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    f"🎯 {goal['name']}",
-                    callback_data=f"goal:{goal['id']}",
-                )
-            ]
+        if not goal["enabled"]:
+            continue
+
+        days = [
+            int(x)
+            for x in goal["repeat_days"].split(",")
+            if x
+        ]
+
+        if weekday not in days:
+            continue
+
+        status = get_status(
+            user_id,
+            goal["id"],
+            date_string(current),
         )
 
+        icon = {
+            "done": "✅",
+            "missed": "❌",
+            "pending": "⬜",
+        }.get(status, "⬜")
+
+        buttons.append([
+            InlineKeyboardButton(
+                f"{icon} {goal['name']}",
+                callback_data=f"gdetail:{goal['id']}",
+            )
+        ])
+
+    if not buttons:
+        await update.message.reply_text(
+            "🎯 برای امروز هدفی نداری."
+        )
+        return
+
     await update.message.reply_text(
-        "🎯 هدف مورد نظر را انتخاب کن.",
+        "🎯 اهداف امروز\n\n"
+        "برای دیدن جزئیات روی هدف بزن.",
         reply_markup=InlineKeyboardMarkup(
             buttons
         ),
     )
 
 
-async def goal_details_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+# ============================================================
+# جزئیات هدف
+# ============================================================
+
+async def goal_detail(update, context):
     query = update.callback_query
     await query.answer()
 
     goal_id = int(
-        query.data.split(":", 1)[1]
+        query.data.split(":")[1]
     )
 
     goal = get_goal(
@@ -935,12 +1601,9 @@ async def goal_details_callback(
     )
 
     if not goal:
-        await query.message.reply_text(
-            "هدف پیدا نشد."
-        )
         return
 
-    status = get_goal_status(
+    status = get_status(
         query.from_user.id,
         goal_id,
         date_string(today()),
@@ -956,31 +1619,27 @@ async def goal_details_callback(
         f"🎯 {goal['name']}\n\n"
         f"📁 دسته: {goal['category']}\n"
         f"⏰ زمان: {goal['reminder_time'] or 'خاموش'}\n"
-        f"📅 {selected_days_text(goal['repeat_days'])}\n\n"
+        f"📅 روزها: {days_text(goal['repeat_days'])}\n"
+        f"🔔 یادآوری: "
+        f"{'فعال' if goal['enabled'] else 'خاموش'}\n\n"
         f"امروز: {icon}"
     )
 
     buttons = [
         [
             InlineKeyboardButton(
-                "✅ انجام شد",
+                "✅ انجام دادم",
                 callback_data=f"done:{goal_id}",
             ),
             InlineKeyboardButton(
-                "❌ انجام نشد",
-                callback_data=f"missed:{goal_id}",
+                "❌ انجام ندادم",
+                callback_data=f"miss:{goal_id}",
             ),
         ],
         [
             InlineKeyboardButton(
                 "📅 جدول هفتگی",
                 callback_data=f"week:{goal_id}",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🗑 حذف هدف",
-                callback_data=f"delete:{goal_id}",
             )
         ],
     ]
@@ -993,36 +1652,29 @@ async def goal_details_callback(
     )
 
 
-async def status_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def status_callback(update, context):
     query = update.callback_query
     await query.answer()
 
-    action, goal_id_text = query.data.split(
-        ":",
-        1,
+    action, goal_id = query.data.split(":")
+
+    status = (
+        "done"
+        if action == "done"
+        else "missed"
     )
 
-    goal_id = int(goal_id_text)
-
-    status = "done"
-
-    if action == "missed":
-        status = "missed"
-
-    set_goal_status(
+    set_status(
         query.from_user.id,
-        goal_id,
+        int(goal_id),
         date_string(today()),
         status,
     )
 
     if status == "done":
-        text = "✅ هدف امروز ثبت شد."
+        text = "✅ انجام هدف ثبت شد."
     else:
-        text = "❌ هدف امروز به عنوان انجام‌نشده ثبت شد."
+        text = "❌ هدف به عنوان انجام‌نشده ثبت شد."
 
     await query.message.reply_text(
         text,
@@ -1030,10 +1682,397 @@ async def status_callback(
     )
 
 
-async def today_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+# ============================================================
+# ویرایش اهداف
+# ============================================================
+
+async def edit_menu(update, context):
+    goals = get_goals(
+        update.effective_user.id
+    )
+
+    if not goals:
+        await update.message.reply_text(
+            "🎯 هنوز هدفی ثبت نکردی."
+        )
+        return
+
+    buttons = []
+
+    for goal in goals:
+        icon = "🟢" if goal["enabled"] else "🔴"
+
+        buttons.append([
+            InlineKeyboardButton(
+                f"{icon} {goal['name']}",
+                callback_data=f"edit:{goal['id']}",
+            )
+        ])
+
+    await update.message.reply_text(
+        "✏️ هدفی را که می‌خواهی ویرایش کنی انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def edit_goal(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    goal = get_goal(
+        query.from_user.id,
+        goal_id,
+    )
+
+    if not goal:
+        return
+
+    text = (
+        f"✏️ ویرایش هدف\n\n"
+        f"🎯 {goal['name']}\n"
+        f"⏰ {goal['reminder_time'] or 'خاموش'}\n"
+        f"📅 {days_text(goal['repeat_days'])}\n"
+        f"🔔 {'فعال' if goal['enabled'] else 'خاموش'}"
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✏️ تغییر نام",
+                callback_data=f"ename:{goal_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⏰ تغییر ساعت",
+                callback_data=f"etime:{goal_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📅 تغییر روزها",
+                callback_data=f"edays:{goal_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔔 روشن / خاموش",
+                callback_data=f"toggle:{goal_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🗑 حذف هدف",
+                callback_data=f"del:{goal_id}",
+            )
+        ],
+    ]
+
+    await query.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def edit_name_start(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    context.user_data["edit_goal_id"] = goal_id
+
+    await query.message.reply_text(
+        "✏️ نام جدید هدف را بفرست."
+    )
+
+    return EDIT_NAME
+
+
+async def edit_name_save(update, context):
+    goal_id = context.user_data.get(
+        "edit_goal_id"
+    )
+
+    name = update.message.text.strip()
+
+    if not name:
+        await update.message.reply_text(
+            "نام هدف خالی است."
+        )
+        return EDIT_NAME
+
+    update_goal_name(
+        update.effective_user.id,
+        goal_id,
+        name,
+    )
+
+    context.user_data.clear()
+
+    await update.message.reply_text(
+        "✅ نام هدف تغییر کرد.",
+        reply_markup=main_keyboard(),
+    )
+
+    return ConversationHandler.END
+
+
+async def edit_time_start(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    context.user_data["edit_goal_id"] = goal_id
+
+    await query.message.reply_text(
+        "⏰ ساعت جدید را وارد کن.\n\n"
+        "18:00\n"
+        "۱۸:۰۰\n"
+        "1800\n"
+        "۱۸۰۰\n\n"
+        "یا:\n"
+        "بدون یادآوری"
+    )
+
+    return EDIT_TIME
+
+
+async def edit_time_save(update, context):
+    goal_id = context.user_data.get(
+        "edit_goal_id"
+    )
+
+    value = update.message.text.strip()
+
+    if value == "بدون یادآوری":
+        reminder = None
+    else:
+        reminder = parse_time(value)
+
+        if reminder is None:
+            await update.message.reply_text(
+                "❌ ساعت اشتباه است."
+            )
+            return EDIT_TIME
+
+    update_goal_time(
+        update.effective_user.id,
+        goal_id,
+        reminder,
+    )
+
+    context.user_data.clear()
+
+    await update.message.reply_text(
+        "✅ ساعت هدف تغییر کرد.",
+        reply_markup=main_keyboard(),
+    )
+
+    return ConversationHandler.END
+
+
+async def edit_days_start(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    context.user_data["edit_goal_id"] = goal_id
+    context.user_data["edit_days"] = []
+
+    buttons = []
+
+    for index in range(7):
+        buttons.append([
+            InlineKeyboardButton(
+                day_name(index),
+                callback_data=f"eday:{index}",
+            )
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            "✅ ثبت روزها",
+            callback_data="edaysfinish",
+        )
+    ])
+
+    await query.message.reply_text(
+        "📅 روزهای جدید را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+    return EDIT_DAYS
+
+
+async def edit_day_select(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    value = query.data.split(":")[1]
+
+    selected = context.user_data.get(
+        "edit_days",
+        [],
+    )
+
+    if value not in selected:
+        selected.append(value)
+    else:
+        selected.remove(value)
+
+    context.user_data["edit_days"] = selected
+
+
+async def edit_days_finish(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    selected = context.user_data.get(
+        "edit_days",
+        [],
+    )
+
+    if not selected:
+        await query.message.reply_text(
+            "حداقل یک روز را انتخاب کن."
+        )
+        return EDIT_DAYS
+
+    selected.sort(
+        key=lambda x: int(x)
+    )
+
+    goal_id = context.user_data["edit_goal_id"]
+
+    update_goal_days(
+        query.from_user.id,
+        goal_id,
+        ",".join(selected),
+    )
+
+    context.user_data.clear()
+
+    await query.message.reply_text(
+        "✅ روزهای هدف تغییر کرد.",
+        reply_markup=main_keyboard(),
+    )
+
+    return ConversationHandler.END
+
+
+async def toggle_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    toggle_goal(
+        query.from_user.id,
+        goal_id,
+    )
+
+    await query.message.reply_text(
+        "✅ وضعیت یادآوری تغییر کرد.",
+        reply_markup=main_keyboard(),
+    )
+
+
+async def delete_start(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    goal = get_goal(
+        query.from_user.id,
+        goal_id,
+    )
+
+    if not goal:
+        return
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "✅ بله، حذف کن",
+                callback_data=f"deleteyes:{goal_id}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "❌ لغو",
+                callback_data="deleteno",
+            )
+        ],
+    ]
+
+    await query.message.reply_text(
+        "⚠️ حذف هدف\n\n"
+        f"🎯 {goal['name']}\n\n"
+        "این هدف حذف شود؟",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def delete_confirm(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    delete_goal(
+        query.from_user.id,
+        goal_id,
+    )
+
+    await query.message.reply_text(
+        "🗑 هدف حذف شد.",
+        reply_markup=main_keyboard(),
+    )
+
+
+async def delete_cancel(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    await query.message.reply_text(
+        "❌ حذف لغو شد.",
+        reply_markup=main_keyboard(),
+    )
+
+
+# ============================================================
+# جدول هفتگی
+# ============================================================
+
+async def week_menu(update, context):
     goals = get_goals(
         update.effective_user.id
     )
@@ -1044,10 +2083,97 @@ async def today_command(
         )
         return
 
+    buttons = []
+
+    for goal in goals:
+        buttons.append([
+            InlineKeyboardButton(
+                f"📅 {goal['name']}",
+                callback_data=f"week:{goal['id']}",
+            )
+        ])
+
+    await update.message.reply_text(
+        "📅 هدف را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def week_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    goal_id = int(
+        query.data.split(":")[1]
+    )
+
+    goal = get_goal(
+        query.from_user.id,
+        goal_id,
+    )
+
+    if not goal:
+        return
+
+    start = today() - timedelta(days=6)
+
+    text = (
+        f"📅 جدول ۷ روز اخیر\n\n"
+        f"🎯 {goal['name']}\n\n"
+    )
+
+    done_count = 0
+
+    for i in range(7):
+        current = start + timedelta(days=i)
+
+        status = get_status(
+            query.from_user.id,
+            goal_id,
+            date_string(current),
+        )
+
+        if status == "done":
+            icon = "✅"
+            done_count += 1
+        elif status == "missed":
+            icon = "❌"
+        else:
+            icon = "⬜"
+
+        text += (
+            f"{day_name(current.weekday())} "
+            f"{current.strftime('%m/%d')} "
+            f"{icon}\n"
+        )
+
+    text += (
+        f"\n📊 انجام‌شده: {done_count} از 7"
+    )
+
+    await query.message.reply_text(
+        text,
+        reply_markup=main_keyboard(),
+    )
+
+
+# ============================================================
+# آمار
+# ============================================================
+
+async def stats(update, context):
+    user_id = update.effective_user.id
+
+    goals = get_goals(user_id)
+
+    total = 0
+    done = 0
+    missed = 0
+
     current = today()
     weekday = current.weekday()
-
-    text = "🎯 اهداف امروز\n\n"
 
     for goal in goals:
         days = [
@@ -1059,467 +2185,17 @@ async def today_command(
         if weekday not in days:
             continue
 
-        status = get_goal_status(
-            update.effective_user.id,
+        total += 1
+
+        status = get_status(
+            user_id,
             goal["id"],
             date_string(current),
         )
 
-        icon = {
-            "done": "✅",
-            "missed": "❌",
-            "pending": "⬜",
-        }.get(status, "⬜")
-
-        text += (
-            f"{icon} {goal['name']}\n"
-            f"   ⏰ {goal['reminder_time'] or '-'}\n\n"
-        )
-
-    await update.message.reply_text(
-        text,
-        reply_markup=main_keyboard(),
-    )
-
-
-async def weekly_table(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    goals = get_goals(
-        update.effective_user.id
-    )
-
-    if not goals:
-        await update.message.reply_text(
-            "هنوز هدفی ثبت نکردی."
-        )
-        return
-
-    buttons = []
-
-    for goal in goals:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    f"📅 {goal['name']}",
-                    callback_data=f"week:{goal['id']}",
-                )
-            ]
-        )
-
-    await update.message.reply_text(
-        "📅 هدف را برای دیدن جدول هفتگی انتخاب کن.",
-        reply_markup=InlineKeyboardMarkup(
-            buttons
-        ),
-    )
-
-
-async def week_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    goal_id = int(
-        query.data.split(":", 1)[1]
-    )
-
-    goal = get_goal(
-        query.from_user.id,
-        goal_id,
-    )
-
-    if not goal:
-        return
-
-    statuses = get_week_status(
-        query.from_user.id,
-        goal_id,
-    )
-
-    start = today() - timedelta(days=6)
-
-    done_count = 0
-    table = []
-
-    for i in range(7):
-        day = start + timedelta(days=i)
-        key = date_string(day)
-
-        status = statuses.get(
-            key,
-            "pending",
-        )
-
-        if status == "done":
-            icon = "✅"
-            done_count += 1
-        elif status == "missed":
-            icon = "❌"
-        else:
-            icon = "⬜"
-
-        table.append(
-            f"{weekday_name(day)}  {key[5:]}  {icon}"
-        )
-
-    text = (
-        f"📅 جدول هفتگی\n\n"
-        f"🎯 {goal['name']}\n\n"
-        + "\n".join(table)
-        + f"\n\n📊 انجام‌شده: {done_count} از 7"
-    )
-
-    await query.message.reply_text(
-        text,
-        reply_markup=main_keyboard(),
-    )
-
-
-async def ready_menu(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    buttons = []
-
-    icons = {
-        "سلامتی": "❤️",
-        "ورزش و تناسب اندام": "💪",
-        "تغذیه": "🥗",
-        "مطالعه و آموزش": "📚",
-        "کار و شغل": "💼",
-        "مالی": "💰",
-        "خانه و زندگی": "🏠",
-        "ذهن و تمرکز": "🧠",
-        "خواب و استراحت": "😴",
-        "روابط اجتماعی": "👥",
-        "سرگرمی": "🎮",
-        "کنترل موبایل": "📱",
-        "عادت‌های شخصی": "🌱",
-        "معنوی": "🕌",
-        "خودرو": "🚗",
-        "نظم و نظافت": "🧹",
-        "اهداف شخصی": "🎯",
-    }
-
-    for category in READY_GOALS:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    f"{icons.get(category, '🎯')} {category}",
-                    callback_data=f"readycat:{category}",
-                )
-            ]
-        )
-
-    await update.message.reply_text(
-        "🏆 اهداف آماده\n\n"
-        "یک دسته را انتخاب کن.",
-        reply_markup=InlineKeyboardMarkup(
-            buttons
-        ),
-    )
-
-
-async def ready_category_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    category = query.data.split(
-        ":",
-        1,
-    )[1]
-
-    goals = READY_GOALS.get(
-        category,
-        [],
-    )
-
-    buttons = []
-
-    for index, name in enumerate(goals):
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    f"🎯 {name}",
-                    callback_data=f"readygoal:{category}:{index}",
-                )
-            ]
-        )
-
-    await query.message.reply_text(
-        f"🏆 اهداف آماده\n\n"
-        f"📁 {category}\n\n"
-        "یک هدف را انتخاب کن.",
-        reply_markup=InlineKeyboardMarkup(
-            buttons
-        ),
-    )
-
-
-async def ready_goal_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split(":")
-
-    category = parts[1]
-    index = int(parts[2])
-
-    goals = READY_GOALS.get(
-        category,
-        [],
-    )
-
-    if index >= len(goals):
-        return
-
-    name = goals[index]
-
-    context.user_data["goal_name"] = name
-    context.user_data["goal_category"] = category
-
-    await query.message.reply_text(
-        f"🎯 هدف انتخاب شد:\n\n"
-        f"{name}\n\n"
-        "⏰ ساعت یادآوری را بفرست.\n\n"
-        "مثال:\n"
-        "18:00\n\n"
-        "یا بنویس:\n"
-        "بدون یادآوری"
-    )
-
-
-async def ready_goal_time_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    if "goal_name" not in context.user_data:
-        return
-
-    value = update.message.text.strip()
-
-    if value == "بدون یادآوری":
-        reminder = None
-    else:
-        try:
-            datetime.strptime(
-                value,
-                "%H:%M",
-            )
-            reminder = value
-        except ValueError:
-            await update.message.reply_text(
-                "فرمت ساعت اشتباه است.\n"
-                "مثال: 18:00"
-            )
-            return
-
-    context.user_data["goal_time"] = reminder
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                "هر روز",
-                callback_data="ready_days:all",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "انتخاب روزها",
-                callback_data="ready_days:choose",
-            )
-        ],
-    ]
-
-    await update.message.reply_text(
-        "📅 روزهای تکرار هدف را انتخاب کن.",
-        reply_markup=InlineKeyboardMarkup(
-            buttons
-        ),
-    )
-
-
-async def ready_days_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    value = query.data.split(
-        ":",
-        1,
-    )[1]
-
-    if value == "all":
-        days = "0,1,2,3,4,5,6"
-
-        await create_ready_goal(
-            query,
-            context,
-            days,
-        )
-
-        return
-
-    context.user_data["ready_selected_days"] = []
-
-    buttons = []
-
-    names = [
-        ("دوشنبه", "0"),
-        ("سه‌شنبه", "1"),
-        ("چهارشنبه", "2"),
-        ("پنجشنبه", "3"),
-        ("جمعه", "4"),
-        ("شنبه", "5"),
-        ("یکشنبه", "6"),
-    ]
-
-    for name, number in names:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    name,
-                    callback_data=f"rday:{number}",
-                )
-            ]
-        )
-
-    buttons.append(
-        [
-            InlineKeyboardButton(
-                "✅ ثبت روزها",
-                callback_data="rday:finish",
-            )
-        ]
-    )
-
-    await query.message.reply_text(
-        "روزها را انتخاب کن.",
-        reply_markup=InlineKeyboardMarkup(
-            buttons
-        ),
-    )
-
-
-async def ready_select_day_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-    await query.answer()
-
-    value = query.data.split(
-        ":",
-        1,
-    )[1]
-
-    selected = context.user_data.get(
-        "ready_selected_days",
-        [],
-    )
-
-    if value == "finish":
-        if not selected:
-            await query.message.reply_text(
-                "حداقل یک روز را انتخاب کن."
-            )
-            return
-
-        selected.sort(
-            key=lambda x: int(x)
-        )
-
-        await create_ready_goal(
-            query,
-            context,
-            ",".join(selected),
-        )
-
-        return
-
-    if value not in selected:
-        selected.append(value)
-
-    context.user_data["ready_selected_days"] = selected
-
-    await query.answer(
-        "روز انتخاب شد."
-    )
-
-
-async def create_ready_goal(
-    query,
-    context,
-    days,
-):
-    name = context.user_data.get(
-        "goal_name"
-    )
-
-    category = context.user_data.get(
-        "goal_category",
-        "عمومی",
-    )
-
-    reminder = context.user_data.get(
-        "goal_time"
-    )
-
-    goal_id = add_goal(
-        query.from_user.id,
-        name,
-        category,
-        reminder,
-        days,
-    )
-
-    context.user_data.clear()
-
-    await query.message.reply_text(
-        "✅ هدف آماده به اهداف تو اضافه شد.\n\n"
-        f"🎯 {name}\n"
-        f"📁 {category}\n"
-        f"⏰ {reminder or 'بدون یادآوری'}\n"
-        f"📅 {selected_days_text(days)}",
-        reply_markup=main_keyboard(),
-    )
-
-
-async def stats_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    user_id = update.effective_user.id
-
-    goals = get_goals(user_id)
-
-    total = len(goals)
-    done = 0
-    missed = 0
-
-    current = date_string(today())
-
-    for goal in goals:
-        status = get_goal_status(
-            user_id,
-            goal["id"],
-            current,
-        )
-
         if status == "done":
             done += 1
+
         elif status == "missed":
             missed += 1
 
@@ -1532,24 +2208,22 @@ async def stats_command(
             done / total * 100
         )
 
-    text = (
+    await update.message.reply_text(
         "📊 آمار امروز\n\n"
-        f"🎯 کل اهداف: {total}\n"
+        f"🎯 اهداف امروز: {total}\n"
         f"✅ انجام‌شده: {done}\n"
         f"❌ انجام‌نشده: {missed}\n"
         f"⬜ بدون ثبت: {pending}\n\n"
-        f"📈 پیشرفت: {percent}%"
-    )
-
-    await update.message.reply_text(
-        text,
+        f"📈 پیشرفت: {percent}%",
         reply_markup=main_keyboard(),
     )
 
 
-async def daily_reminder(
-    context: ContextTypes.DEFAULT_TYPE,
-):
+# ============================================================
+# یادآوری
+# ============================================================
+
+async def reminder_job(context):
     now = datetime.now(TEHRAN)
 
     current_time = now.strftime("%H:%M")
@@ -1560,15 +2234,14 @@ async def daily_reminder(
 
     conn = get_db()
 
-    goals = conn.execute(
-        """
+    goals = conn.execute("""
         SELECT *
         FROM goals
         WHERE enabled = 1
         AND reminder_time = ?
-        """,
-        (current_time,),
-    ).fetchall()
+    """, (
+        current_time,
+    )).fetchall()
 
     conn.close()
 
@@ -1582,7 +2255,7 @@ async def daily_reminder(
         if current_day not in days:
             continue
 
-        status = get_goal_status(
+        status = get_status(
             goal["user_id"],
             goal["id"],
             current_date,
@@ -1599,7 +2272,7 @@ async def daily_reminder(
                 ),
                 InlineKeyboardButton(
                     "❌ انجام ندادم",
-                    callback_data=f"missed:{goal['id']}",
+                    callback_data=f"miss:{goal['id']}",
                 ),
             ]
         ]
@@ -1610,12 +2283,13 @@ async def daily_reminder(
                 text=(
                     "⏰ یادآوری هدف\n\n"
                     f"🎯 {goal['name']}\n\n"
-                    "امروز این هدف را انجام دادی؟"
+                    "امروز انجامش دادی؟"
                 ),
                 reply_markup=InlineKeyboardMarkup(
                     buttons
                 ),
             )
+
         except Exception as error:
             logger.error(
                 "Reminder error: %s",
@@ -1623,10 +2297,104 @@ async def daily_reminder(
             )
 
 
-async def cancel(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+# ============================================================
+# تنظیمات
+# ============================================================
+
+async def settings(update, context):
+    buttons = [
+        [
+            InlineKeyboardButton(
+                "🇮🇷 فارسی",
+                callback_data="setlang:fa",
+            ),
+            InlineKeyboardButton(
+                "🇬🇧 English",
+                callback_data="setlang:en",
+            ),
+        ]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ تنظیمات\n\n"
+        "🌐 زبان ربات را انتخاب کن.",
+        reply_markup=InlineKeyboardMarkup(
+            buttons
+        ),
+    )
+
+
+async def settings_language(update, context):
+    query = update.callback_query
+    await query.answer()
+
+    language = query.data.split(":")[1]
+
+    save_language(
+        query.from_user.id,
+        language,
+    )
+
+    await query.message.reply_text(
+        "✅ زبان تغییر کرد.",
+        reply_markup=main_keyboard(),
+    )
+
+
+# ============================================================
+# پیام‌های منو
+# ============================================================
+
+async def text_router(update, context):
+    text = update.message.text
+
+    if text == "🎯 اهداف امروز":
+        await today_command(update, context)
+        return
+
+    if text == "➕ هدف جدید":
+        await add_start(update, context)
+        return
+
+    if text == "🏆 اهداف آماده":
+        await ready_menu(update, context)
+        return
+
+    if text == "✏️ ویرایش اهداف":
+        await edit_menu(update, context)
+        return
+
+    if text == "📅 جدول هفتگی":
+        await week_menu(update, context)
+        return
+
+    if text == "📊 آمار من":
+        await stats(update, context)
+        return
+
+    if text == "⚙️ تنظیمات":
+        await settings(update, context)
+        return
+
+    handled = await ready_time_handler(
+        update,
+        context,
+    )
+
+    if handled:
+        return
+
+    await update.message.reply_text(
+        "از منوی ربات استفاده کن.",
+        reply_markup=main_keyboard(),
+    )
+
+
+# ============================================================
+# لغو
+# ============================================================
+
+async def cancel(update, context):
     context.user_data.clear()
 
     await update.message.reply_text(
@@ -1637,86 +2405,25 @@ async def cancel(
     return ConversationHandler.END
 
 
-async def text_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    text = update.message.text
+# ============================================================
+# خطا
+# ============================================================
 
-    if text == "🎯 اهداف امروز":
-        await today_command(
-            update,
-            context,
-        )
-        return
-
-    if text == "➕ هدف جدید":
-        await add_goal_start(
-            update,
-            context,
-        )
-        return
-
-    if text == "🏆 اهداف آماده":
-        await ready_menu(
-            update,
-            context,
-        )
-        return
-
-    if text == "📅 جدول هفتگی":
-        await weekly_table(
-            update,
-            context,
-        )
-        return
-
-    if text == "📊 آمار من":
-        await stats_command(
-            update,
-            context,
-        )
-        return
-
-    if text == "⚙️ تنظیمات":
-        await update.message.reply_text(
-            "⚙️ تنظیمات\n\n"
-            "در نسخه بعدی بخش تنظیمات هدف‌ها از اینجا مدیریت می‌شود.",
-            reply_markup=main_keyboard(),
-        )
-        return
-
-    if (
-        "goal_name" in context.user_data
-        and "goal_category" in context.user_data
-        and "goal_time" not in context.user_data
-    ):
-        await ready_goal_time_handler(
-            update,
-            context,
-        )
-        return
-
-    await update.message.reply_text(
-        "از منوی پایین استفاده کن.",
-        reply_markup=main_keyboard(),
-    )
-
-
-async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def error_handler(update, context):
     logger.error(
         "Bot error",
         exc_info=context.error,
     )
 
 
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError(
-            "BOT_TOKEN را در Variables وارد کن."
+            "BOT_TOKEN را در Variables محیط قرار بده."
         )
 
     init_db()
@@ -1727,59 +2434,9 @@ def main():
         .build()
     )
 
-    conversation = ConversationHandler(
-        entry_points=[
-            CommandHandler(
-                "addgoal",
-                add_goal_start,
-            ),
-            MessageHandler(
-                filters.Regex("^➕ هدف جدید$"),
-                add_goal_start,
-            ),
-        ],
-        states={
-            ADD_NAME: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    add_goal_name,
-                )
-            ],
-            ADD_CATEGORY: [
-                CallbackQueryHandler(
-                    new_category_callback,
-                    pattern=r"^newcat:",
-                )
-            ],
-            ADD_TIME: [
-                MessageHandler(
-                    filters.TEXT & ~filters.COMMAND,
-                    goal_time_received,
-                )
-            ],
-            ADD_DAYS: [
-                CallbackQueryHandler(
-                    days_callback,
-                    pattern=r"^days:",
-                ),
-                CallbackQueryHandler(
-                    select_day_callback,
-                    pattern=r"^selectday:",
-                ),
-                CallbackQueryHandler(
-                    finish_days_callback,
-                    pattern=r"^days:finish$",
-                ),
-            ],
-        },
-        fallbacks=[
-            CommandHandler(
-                "cancel",
-                cancel,
-            )
-        ],
-        allow_reentry=True,
-    )
+    # --------------------------------------------------------
+    # زبان
+    # --------------------------------------------------------
 
     application.add_handler(
         CommandHandler(
@@ -1789,85 +2446,289 @@ def main():
     )
 
     application.add_handler(
-        CommandHandler(
-            "help",
-            help_command,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "goals",
-            goals_command,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "today",
-            today_command,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "week",
-            weekly_table,
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "stats",
-            stats_command,
-        )
-    )
-
-    application.add_handler(
-        conversation
-    )
-
-    application.add_handler(
         CallbackQueryHandler(
-            ready_category_callback,
-            pattern=r"^readycat:",
+            language_callback,
+            pattern=r"^lang:",
         )
     )
 
     application.add_handler(
         CallbackQueryHandler(
-            ready_goal_callback,
-            pattern=r"^readygoal:",
+            settings_language,
+            pattern=r"^setlang:",
+        )
+    )
+
+    # --------------------------------------------------------
+    # افزودن دستی
+    # --------------------------------------------------------
+
+    add_conversation = ConversationHandler(
+        entry_points=[
+            CommandHandler(
+                "addgoal",
+                add_start,
+            ),
+            MessageHandler(
+                filters.Regex("^➕ هدف جدید$"),
+                add_start,
+            ),
+        ],
+
+        states={
+            ADD_NAME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    add_name,
+                )
+            ],
+
+            ADD_CATEGORY: [
+                CallbackQueryHandler(
+                    manual_category,
+                    pattern=r"^mcat:",
+                )
+            ],
+
+            ADD_TIME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    manual_time,
+                )
+            ],
+
+            ADD_DAYS: [
+                CallbackQueryHandler(
+                    manual_days,
+                    pattern=r"^mday:",
+                ),
+                CallbackQueryHandler(
+                    manual_choose,
+                    pattern=r"^mchoose:",
+                ),
+                CallbackQueryHandler(
+                    manual_finish,
+                    pattern=r"^mfinish$",
+                ),
+            ],
+        },
+
+        fallbacks=[
+            CommandHandler(
+                "cancel",
+                cancel,
+            )
+        ],
+
+        allow_reentry=True,
+    )
+
+    application.add_handler(
+        add_conversation
+    )
+
+    # --------------------------------------------------------
+    # ویرایش
+    # --------------------------------------------------------
+
+    edit_conversation = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(
+                edit_name_start,
+                pattern=r"^ename:",
+            ),
+            CallbackQueryHandler(
+                edit_time_start,
+                pattern=r"^etime:",
+            ),
+            CallbackQueryHandler(
+                edit_days_start,
+                pattern=r"^edays:",
+            ),
+        ],
+
+        states={
+            EDIT_NAME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    edit_name_save,
+                )
+            ],
+
+            EDIT_TIME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    edit_time_save,
+                )
+            ],
+
+            EDIT_DAYS: [
+                CallbackQueryHandler(
+                    edit_day_select,
+                    pattern=r"^eday:",
+                ),
+                CallbackQueryHandler(
+                    edit_days_finish,
+                    pattern=r"^edaysfinish$",
+                ),
+            ],
+        },
+
+        fallbacks=[
+            CommandHandler(
+                "cancel",
+                cancel,
+            )
+        ],
+
+        allow_reentry=True,
+    )
+
+    application.add_handler(
+        edit_conversation
+    )
+
+    # --------------------------------------------------------
+    # اهداف آماده
+    # --------------------------------------------------------
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_category,
+            pattern=r"^rcat:",
         )
     )
 
     application.add_handler(
         CallbackQueryHandler(
-            ready_days_callback,
-            pattern=r"^ready_days:",
+            ready_select,
+            pattern=r"^rsel:",
         )
     )
 
     application.add_handler(
         CallbackQueryHandler(
-            ready_select_day_callback,
+            ready_add,
+            pattern=r"^radd$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_confirm,
+            pattern=r"^rconfirm$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_back,
+            pattern=r"^rback$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_cancel,
+            pattern=r"^rcancel$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_days,
             pattern=r"^rday:",
         )
     )
 
     application.add_handler(
         CallbackQueryHandler(
-            goal_details_callback,
-            pattern=r"^goal:",
+            ready_choose_day,
+            pattern=r"^rchoose:",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_finish_days,
+            pattern=r"^rfinish$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_final,
+            pattern=r"^rfinal$",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            ready_change,
+            pattern=r"^rchange$",
+        )
+    )
+
+    # --------------------------------------------------------
+    # جزئیات و وضعیت
+    # --------------------------------------------------------
+
+    application.add_handler(
+        CallbackQueryHandler(
+            goal_detail,
+            pattern=r"^gdetail:",
         )
     )
 
     application.add_handler(
         CallbackQueryHandler(
             status_callback,
-            pattern=r"^(done|missed):",
+            pattern=r"^(done|miss):",
         )
     )
+
+    # --------------------------------------------------------
+    # ویرایش و حذف
+    # --------------------------------------------------------
+
+    application.add_handler(
+        CallbackQueryHandler(
+            edit_goal,
+            pattern=r"^edit:",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            toggle_callback,
+            pattern=r"^toggle:",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            delete_start,
+            pattern=r"^del:",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            delete_confirm,
+            pattern=r"^deleteyes:",
+        )
+    )
+
+    application.add_handler(
+        CallbackQueryHandler(
+            delete_cancel,
+            pattern=r"^deleteno$",
+        )
+    )
+
+    # --------------------------------------------------------
+    # جدول
+    # --------------------------------------------------------
 
     application.add_handler(
         CallbackQueryHandler(
@@ -1876,10 +2737,14 @@ def main():
         )
     )
 
+    # --------------------------------------------------------
+    # متن منو
+    # --------------------------------------------------------
+
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            text_handler,
+            text_router,
         )
     )
 
@@ -1887,14 +2752,20 @@ def main():
         error_handler
     )
 
+    # --------------------------------------------------------
+    # یادآوری هر دقیقه
+    # --------------------------------------------------------
+
     if application.job_queue:
         application.job_queue.run_repeating(
-            daily_reminder,
+            reminder_job,
             interval=60,
             first=10,
         )
 
-    logger.info("Bot started")
+    logger.info(
+        "Goal bot started"
+    )
 
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
