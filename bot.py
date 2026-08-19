@@ -3027,88 +3027,6 @@ async def debug_test_command(update, context):
         f"Log: {MYTASKS_TEST_LOG_FILE}"
     )
 
-def main():
-    # Test-only handlers are registered after their definitions.
-    app.add_handler(CommandHandler("debug", debug_test_command))
-    app.add_error_handler(test_error_handler)
-
-    if not BOT_TOKEN:
-        raise RuntimeError("Set BOT_TOKEN in your environment variables.")
-
-    init_db()
-    # Safe defaults for automatic channel publishing.
-    if not get_auto_setting("interval_minutes", ""):
-        set_auto_setting("interval_minutes", "60")
-    if not get_auto_setting("category", ""):
-        set_auto_setting("category", "random")
-    if not get_auto_setting("subcategory", ""):
-        set_auto_setting("subcategory", "random")
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("myid", my_id))
-    app.add_handler(CommandHandler("admin", admin_command))
-
-    app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
-    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
-    app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
-    app.add_handler(CallbackQueryHandler(channel_new_callback, pattern=r"^chnew:"))
-    app.add_handler(CallbackQueryHandler(channel_new_category_callback, pattern=r"^chnewcat:"))
-    app.add_handler(CallbackQueryHandler(channel_new_subtopic_callback, pattern=r"^chnewsub:"))
-    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
-    app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
-    app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
-    app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
-    app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
-    app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
-    app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
-    app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
-    app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
-    app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
-    app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
-    app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
-    app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
-    app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
-    app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
-    app.add_handler(CallbackQueryHandler(step_add_start, pattern=r"^step_add:"))
-    app.add_handler(CallbackQueryHandler(step_toggle, pattern=r"^step_toggle:"))
-    app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
-    app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
-    app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
-    app.add_handler(CallbackQueryHandler(time_callback, pattern=r"^time:"))
-    app.add_handler(CallbackQueryHandler(edit_time_callback, pattern=r"^edit_time:"))
-    app.add_handler(CallbackQueryHandler(detail, pattern=r"^detail:"))
-    app.add_handler(CallbackQueryHandler(mark, pattern=r"^(done|miss):"))
-    app.add_handler(CallbackQueryHandler(edit_goal, pattern=r"^edit:"))
-    app.add_handler(CallbackQueryHandler(rename_start, pattern=r"^rename:"))
-    app.add_handler(CallbackQueryHandler(change_reminder, pattern=r"^changereminder:"))
-    app.add_handler(CallbackQueryHandler(delete_start, pattern=r"^delete:"))
-    app.add_handler(CallbackQueryHandler(delete_confirm, pattern=r"^delete_yes:"))
-    app.add_handler(CallbackQueryHandler(delete_no, pattern=r"^delete_no$"))
-    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern=r"^admin:broadcast$"))
-
-    app.add_handler(CommandHandler("xp", xp_command))
-    app.add_handler(CommandHandler("referral", referral))
-    app.add_handler(CommandHandler("prices", prices))
-    app.add_handler(CommandHandler("support", support_start))
-    app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
-    app.add_error_handler(error_handler)
-
-    if app.job_queue:
-        app.job_queue.run_repeating(reminder_job, interval=60, first=5)
-        app.job_queue.run_repeating(morning_job, interval=60, first=10)
-        app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
-        app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
-        app.job_queue.run_repeating(daily_report_job, interval=60, first=25)
-
-    logger.info("Goal bot started")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-if __name__ == "__main__":
-    main()
 
 
 # ================= FINAL MYTASKS V9 SETTINGS =================
@@ -3282,3 +3200,85 @@ except Exception:
 # Marker for the corrected statistics path:
 # current streak is calculated per goal and no undefined local is referenced.
 MYTASKS_STATS_SAFE_V11 = True
+
+
+def main():
+
+    if not BOT_TOKEN:
+        raise RuntimeError("Set BOT_TOKEN in your environment variables.")
+
+    init_db()
+    # Safe defaults for automatic channel publishing.
+    if not get_auto_setting("interval_minutes", ""):
+        set_auto_setting("interval_minutes", "60")
+    if not get_auto_setting("category", ""):
+        set_auto_setting("category", "random")
+    if not get_auto_setting("subcategory", ""):
+        set_auto_setting("subcategory", "random")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("debug", debug_test_command))
+    app.add_error_handler(test_error_handler)
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("myid", my_id))
+    app.add_handler(CommandHandler("admin", admin_command))
+
+    app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
+    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
+    app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(channel_new_callback, pattern=r"^chnew:"))
+    app.add_handler(CallbackQueryHandler(channel_new_category_callback, pattern=r"^chnewcat:"))
+    app.add_handler(CallbackQueryHandler(channel_new_subtopic_callback, pattern=r"^chnewsub:"))
+    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
+    app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
+    app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
+    app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
+    app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
+    app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
+    app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
+    app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
+    app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
+    app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
+    app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
+    app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
+    app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
+    app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
+    app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
+    app.add_handler(CallbackQueryHandler(step_add_start, pattern=r"^step_add:"))
+    app.add_handler(CallbackQueryHandler(step_toggle, pattern=r"^step_toggle:"))
+    app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
+    app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
+    app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
+    app.add_handler(CallbackQueryHandler(time_callback, pattern=r"^time:"))
+    app.add_handler(CallbackQueryHandler(edit_time_callback, pattern=r"^edit_time:"))
+    app.add_handler(CallbackQueryHandler(detail, pattern=r"^detail:"))
+    app.add_handler(CallbackQueryHandler(mark, pattern=r"^(done|miss):"))
+    app.add_handler(CallbackQueryHandler(edit_goal, pattern=r"^edit:"))
+    app.add_handler(CallbackQueryHandler(rename_start, pattern=r"^rename:"))
+    app.add_handler(CallbackQueryHandler(change_reminder, pattern=r"^changereminder:"))
+    app.add_handler(CallbackQueryHandler(delete_start, pattern=r"^delete:"))
+    app.add_handler(CallbackQueryHandler(delete_confirm, pattern=r"^delete_yes:"))
+    app.add_handler(CallbackQueryHandler(delete_no, pattern=r"^delete_no$"))
+    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern=r"^admin:broadcast$"))
+
+    app.add_handler(CommandHandler("xp", xp_command))
+    app.add_handler(CommandHandler("referral", referral))
+    app.add_handler(CommandHandler("prices", prices))
+    app.add_handler(CommandHandler("support", support_start))
+    app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
+    app.add_error_handler(error_handler)
+
+    if app.job_queue:
+        app.job_queue.run_repeating(reminder_job, interval=60, first=5)
+        app.job_queue.run_repeating(morning_job, interval=60, first=10)
+        app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
+        app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
+        app.job_queue.run_repeating(daily_report_job, interval=60, first=25)
+
+    logger.info("Goal bot started")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+if __name__ == "__main__":
+    main()
