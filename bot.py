@@ -1437,7 +1437,7 @@ def admin_stats():
     achievements = c.execute("SELECT COUNT(*) AS n FROM achievements").fetchone()["n"]
     today = datetime.now(TZ).date().isoformat()
     active_today = c.execute(
-        "SELECT COUNT(DISTINCT user_id) AS n FROM activity_log WHERE activity_date=?",
+        "SELECT COUNT(DISTINCT user_id) AS n FROM activity_log WHERE substr(created_at,1,10)=?",
         (today,),
     ).fetchone()["n"]
     done_today = c.execute(
@@ -1537,8 +1537,8 @@ async def admin_panel_callback(update, context):
     elif action == "activity":
         c = db()
         rows = c.execute(
-            """SELECT action,COUNT(*) AS n
-               FROM activity_log GROUP BY action ORDER BY n DESC LIMIT 15"""
+            """SELECT activity,COUNT(*) AS n
+               FROM activity_log GROUP BY activity ORDER BY n DESC LIMIT 15"""
         ).fetchall()
         c.close()
         text = "📈 <b>فعالیت‌ها</b>\n\n"
