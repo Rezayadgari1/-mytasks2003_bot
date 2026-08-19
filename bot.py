@@ -1,3 +1,4 @@
+
 import logging
 import os
 import re
@@ -1435,8 +1436,120 @@ def set_channel_config(channel_id):
 def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0):
     c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by) VALUES(?,?,?,?,?,1,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by)); pid=cur.lastrowid; c.commit(); c.close(); return pid
 
+
+AUTO_TOPICS_FA = [
+    "موفقیت و رشد فردی", "هدف‌گذاری", "عادت‌های خوب", "مدیریت زمان",
+    "تمرکز", "اعتمادبه‌نفس", "یادگیری", "انضباط شخصی", "مطالعه",
+    "کسب‌وکار و پیشرفت شغلی"
+]
+
+def ai_generate_post(topic):
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    model = os.environ.get("OPENAI_MODEL", "gpt-5-mini").strip()
+    if api_key:
+        try:
+            import urllib.request, json
+            prompt = (
+                f"یک پست فارسی دوستانه، آموزشی و کاربردی درباره «{topic}» بنویس. "
+                "حدود 180 تا 280 کلمه، با تیتر، 3 نکته عملی، یک تمرین کوتاه و یک سؤال تعاملی. "
+                "از ادعاهای قطعی پزشکی/مالی و اطلاعات ساختگی خودداری کن. ایموجی‌ها متعادل باشند."
+            )
+            payload = json.dumps({
+                "model": model, "input": prompt, "max_output_tokens": 700
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/responses", data=payload,
+                headers={"Authorization": f"Bearer {api_key}",
+                         "Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=35) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            text = data.get("output_text", "").strip()
+            if text:
+                return text
+        except Exception as e:
+            logger.error("AI generation failed: %s", e)
+
+    templates = [
+        f"🎯 {topic}\n\n"
+        "موفقیت از چند کار کوچک و تکرارشونده ساخته می‌شود.\n\n"
+        "1️⃣ هدف را کوچک و مشخص کن.\n"
+        "2️⃣ برای انجامش زمان مشخص بگذار.\n"
+        "3️⃣ نتیجه امروزت را ثبت کن.\n\n"
+        "💡 تمرین امروز: فقط یک قدم کوچک برای هدف اصلی‌ات انجام بده.\n\n"
+        "تو امروز چه قدمی برمی‌داری؟ 👇",
+        f"✨ یک نکته مهم درباره {topic}\n\n"
+        "به‌جای منتظر ماندن برای انگیزه، یک زمان ثابت برای عمل کردن تعیین کن.\n\n"
+        "🔥 قانون ساده: کوچک شروع کن، ولی ادامه بده.\n\n"
+        "📝 تمرین: یک کار ۱۰ دقیقه‌ای انتخاب کن و همین امروز انجامش بده.\n\n"
+        "انجامش دادی؟ ❤️"
+    ]
+    import hashlib
+    pick = int(hashlib.sha256(
+        f"{topic}-{datetime.now(TZ).date().isoformat()}".encode()
+    ).hexdigest(), 16) % len(templates)
+    return templates[pick]
+
+
+def get_auto_setting(key, default=""):
+    c = db()
+    c.execute("""CREATE TABLE IF NOT EXISTS auto_channel_settings(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL
+    )""")
+    r = c.execute("SELECT value FROM auto_channel_settings WHERE key=?", (key,)).fetchone()
+    c.commit()
+    c.close()
+    return r["value"] if r else default
+
+
+def set_auto_setting(key, value):
+    c = db()
+    c.execute("""CREATE TABLE IF NOT EXISTS auto_channel_settings(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL
+    )""")
+    c.execute("""INSERT INTO auto_channel_settings(key,value) VALUES(?,?)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value""", (key, value))
+    c.commit()
+    c.close()
+
+
+async def auto_channel_job(context):
+    cfg = get_channel_config()
+    channel = cfg["channel_id"] if cfg else ""
+    if not channel or get_auto_setting("enabled", "0") != "1":
+        return
+    now = datetime.now(TZ)
+    schedule_type = get_auto_setting("type", "daily")
+    schedule_time = get_auto_setting("time", "18:00")
+    weekday = int(get_auto_setting("weekday", "0") or 0)
+    if now.strftime("%H:%M") != schedule_time:
+        return
+    if schedule_type == "weekly" and now.weekday() != weekday:
+        return
+    stamp = now.strftime("%Y-%m-%d-%H:%M")
+    if get_auto_setting("last_run", "") == stamp:
+        return
+    topic = AUTO_TOPICS_FA[now.toordinal() % len(AUTO_TOPICS_FA)]
+    content = ai_generate_post(topic)
+    try:
+        msg = await context.bot.send_message(chat_id=channel, text=content)
+        set_auto_setting("last_run", stamp)
+        set_auto_setting("last_message_id", str(msg.message_id))
+        log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0, "auto_channel_post")
+        logger.info("Automatic channel post published: %s", msg.message_id)
+    except Exception as e:
+        logger.error("Automatic channel post failed: %s", e)
+
 def channel_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📡 تنظیم کانال",callback_data="ch:set"),InlineKeyboardButton("🔌 تست اتصال",callback_data="ch:test")],[InlineKeyboardButton("📝 ساخت پست",callback_data="ch:new"),InlineKeyboardButton("📋 پست‌ها",callback_data="ch:list")],[InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
+         InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
+        [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
+         InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list")],
+        [InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
+        [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+    ])
 
 def channel_schedule_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("📤 ارسال فوری",callback_data="chs:now")],[InlineKeyboardButton("📅 یک‌بار",callback_data="chs:once"),InlineKeyboardButton("🔄 روزانه",callback_data="chs:daily")],[InlineKeyboardButton("📆 هفتگی",callback_data="chs:weekly")],[InlineKeyboardButton("❌ لغو",callback_data="chs:cancel")]])
@@ -1465,11 +1578,62 @@ async def channel_scheduler_job(context):
             c.commit(); c.close()
         except Exception as e: logger.error("Channel post failed: %s",e)
 
+
+def auto_channel_keyboard():
+    enabled = get_auto_setting("enabled", "0") == "1"
+    state = "🟢 خودکار روشن" if enabled else "⚪ خودکار خاموش"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(state, callback_data="auto:toggle")],
+        [InlineKeyboardButton("🔄 روزانه", callback_data="auto:daily"),
+         InlineKeyboardButton("📆 هفتگی", callback_data="auto:weekly")],
+        [InlineKeyboardButton("⏰ تغییر ساعت", callback_data="auto:time")],
+        [InlineKeyboardButton("🧠 موضوعات", callback_data="auto:topics")],
+        [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]
+    ])
+
+
+async def auto_channel_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+
+    if action == "toggle":
+        cur = get_auto_setting("enabled", "0")
+        set_auto_setting("enabled", "0" if cur == "1" else "1")
+        await q.message.reply_text("⚙️ وضعیت انتشار خودکار تغییر کرد.", reply_markup=auto_channel_keyboard())
+    elif action in ("daily", "weekly"):
+        set_auto_setting("type", action)
+        await q.message.reply_text(
+            "🔄 حالت روزانه تنظیم شد." if action == "daily" else "📆 حالت هفتگی تنظیم شد.",
+            reply_markup=auto_channel_keyboard()
+        )
+    elif action == "time":
+        context.user_data["auto_wait_time"] = True
+        await q.message.reply_text("⏰ ساعت را بفرست، مثلاً 18:00")
+    elif action == "topics":
+        await q.message.reply_text(
+            "🧠 موضوعات خودکار:\n\n" + "\n".join("• " + x for x in AUTO_TOPICS_FA),
+            reply_markup=auto_channel_keyboard()
+        )
+
 async def channel_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]; cfg=get_channel_config(); channel=cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
-    if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
+    if a=="auto":
+        await q.message.reply_text(
+            "🤖 <b>انتشار خودکار</b>\n\n"
+            "ربات می‌تواند درباره موفقیت، هدف‌گذاری، رشد فردی و آموزش، "
+            "هر روز یا هر هفته یک پست جدید تولید و در کانال منتشر کند.",
+            parse_mode="HTML", reply_markup=auto_channel_keyboard()
+        )
+    elif a=="main":
+        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
+        if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
     elif a=="test":
         if channel=="تنظیم نشده": await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
         try: chat=await context.bot.get_chat(channel); await q.message.reply_text(f"✅ اتصال موفق است.\n📢 {chat.title or channel}",reply_markup=channel_keyboard())
@@ -1865,6 +2029,18 @@ async def text_router(update, context):
     uid = update.effective_user.id
     register_user(uid, update.effective_user.first_name or "")
     text = update.message.text.strip()
+    if context.user_data.get("auto_wait_time"):
+        value = parse_time(text)
+        if not value:
+            await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:00")
+            return
+        set_auto_setting("time", value)
+        context.user_data.pop("auto_wait_time", None)
+        await update.message.reply_text(
+            "✅ ساعت انتشار خودکار روی " + value + " تنظیم شد.",
+            reply_markup=auto_channel_keyboard()
+        )
+        return
 
     if await channel_text_save(update, context):
         return
@@ -1933,6 +2109,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
     app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
     app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
     app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
@@ -1967,6 +2144,7 @@ def main():
         app.job_queue.run_repeating(reminder_job, interval=60, first=5)
         app.job_queue.run_repeating(morning_job, interval=60, first=10)
         app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
+        app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
 
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
