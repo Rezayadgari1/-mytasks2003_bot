@@ -4,7 +4,7 @@ from functools import wraps
 import os
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from telegram import (
@@ -833,6 +833,24 @@ def required_channel():
     return cfg["channel_id"] if cfg and cfg["channel_id"] else ""
 
 
+def normalize_channel_input(value):
+    """Normalize @username, t.me links, or numeric channel IDs."""
+    value = (value or "").strip()
+    value = value.replace("\u200c", "").strip()
+    if not value:
+        return ""
+    # Accept public Telegram links such as https://t.me/MyTasks or t.me/MyTasks.
+    m = re.match(r"^(?:https?://)?t\.me/([A-Za-z0-9_]{4,})/?$", value, re.I)
+    if m:
+        return "@" + m.group(1)
+    if value.startswith("@"):
+        return "@" + value[1:].strip()
+    # Telegram numeric chat IDs can be negative (channels normally start with -100).
+    if re.fullmatch(r"-?\d+", value):
+        return value
+    return value
+
+
 def required_channel_url():
     if REQUIRED_CHANNEL_URL:
         return REQUIRED_CHANNEL_URL
@@ -840,6 +858,32 @@ def required_channel_url():
     if channel.startswith("@"):
         return f"https://t.me/{channel[1:]}"
     return ""
+
+
+async def bot_can_manage_channel(bot, channel):
+    """Return (ok, message) after checking that the bot can actually manage/post."""
+    try:
+        chat = await bot.get_chat(channel)
+    except Exception as e:
+        logger.error("get_chat failed for %s: %s", channel, e)
+        return False, "❌ کانال پیدا نشد. @username یا ID کانال را درست وارد کن."
+
+    if getattr(chat, "type", None) != "channel":
+        return False, "❌ این شناسه مربوط به کانال نیست. فقط Channel را وارد کن."
+
+    try:
+        me = await bot.get_me()
+        member = await bot.get_chat_member(chat.id, me.id)
+        status = getattr(member, "status", None)
+        if status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+            return False, "❌ ربات ادمین کانال نیست. ربات را Administrator کانال کن و اجازه ارسال پیام بده."
+        if status == ChatMemberStatus.ADMINISTRATOR and getattr(member, "can_post_messages", True) is False:
+            return False, "❌ ربات ادمین است ولی اجازه ارسال پیام در کانال را ندارد."
+    except Exception as e:
+        logger.error("bot channel permission check failed for %s: %s", channel, e)
+        return False, "❌ دسترسی ربات به کانال تأیید نشد. ربات را Administrator کانال کن."
+
+    return True, chat
 
 
 async def is_channel_member(bot, uid):
@@ -1636,27 +1680,62 @@ def set_auto_setting(key, value):
 
 
 async def auto_channel_job(context):
+    """Publish an automatically generated channel post on schedule."""
     cfg = get_channel_config()
     channel = cfg["channel_id"] if cfg else ""
     if not channel or get_auto_setting("enabled", "0") != "1":
         return
+
     now = datetime.now(TZ)
     schedule_type = get_auto_setting("type", "daily")
-    schedule_time = get_auto_setting("time", "18:00")
-    weekday = int(get_auto_setting("weekday", "0") or 0)
-    if now.strftime("%H:%M") != schedule_time:
+    due = False
+
+    if schedule_type == "interval":
+        interval_hours = int(get_auto_setting("interval_hours", "3") or 3)
+        interval_hours = max(1, min(interval_hours, 168))
+        next_run_raw = get_auto_setting("next_run", "")
+        if not next_run_raw:
+            next_run = now + timedelta(hours=interval_hours)
+            set_auto_setting("next_run", next_run.isoformat())
+            return
+        try:
+            next_run = datetime.fromisoformat(next_run_raw)
+            if next_run.tzinfo is None:
+                next_run = next_run.replace(tzinfo=TZ)
+            due = now >= next_run
+        except ValueError:
+            set_auto_setting("next_run", now.isoformat())
+            due = True
+    else:
+        schedule_time = get_auto_setting("time", "18:00")
+        weekday = int(get_auto_setting("weekday", "0") or 0)
+        due = now.strftime("%H:%M") == schedule_time
+        if schedule_type == "weekly":
+            due = due and now.weekday() == weekday
+
+    if not due:
         return
-    if schedule_type == "weekly" and now.weekday() != weekday:
-        return
+
+    # The scheduler checks every minute; this prevents duplicate posts.
     stamp = now.strftime("%Y-%m-%d-%H:%M")
-    if get_auto_setting("last_run", "") == stamp:
+    if schedule_type != "interval" and get_auto_setting("last_run", "") == stamp:
         return
-    topic = AUTO_TOPICS_FA[now.toordinal() % len(AUTO_TOPICS_FA)]
+
+    topic_index = int(get_auto_setting("topic_index", "0") or 0)
+    topic = AUTO_TOPICS_FA[topic_index % len(AUTO_TOPICS_FA)]
     content = ai_generate_post(topic)
+
     try:
         msg = await context.bot.send_message(chat_id=channel, text=content)
         set_auto_setting("last_run", stamp)
         set_auto_setting("last_message_id", str(msg.message_id))
+        set_auto_setting("topic_index", str((topic_index + 1) % len(AUTO_TOPICS_FA)))
+
+        if schedule_type == "interval":
+            interval_hours = int(get_auto_setting("interval_hours", "3") or 3)
+            interval_hours = max(1, min(interval_hours, 168))
+            set_auto_setting("next_run", (now + timedelta(hours=interval_hours)).isoformat())
+
         log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0, "auto_channel_post")
         logger.info("Automatic channel post published: %s", msg.message_id)
     except Exception as e:
@@ -1703,14 +1782,30 @@ async def channel_scheduler_job(context):
 def auto_channel_keyboard():
     enabled = get_auto_setting("enabled", "0") == "1"
     state = "🟢 خودکار روشن" if enabled else "⚪ خودکار خاموش"
-    return InlineKeyboardMarkup([
+    mode = get_auto_setting("type", "daily")
+    interval_hours = get_auto_setting("interval_hours", "3")
+    next_run = get_auto_setting("next_run", "")
+
+    rows = [
         [InlineKeyboardButton(state, callback_data="auto:toggle")],
+        [InlineKeyboardButton("⏱ هر ۲ ساعت", callback_data="auto:2h"),
+         InlineKeyboardButton("⏱ هر ۳ ساعت", callback_data="auto:3h")],
         [InlineKeyboardButton("🔄 روزانه", callback_data="auto:daily"),
          InlineKeyboardButton("📆 هفتگی", callback_data="auto:weekly")],
         [InlineKeyboardButton("⏰ تغییر ساعت", callback_data="auto:time")],
         [InlineKeyboardButton("🧠 موضوعات", callback_data="auto:topics")],
-        [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]
-    ])
+    ]
+
+    if mode == "interval":
+        rows.insert(1, [InlineKeyboardButton(f"📌 فعال: هر {interval_hours} ساعت", callback_data="auto:info")])
+        if next_run:
+            rows.insert(2, [InlineKeyboardButton(
+                f"🕐 بعدی: {next_run.replace('T', ' ')[:16]}",
+                callback_data="auto:info"
+            )])
+
+    rows.append([InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")])
+    return InlineKeyboardMarkup(rows)
 
 
 @subscription_required
@@ -1725,8 +1820,32 @@ async def auto_channel_callback(update, context):
 
     if action == "toggle":
         cur = get_auto_setting("enabled", "0")
-        set_auto_setting("enabled", "0" if cur == "1" else "1")
-        await q.message.reply_text("⚙️ وضعیت انتشار خودکار تغییر کرد.", reply_markup=auto_channel_keyboard())
+        new_value = "0" if cur == "1" else "1"
+        set_auto_setting("enabled", new_value)
+        if new_value == "1" and get_auto_setting("type", "daily") == "interval":
+            hours = int(get_auto_setting("interval_hours", "3") or 3)
+            set_auto_setting("next_run", (datetime.now(TZ) + timedelta(hours=hours)).isoformat())
+        await q.message.reply_text(
+            "🟢 انتشار خودکار روشن شد." if new_value == "1" else "⚪ انتشار خودکار خاموش شد.",
+            reply_markup=auto_channel_keyboard()
+        )
+    elif action in ("2h", "3h"):
+        hours = 2 if action == "2h" else 3
+        set_auto_setting("type", "interval")
+        set_auto_setting("interval_hours", str(hours))
+        set_auto_setting("next_run", (datetime.now(TZ) + timedelta(hours=hours)).isoformat())
+        set_auto_setting("enabled", "1")
+        await q.message.reply_text(
+            f"✅ انتشار خودکار روی هر {hours} ساعت تنظیم و روشن شد.\n\n"
+            f"📌 اولین انتشار حدود {hours} ساعت دیگر انجام می‌شود.\n"
+            "🤖 بعد از هر انتشار، موضوع بعدی به‌صورت خودکار انتخاب می‌شود.",
+            reply_markup=auto_channel_keyboard()
+        )
+    elif action == "info":
+        await q.message.reply_text(
+            "ℹ️ ربات طبق فاصله انتخاب‌شده، خودش پست جدید تولید و در کانال منتشر می‌کند.",
+            reply_markup=auto_channel_keyboard()
+        )
     elif action in ("daily", "weekly"):
         set_auto_setting("type", action)
         await q.message.reply_text(
@@ -1742,28 +1861,86 @@ async def auto_channel_callback(update, context):
             reply_markup=auto_channel_keyboard()
         )
 
+
 @subscription_required
-async def channel_panel_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); a=q.data.split(":",1)[1]; cfg=get_channel_config(); channel=cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
-    if a=="auto":
+async def channel_panel_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+    cfg = get_channel_config()
+    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else ""
+
+    if action == "main":
+        current = channel or "تنظیم نشده"
         await q.message.reply_text(
-            "🤖 <b>انتشار خودکار</b>\n\n"
-            "ربات می‌تواند درباره موفقیت، هدف‌گذاری، رشد فردی و آموزش، "
-            "هر روز یا هر هفته یک پست جدید تولید و در کانال منتشر کند.",
-            parse_mode="HTML", reply_markup=auto_channel_keyboard()
+            f"📡 <b>مدیریت کانال</b>\n\n📢 کانال فعلی: <code>{current}</code>",
+            parse_mode="HTML",
+            reply_markup=channel_keyboard(),
         )
-    elif a=="main":
-        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
-        if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
-    elif a=="test":
-        if channel=="تنظیم نشده": await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        try: chat=await context.bot.get_chat(channel); await q.message.reply_text(f"✅ اتصال موفق است.\n📢 {chat.title or channel}",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Channel test: %s",e); await q.message.reply_text("❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",reply_markup=channel_keyboard())
-    elif a=="new": context.user_data["channel_state"]="content"; await q.message.reply_text("📝 متن پست را بفرست:")
-    elif a=="list":
-        c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20").fetchall(); c.close(); text="📋 <b>پست‌های فعال</b>\n\n"+("\n".join(f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}" for r in rows) if rows else "موردی نیست."); await q.message.reply_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
+
+    elif action == "set":
+        context.user_data["channel_state"] = "set"
+        await q.message.reply_text(
+            "📡 شناسه کانال را بفرست.\n\n"
+            "مثال کانال عمومی: <code>@MyTasks</code>\n"
+            "یا: <code>https://t.me/MyTasks</code>\n"
+            "برای کانال خصوصی: <code>-1001234567890</code>",
+            parse_mode="HTML",
+        )
+
+    elif action == "test":
+        if not channel:
+            await q.message.reply_text("❌ هنوز کانالی تنظیم نشده است.", reply_markup=channel_keyboard())
+            return
+        ok, result = await bot_can_manage_channel(context.bot, channel)
+        if ok:
+            await q.message.reply_text(
+                f"✅ اتصال کامل است.\n📢 {result.title or channel}\n🆔 <code>{result.id}</code>\n\n"
+                "عضویت اجباری و انتشار پست‌ها می‌توانند از همین کانال استفاده کنند.",
+                parse_mode="HTML",
+                reply_markup=channel_keyboard(),
+            )
+        else:
+            await q.message.reply_text(result, reply_markup=channel_keyboard())
+
+    elif action == "auto":
+        await q.message.reply_text(
+            "🤖 <b>انتشار خودکار کانال</b>\n\n"
+            "ربات خودش برای هر نوبت یک پست جدید می‌سازد و در کانال منتشر می‌کند.\n\n"
+            "⏱ می‌توانی روی هر ۲ ساعت یا هر ۳ ساعت بگذاری، یا حالت روزانه/هفتگی را انتخاب کنی.\n"
+            "🧠 موضوعات به‌صورت چرخشی انتخاب می‌شوند تا پست‌ها پشت‌سرهم یک موضوع نباشند.",
+            parse_mode="HTML",
+            reply_markup=auto_channel_keyboard(),
+        )
+
+    elif action == "new":
+        if not channel:
+            await q.message.reply_text("❌ ابتدا کانال را تنظیم و تست کن.", reply_markup=channel_keyboard())
+            return
+        context.user_data["channel_state"] = "content"
+        await q.message.reply_text("📝 متن پست را بفرست:")
+
+    elif action == "list":
+        c = db()
+        rows = c.execute(
+            "SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        c.close()
+        text = "📋 <b>پست‌های فعال</b>\n\n" + (
+            "\n".join(
+                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
+                for r in rows
+            )
+            if rows else "موردی نیست."
+        )
+        await q.message.reply_text(
+            text, parse_mode="HTML", reply_markup=channel_keyboard()
+        )
 
 @subscription_required
 async def channel_schedule_callback(update,context):
@@ -1813,8 +1990,27 @@ async def channel_text_save(update,context):
     s=context.user_data.get("channel_state"); text=update.message.text.strip()
     if not s: return False
     if s=="set":
-        try: chat=await context.bot.get_chat(text); set_channel_config(text); context.user_data.pop("channel_state",None); await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or text}",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Set channel: %s",e); await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی ندارد.")
+        channel = normalize_channel_input(text)
+        if not channel:
+            await update.message.reply_text("❌ شناسه کانال خالی است.")
+            return True
+        ok, result = await bot_can_manage_channel(context.bot, channel)
+        if not ok:
+            await update.message.reply_text(result, reply_markup=channel_keyboard())
+            return True
+        # Keep @username when the channel is public so the membership button
+        # can be generated automatically; otherwise keep the numeric ID.
+        stored_channel = f"@{result.username}" if getattr(result, "username", None) else str(result.id)
+        set_channel_config(stored_channel)
+        context.user_data.pop("channel_state", None)
+        await update.message.reply_text(
+            f"✅ کانال با موفقیت وصل شد.\n\n"
+            f"📢 {result.title or channel}\n"
+            f"🆔 <code>{result.id}</code>\n\n"
+            "حالا عضویت اجباری، ارسال فوری، زمان‌بندی و انتشار خودکار از همین کانال استفاده می‌کنند.",
+            parse_mode="HTML",
+            reply_markup=channel_keyboard(),
+        )
         return True
     if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
@@ -1956,7 +2152,7 @@ async def admin_panel_callback(update, context):
         ).fetchall()
         c.close()
         text = "📈 <b>فعالیت‌ها</b>\n\n"
-        text += "\n".join(f"• {r['action']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        text += "\n".join(f"• {r['activity']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
         await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "reminders":
