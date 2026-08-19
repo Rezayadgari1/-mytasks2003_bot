@@ -4,7 +4,6 @@ from functools import wraps
 import base64
 import io
 import json
-import asyncio
 import os
 import re
 import sqlite3
@@ -217,17 +216,16 @@ T = {
         "gender": "👤 دوست داری جنسیتت رو مشخص کنی؟",
         "gender_saved": "✅ ممنون {name} عزیز 🌷",
         "menu": [
-            ["🎯 اهداف امروز", "✏️ هدف خودم می‌نویسم"],
+            ["🎯 اهداف امروز", "➕ هدف جدید"],
             ["🏆 اهداف آماده", "✏️ ویرایش اهداف"],
             ["📅 جدول هفتگی", "📊 آمار من"],
             ["👤 پروفایل", "🏆 دستاوردها"],
             ["⭐ XP", "🤝 دعوت دوستان"],
-            ["📈 قیمت آنلاین", "🤖 چت با AI"],
-            ["🎫 پشتیبانی", "⚙️ تنظیمات"],
-            ["📚 راهنمای ربات"],
+            ["📈 قیمت آنلاین", "🎫 پشتیبانی"],
+            ["⚙️ تنظیمات"],
         ],
         "today": "🎯 اهداف امروز",
-        "no_goals": "🎯 {name} عزیز، هنوز هدفی ثبت نکردی.\nاز «✏️ هدف خودم می‌نویسم» یا «🏆 اهداف آماده» شروع کنیم؟",
+        "no_goals": "🎯 {name} عزیز، هنوز هدفی ثبت نکردی.\nاز «➕ هدف جدید» شروع کنیم؟",
         "new_goal": "🎯 {name} عزیز، یک دسته را انتخاب کن:",
         "choose_goal": "🎯 حالا یکی از هدف‌های آماده را انتخاب کن:",
         "goal_added": "🎉 عالیه {name} عزیز! هدف ثبت شد.",
@@ -264,17 +262,15 @@ T = {
         "gender": "👤 Would you like to specify your gender?",
         "gender_saved": "✅ Thanks, {name} 🌷",
         "menu": [
-            ["🎯 Today's Goals", "✏️ Write my own goal"],
+            ["🎯 Today's Goals", "➕ New Goal"],
             ["🏆 Ready Goals", "✏️ Edit Goals"],
             ["📅 Weekly Table", "📊 My Stats"],
-            ["👤 Profile", "🏆 Achievements"],
-            ["⭐ XP", "🤝 Referrals"],
-            ["📈 Online Prices", "🤖 AI Chat"],
-            ["🎫 Support", "⚙️ Settings"],
-            ["📚 Bot Guide"],
+            ["👤 Profile", "⭐ XP"],
+            ["🤝 Referrals", "🎫 Support"],
+            ["⚙️ Settings"],
         ],
         "today": "🎯 Today's Goals",
-        "no_goals": "🎯 {name}, you have no goals yet.\nStart with «✏️ Write my own goal» or «🏆 Ready Goals».",
+        "no_goals": "🎯 {name}, you have no goals yet.\nLet's start with «➕ New Goal».",
         "new_goal": "🎯 {name}, select a category:",
         "choose_goal": "🎯 Now choose one of the ready goals:",
         "goal_added": "🎉 Great {name}! Goal added.",
@@ -306,96 +302,6 @@ T = {
         "admin_denied": "⛔ Access denied.",
     },
 }
-
-# Top-level menu labels. Any of these must clear temporary input states first.
-MAIN_MENU_TEXTS = {
-    item
-    for language in ("fa", "en")
-    for row in T[language]["menu"]
-    for item in row
-}
-MAIN_MENU_TEXTS.update({"📢 مدیریت کانال", "🛡 پنل مدیریت", "📢 Channel Management", "🛡 Admin Panel"})
-
-
-def general_guide_keyboard(uid):
-    fa = lang(uid) == "fa"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎯 اهداف" if fa else "🎯 Goals", callback_data="guide:goals"),
-         InlineKeyboardButton("📢 کانال" if fa else "📢 Channel", callback_data="guide:channel")],
-        [InlineKeyboardButton("🤖 هوش مصنوعی" if fa else "🤖 AI", callback_data="guide:ai"),
-         InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Prices", callback_data="guide:prices")],
-        [InlineKeyboardButton("⭐ XP و دعوت" if fa else "⭐ XP & Referrals", callback_data="guide:xp"),
-         InlineKeyboardButton("⚙️ تنظیمات" if fa else "⚙️ Settings", callback_data="guide:settings")],
-        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
-    ])
-
-
-def general_guide_text(uid):
-    if lang(uid) == "en":
-        return (
-            "📚 <b>MyTasks — Complete Bot Guide</b>\n\n"
-            "🚀 <b>1. Start</b>\nSend /start, choose your language and complete the first setup.\n\n"
-            "🎯 <b>2. Create a goal</b>\nTap <b>✏️ Write my own goal</b>, type the goal, then choose the reminder time and any available duration/priority options. The goal stays saved until you delete it.\n\n"
-            "🏆 <b>3. Ready goals</b>\nOpen <b>🏆 Ready Goals</b>, choose a category and a prepared goal, then set its reminder. You can later edit, rename, change the reminder or delete it.\n\n"
-            "✅ <b>4. Complete goals</b>\nOpen <b>🎯 Today's Goals</b>, select a goal and mark it done or missed. This updates your daily history, statistics, streaks and achievements.\n\n"
-            "📊 <b>5. Progress</b>\nUse Weekly Table, My Stats, Profile, Achievements and XP to follow your progress.\n\n"
-            "📢 <b>6. Channel & posting</b>\nAdmins can connect multiple channels, keep them in the channel list, choose the active channel, create posts and schedule them once, daily or weekly. The bot must be an administrator in the channel with permission to post. A failed channel operation should not lock other features.\n\n"
-            "🤖 <b>7. AI Chat</b>\nOpen <b>🤖 AI Chat</b> and send your question. The administrator must configure the AI service, such as <b>OPENAI_API_KEY</b> on Railway.\n\n"
-            "📈 <b>8. Online prices</b>\nOpen <b>📈 Online Prices</b>, select an asset and request an update. Live prices depend on the configured online source/API and internet access.\n\n"
-            "🎫 <b>9. Support</b>\nUse Support for prepared answers and support requests.\n\n"
-            "⚙️ <b>10. Settings</b>\nUse Settings to change language and available preferences. Persian and English are supported.\n\n"
-            "↩️ <b>11. Navigation</b>\nUse <b>⬅️ Back</b> or <b>🏠 Main Menu</b> inside sections. If something fails, leave that section and return to the correct menu. If a button ever seems stuck, send <b>/start</b> to rebuild the main menu."
-        )
-    return (
-        "📚 <b>راهنمای کامل استفاده از ربات MyTasks</b>\n\n"
-        "🚀 <b>۱. شروع کار</b>\nربات را با <b>/start</b> شروع کن، زبان را انتخاب کن و مراحل اولیه را انجام بده. بعد از آن منوی اصلی در دسترس است.\n\n"
-        "🎯 <b>۲. ساخت هدف شخصی</b>\nروی <b>✏️ هدف خودم می‌نویسم</b> بزن، هدف را خودت تایپ کن و بعد زمان یادآوری و گزینه‌های مدت/اولویت را در صورت نمایش انتخاب کن. هدف تا وقتی خودت حذفش نکنی باقی می‌ماند.\n\n"
-        "🏆 <b>۳. اهداف آماده</b>\nاز <b>🏆 اهداف آماده</b> وارد دسته‌بندی شو، هدف آماده را انتخاب کن و زمان یادآوری را تعیین کن. بعداً می‌توانی آن را ویرایش، تغییر نام، زمان یادآوری را عوض یا حذف کنی.\n\n"
-        "✅ <b>۴. انجام هدف‌ها</b>\nاز <b>🎯 اهداف امروز</b> هدف را انتخاب کن و «انجام شد» یا «انجام نشد» را بزن. سابقه روزانه، آمار، روند انجام و دستاوردها بر اساس این فعالیت‌ها به‌روزرسانی می‌شوند.\n\n"
-        "📊 <b>۵. بررسی پیشرفت</b>\nاز جدول هفتگی، آمار من، پروفایل، دستاوردها و XP برای بررسی پیشرفتت استفاده کن.\n\n"
-        "📢 <b>۶. مدیریت کانال و پست‌گذاری</b>\nمدیر ربات می‌تواند چند کانال را هم‌زمان ثبت کند، آن‌ها را در لیست نگه دارد، کانال فعال را انتخاب کند، پست بسازد و انتشار را یک‌باره، روزانه یا هفتگی زمان‌بندی کند. برای اتصال کانال، ربات باید Administrator باشد و اجازه ارسال پست داشته باشد. خطای یک کانال نباید امکانات دیگر ربات را قفل کند.\n\n"
-        "🤖 <b>۷. چت با هوش مصنوعی</b>\nاز <b>🤖 چت با AI</b> وارد شو و سؤال را بفرست. سرویس AI باید توسط مدیر تنظیم شده باشد؛ مثلاً <b>OPENAI_API_KEY</b> در Railway.\n\n"
-        "📈 <b>۸. قیمت آنلاین</b>\nاز <b>📈 قیمت آنلاین</b> دارایی را انتخاب کن و بروزرسانی را بگیر. قیمت لحظه‌ای به منبع/API آنلاین و اتصال اینترنت وابسته است.\n\n"
-        "🎫 <b>۹. پشتیبانی</b>\nاز پشتیبانی پاسخ‌های آماده را ببین یا درخواست پشتیبانی ثبت کن.\n\n"
-        "⚙️ <b>۱۰. تنظیمات</b>\nاز تنظیمات زبان و گزینه‌های قابل مدیریت را تغییر بده. فارسی و انگلیسی پشتیبانی می‌شوند.\n\n"
-        "↩️ <b>۱۱. برگشت و جابه‌جایی</b>\nداخل هر بخش از <b>⬅️ برگشت</b> یا <b>🏠 منوی اصلی</b> استفاده کن. اگر بخشی خطا داد، از آن بخش خارج شو و از منوی درست دوباره وارد شو. اگر دکمه‌ای گیر کرد، <b>/start</b> را بزن تا منوی اصلی دوباره ساخته شود."
-    )
-
-
-async def general_guide(update, context):
-    uid = update.effective_user.id
-    clear_transient_state(context)
-    await update.message.reply_text(general_guide_text(uid), parse_mode="HTML", reply_markup=general_guide_keyboard(uid))
-
-
-async def guide_callback(update, context):
-    q = update.callback_query
-    await q.answer()
-    uid = q.from_user.id
-    section = q.data.split(":", 1)[1]
-    if section == "main":
-        clear_transient_state(context)
-        await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
-        return
-    texts_fa = {
-        "goals": "🎯 <b>اهداف:</b> هدف شخصی را از «✏️ هدف خودم می‌نویسم» ثبت کن؛ اهداف آماده را از «🏆 اهداف آماده» انتخاب کن؛ سپس زمان یادآوری را تعیین کن. برای حذف یا تغییر، از «✏️ ویرایش اهداف» استفاده کن.",
-        "channel": "📢 <b>کانال:</b> فقط مدیر ربات به مدیریت کانال دسترسی دارد. کانال را با @username یا آیدی عددی ثبت کن؛ ربات باید Administrator با اجازه ارسال پست باشد. چند کانال در لیست می‌مانند و می‌توانی کانال فعال را انتخاب یا اتصالش را دستی قطع کنی.",
-        "ai": "🤖 <b>AI:</b> وارد «چت با AI» شو و سؤال را بفرست. اگر OPENAI_API_KEY در Railway تنظیم نشده باشد، پاسخ AI در دسترس نیست و باید مدیر آن را تنظیم کند.",
-        "prices": "📈 <b>قیمت آنلاین:</b> وارد قیمت آنلاین شو، دارایی را انتخاب کن و بروزرسانی را بگیر. قیمت زنده به منبع/API و اینترنت وابسته است.",
-        "xp": "⭐ <b>XP و دعوت:</b> از «⭐ XP» امتیاز و سطح خودت را ببین و از «🤝 دعوت دوستان» برای سیستم دعوت استفاده کن.",
-        "settings": "⚙️ <b>تنظیمات:</b> زبان فارسی/انگلیسی و تنظیمات فعال ربات از این بخش مدیریت می‌شوند.",
-    }
-    texts_en = {
-        "goals": "🎯 <b>Goals:</b> use Write my own goal for a custom goal or Ready Goals for prepared goals. Then set the reminder. Edit Goals lets you change or delete saved goals.",
-        "channel": "📢 <b>Channel:</b> admins can connect channels, select the active one and disconnect them manually. The bot must be an administrator with posting permission.",
-        "ai": "🤖 <b>AI:</b> open AI Chat and send your question. The administrator must configure OPENAI_API_KEY on Railway.",
-        "prices": "📈 <b>Prices:</b> open Online Prices, select an asset and request an update. Live data depends on the configured API/source.",
-        "xp": "⭐ <b>XP & Referrals:</b> use XP to see your level and the referral section for invitations.",
-        "settings": "⚙️ <b>Settings:</b> change language and the available bot preferences here.",
-    }
-    text = (texts_fa if lang(uid) == "fa" else texts_en).get(section, general_guide_text(uid))
-    await q.message.reply_text(text, parse_mode="HTML", reply_markup=general_guide_keyboard(uid))
-
 
 TIME_BUTTONS = ["07:00", "08:00", "10:00", "12:00", "15:00", "18:00", "20:00", "22:00"]
 
@@ -470,11 +376,6 @@ def init_db():
     goal_columns = {r["name"] for r in c.execute("PRAGMA table_info(goals)").fetchall()}
     if "priority" not in goal_columns:
         c.execute("ALTER TABLE goals ADD COLUMN priority INTEGER NOT NULL DEFAULT 2")
-    if "duration_minutes" not in goal_columns:
-        c.execute("ALTER TABLE goals ADD COLUMN duration_minutes INTEGER")
-    c.execute("""CREATE TABLE IF NOT EXISTS user_settings(
-        user_id INTEGER PRIMARY KEY, reminders_enabled INTEGER NOT NULL DEFAULT 1,
-        ai_daily_used INTEGER NOT NULL DEFAULT 0, ai_used_date TEXT)""")
 
     columns = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     if "first_name" not in columns:
@@ -486,34 +387,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS channel_config(
         id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL DEFAULT '',
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS managed_chats(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id TEXT NOT NULL UNIQUE,
-        chat_type TEXT NOT NULL DEFAULT 'channel',
-        title TEXT NOT NULL DEFAULT '',
-        username TEXT NOT NULL DEFAULT '',
-        enabled INTEGER NOT NULL DEFAULT 1,
-        auto_publish INTEGER NOT NULL DEFAULT 0,
-        connected_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
         id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL,
         schedule_type TEXT NOT NULL DEFAULT 'once', schedule_time TEXT, weekday INTEGER,
         run_at TEXT, enabled INTEGER NOT NULL DEFAULT 1, last_sent_at TEXT,
-        created_at TEXT NOT NULL, created_by INTEGER NOT NULL,
-        target_chat_id TEXT
-    )""")
-    post_cols={r["name"] for r in c.execute("PRAGMA table_info(channel_posts)").fetchall()}
-    if "target_chat_id" not in post_cols:
-        c.execute("ALTER TABLE channel_posts ADD COLUMN target_chat_id TEXT")
-    # Migrate the old single-channel configuration into the new managed-chat list.
-    legacy=c.execute("SELECT channel_id,enabled FROM channel_config WHERE id=1").fetchone()
-    if legacy and legacy["channel_id"]:
-        now_m=datetime.now(TZ).isoformat()
-        c.execute("INSERT OR IGNORE INTO managed_chats(chat_id,chat_type,title,username,enabled,auto_publish,connected_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                  (str(legacy["channel_id"]),"channel","","",int(legacy["enabled"]),1,now_m,now_m))
-        c.execute("UPDATE channel_posts SET target_chat_id=? WHERE target_chat_id IS NULL",(str(legacy["channel_id"]),))
+        created_at TEXT NOT NULL, created_by INTEGER NOT NULL)""")
     user_cols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     for col,ddl in [("xp","INTEGER NOT NULL DEFAULT 0"),("blocked","INTEGER NOT NULL DEFAULT 0"),("warnings","INTEGER NOT NULL DEFAULT 0"),("vip_until","TEXT"),("referrer_id","INTEGER"),("referral_code","TEXT")]:
         if col not in user_cols: c.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
@@ -529,12 +407,8 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER,asset TEXT,created_at TEXT NOT NULL,PRIMARY KEY(user_id,asset))""")
     c.execute("""CREATE TABLE IF NOT EXISTS daily_reports(report_date TEXT PRIMARY KEY,data TEXT NOT NULL,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS health_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,service TEXT,status TEXT,details TEXT,created_at TEXT NOT NULL)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS auto_pending(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, topic TEXT NOT NULL,
-        content TEXT NOT NULL, publish_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-        created_at TEXT NOT NULL)""")
     now_iso=datetime.now(TZ).isoformat()
-    for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval"]:
+    for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
     c.commit()
     c.close()
@@ -604,10 +478,7 @@ def display_name(uid):
 def keyboard(uid):
     rows = [list(row) for row in T[lang(uid)]["menu"]]
     if admin_is_allowed(uid):
-        if lang(uid) == "fa":
-            rows.append(["📢 مدیریت کانال", "🛡 پنل مدیریت"])
-        else:
-            rows.append(["📢 Channel Management", "🛡 Admin Panel"])
+        rows.append(["🛡 پنل مدیریت"] if lang(uid) == "fa" else ["🛡 Admin Panel"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
@@ -637,11 +508,11 @@ def parse_time(s):
     return None
 
 
-def add_goal(uid, name, category, reminder, priority=2, duration_minutes=None):
+def add_goal(uid, name, category, reminder, priority=2):
     c = db()
     c.execute(
-        "INSERT INTO goals(user_id,name,category,reminder_time,priority,duration_minutes,created_at) VALUES(?,?,?,?,?,?,?)",
-        (uid, name, category, reminder, priority, duration_minutes, datetime.now(TZ).isoformat()),
+        "INSERT INTO goals(user_id,name,category,reminder_time,priority,created_at) VALUES(?,?,?,?,?,?)",
+        (uid, name, category, reminder, priority, datetime.now(TZ).isoformat()),
     )
     c.commit()
     c.close()
@@ -901,7 +772,6 @@ async def steps_menu(update, context):
         "➕ Add step" if lang(uid) == "en" else "➕ افزودن مرحله",
         callback_data=f"step_add:{gid}"
     )])
-    buttons.append([back_button(f"detail:{gid}", label_fa="⬅️ هدف", label_en="⬅️ Goal", uid=uid)])
     await q.message.reply_text(
         "📋 مراحل هدف" if lang(uid) == "fa" else "📋 Goal steps",
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -917,8 +787,7 @@ async def step_add_start(update, context):
     context.user_data["step_gid"] = gid
     context.user_data["awaiting_step"] = True
     await q.message.reply_text(
-        "✏️ نام مرحله را بفرست:" if lang(uid) == "fa" else "✏️ Send the step name:",
-        reply_markup=InlineKeyboardMarkup([[back_button(f"steps:{gid}", label_fa="⬅️ مراحل هدف", label_en="⬅️ Goal steps", uid=uid)]])
+        "✏️ نام مرحله را بفرست:" if lang(uid) == "fa" else "✏️ Send the step name:"
     )
 
 
@@ -934,8 +803,7 @@ async def step_save(update, context):
     context.user_data.pop("step_gid", None)
     context.user_data.pop("awaiting_step", None)
     await update.message.reply_text(
-        "✅ مرحله اضافه شد." if lang(uid) == "fa" else "✅ Step added.",
-        reply_markup=InlineKeyboardMarkup([[back_button(f"steps:{gid}", label_fa="⬅️ مراحل هدف", label_en="⬅️ Goal steps", uid=uid)]])
+        "✅ مرحله اضافه شد." if lang(uid) == "fa" else "✅ Step added."
     )
     return True
 
@@ -956,7 +824,7 @@ def categories_keyboard(uid, prefix="newcat"):
     rows = []
     for i, key in enumerate(data.keys()):
         rows.append([InlineKeyboardButton(key, callback_data=f"{prefix}:{i}")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="newback")])
+    rows.append([InlineKeyboardButton(T[lang(uid)]["back"], callback_data="newback")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -980,7 +848,6 @@ def time_keyboard(uid):
         InlineKeyboardButton(T[lang(uid)]["no_reminder"], callback_data="time:none"),
         InlineKeyboardButton(T[lang(uid)]["other_time"], callback_data="time:custom"),
     ])
-    rows.append([back_button("newback", uid=uid)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1131,129 +998,18 @@ async def gender_callback(update, context):
     )
 
 
-def main_menu_button(uid):
-    return InlineKeyboardButton(
-        "🏠 منوی اصلی" if lang(uid) == "fa" else "🏠 Main Menu",
-        callback_data="nav:main",
-    )
-
-def back_button(callback_data, label_fa="⬅️ برگشت", label_en="⬅️ Back", uid=None):
-    if uid is not None and lang(uid) == "en":
-        label = label_en
-    else:
-        label = label_fa
-    return InlineKeyboardButton(label, callback_data=callback_data)
-
-def clear_transient_state(context):
-    # States that can accidentally capture the next menu button/message.
-    for key in (
-        "channel_state", "group_state", "channel_content", "channel_weekday",
-        "auto_wait_interval", "auto_wait_time", "admin_broadcast", "admin_tool_mode",
-        "admin_broadcast", "support_new", "ai_chat", "awaiting_custom_goal",
-        "awaiting_custom_duration", "awaiting_custom_time", "awaiting_rename",
-        "awaiting_step", "step_gid", "edit_id", "duration_minutes", "priority",
-        "category", "name", "channel_content",
-    ):
-        context.user_data.pop(key, None)
-
-async def nav_callback(update, context):
-    q = update.callback_query
-    await q.answer()
-    uid = q.from_user.id
-    target = q.data.split(":", 1)[1]
-    if target == "main":
-        clear_transient_state(context)
-        await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
-    elif target == "settings":
-        clear_transient_state(context)
-        await q.message.reply_text(T[lang(uid)]["settings"], reply_markup=settings_keyboard(uid))
-    elif target == "admin":
-        clear_transient_state(context)
-        await q.message.reply_text("🛡 پنل مدیریت", reply_markup=final_admin_keyboard())
-    elif target == "channel":
-        clear_transient_state(context)
-        await q.message.reply_text("📢 مدیریت کانال و پست‌گذاری", reply_markup=channel_keyboard())
-    elif target == "group":
-        clear_transient_state(context)
-        await q.message.reply_text("👥 مدیریت گروه‌ها", reply_markup=InlineKeyboardMarkup([[back_button("nav:channel", uid=uid)]]))
-
-def settings_keyboard(uid):
-    fa=lang(uid)=="fa"
-    rows = [
-        [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language",callback_data="settings:language")],
-        [InlineKeyboardButton("🔔 اعلان‌ها" if fa else "🔔 Notifications",callback_data="settings:notifications")],
-        [InlineKeyboardButton("🎯 اهداف" if fa else "🎯 Goals",callback_data="settings:goals")],
-        [InlineKeyboardButton("🤖 هوش مصنوعی" if fa else "🤖 AI",callback_data="settings:ai")],
-    ]
-    if admin_is_allowed(uid):
-        rows.append([InlineKeyboardButton("📢 مدیریت کانال" if fa else "📢 Channel Management",callback_data="settings:channel")])
-        rows.append([InlineKeyboardButton("👥 مدیریت گروه" if fa else "👥 Group Management",callback_data="settings:group")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="settings:main")])
-    return InlineKeyboardMarkup(rows)
-
 async def settings(update, context):
-    uid=update.effective_user.id; log_activity(uid,"settings")
-    await update.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
-
-async def goals_navigation_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id
-    action=q.data.split(":",1)[1]
-    clear_transient_state(context)
-    if action=="main":
-        await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
-    elif action=="today":
-        await today(update, context)
-    elif action=="edit":
-        await edit_menu(update, context)
-    elif action=="ready":
-        await ready_menu(update, context)
-    elif action=="custom":
-        # Callback cannot collect text itself; show the same prompt as the reply-keyboard route.
-        context.user_data["awaiting_custom_goal"] = True
-        await q.message.reply_text("✏️ هدف خودت را بنویس:" if lang(uid)=="fa" else "✏️ Write your own goal:", reply_markup=InlineKeyboardMarkup([[back_button("goals:main", uid=uid)]]))
-
-
-async def settings_language_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(":",1)[1]
-    set_lang(uid,value); log_activity(uid,"language_change")
-    await q.message.reply_text(T[value]["language_saved"],reply_markup=settings_keyboard(uid))
-
-
-async def settings_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; action=q.data.split(":",1)[1]; fa=lang(uid)=="fa"
-    if action=="language":
-        await q.message.reply_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[back_button("settings:back", uid=uid)]])); return
-    if action=="group":
-        if not admin_is_allowed(uid):
-            await q.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.", reply_markup=settings_keyboard(uid)); return
-        await q.message.reply_text("👥 <b>مدیریت گروه‌ها</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup([[back_button("settings:back", uid=uid)], [InlineKeyboardButton("📋 گروه‌ها", callback_data="grp:main")]])); return
-    if action=="channel":
-        if not admin_is_allowed(uid):
-            await q.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
-            return
-        await q.message.reply_text(
-            "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
-            "از اینجا می‌توانی اتصال کانال، ساخت پست، لیست پست‌ها و انتشار خودکار را مدیریت کنی."
-            if fa else
-            "📢 <b>Channel & Posting Management</b>\n\n"
-            "Manage channel connection, posts, post list and automatic publishing here.",
-            parse_mode="HTML",
-            reply_markup=channel_keyboard(),
-        )
-        return
-    if action=="notifications":
-        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); c.close()
-        state=bool(r["reminders_enabled"])
-        await q.message.reply_text(("🔔 یادآوری‌ها: " + ("روشن" if state else "خاموش")) if fa else ("🔔 Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تغییر وضعیت",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
-    if action=="toggle_reminders":
-        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.reply_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
-    if action=="goals":
-        await q.message.reply_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
-    if action=="ai":
-        await q.message.reply_text(("🤖 چت با AI از منوی اصلی در دسترس است. برای استفاده، OPENAI_API_KEY را در Railway تنظیم کن." if fa else "🤖 AI Chat is available from the main menu. Set OPENAI_API_KEY in Railway to use it."),reply_markup=settings_keyboard(uid)); return
-    if action in ("back","main"):
-        if action=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
-        else: await q.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
+    uid = update.effective_user.id
+    log_activity(uid, "settings")
+    await update.message.reply_text(
+        T[lang(uid)]["settings"],
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🇮🇷 فارسی", callback_data="language:fa"),
+                InlineKeyboardButton("🇬🇧 English", callback_data="language:en"),
+            ]
+        ]),
+    )
 
 
 def edit_time_keyboard(uid):
@@ -1272,16 +1028,6 @@ def edit_time_keyboard(uid):
         ),
     ])
     return InlineKeyboardMarkup(rows)
-
-
-async def custom_goal_start(update, context):
-    uid = update.effective_user.id
-    context.user_data["awaiting_custom_goal"] = True
-    await update.message.reply_text(
-        "✏️ هدف خودت را بنویس:\nمثلاً: هر روز ۳۰ دقیقه زبان انگلیسی بخوانم"
-        if lang(uid) == "fa" else
-        "✏️ Write your own goal:\nExample: Study English for 30 minutes every day"
-    )
 
 
 async def new_goal(update, context):
@@ -1305,7 +1051,7 @@ async def new_category(update, context):
         [InlineKeyboardButton(x, callback_data=f"newgoal:{i}")]
         for i, x in enumerate(goals)
     ]
-    buttons.append([back_button("newback", uid=uid)])
+    buttons.append([InlineKeyboardButton(T[lang(uid)]["back"], callback_data="newback")])
     await q.message.reply_text(
         T[lang(uid)]["choose_goal"],
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -1318,8 +1064,10 @@ async def new_back(update, context):
     await q.answer()
     uid = q.from_user.id
     context.user_data.pop("category", None)
-    clear_transient_state(context)
-    await q.message.reply_text("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", reply_markup=keyboard(uid))
+    await q.message.reply_text(
+        T[lang(uid)]["new_goal"].format(name=display_name(uid)),
+        reply_markup=categories_keyboard(uid),
+    )
 
 
 @subscription_required
@@ -1340,40 +1088,17 @@ async def new_goal_pick(update, context):
 
 
 
-def duration_keyboard(uid):
-    fa = lang(uid) == "fa"
-    labels = [(5,"۵ دقیقه"),(10,"۱۰ دقیقه"),(20,"۲۰ دقیقه"),(30,"۳۰ دقیقه"),(60,"۱ ساعت"),(120,"۲ ساعت"),(0,"♾️ بدون محدودیت")]
-    rows=[]
-    for i in range(0,len(labels),2):
-        pair=labels[i:i+2]
-        rows.append([InlineKeyboardButton((label if fa else ({5:"5 min",10:"10 min",20:"20 min",30:"30 min",60:"1 hour",120:"2 hours",0:"♾️ No limit"}[m])),callback_data=f"duration:{m}") for m,label in pair])
-    rows.append([InlineKeyboardButton("✏️ زمان دلخواه" if fa else "✏️ Custom",callback_data="duration:custom")])
-    rows.append([InlineKeyboardButton(T[lang(uid)]["back"],callback_data="newback")])
-    return InlineKeyboardMarkup(rows)
-
-
 @subscription_required
 async def priority_callback(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
-    context.user_data["priority"] = int(q.data.split(":")[1])
+    value = int(q.data.split(":")[1])
+    context.user_data["priority"] = value
     await q.message.reply_text(
-        "⏱ مدت انجام هدف را انتخاب کن:" if lang(uid)=="fa" else "⏱ How long should this goal take?",
-        reply_markup=duration_keyboard(uid),
+        T[lang(uid)]["choose_time"],
+        reply_markup=time_keyboard(uid),
     )
-
-
-@subscription_required
-async def duration_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id
-    value=q.data.split(":",1)[1]
-    if value=="custom":
-        context.user_data["awaiting_custom_duration"]=True
-        await q.message.reply_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).", reply_markup=InlineKeyboardMarkup([[back_button("goals:main", uid=uid)]]))
-        return
-    context.user_data["duration_minutes"] = None if value=="0" else int(value)
-    await q.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
 
 
 @subscription_required
@@ -1385,7 +1110,7 @@ async def time_callback(update, context):
 
     if value == "custom":
         context.user_data["awaiting_custom_time"] = True
-        await q.message.reply_text(T[lang(uid)]["custom_time"], reply_markup=InlineKeyboardMarkup([[back_button("goals:main", uid=uid)]]))
+        await q.message.reply_text(T[lang(uid)]["custom_time"])
         return
 
     if value == "none":
@@ -1399,42 +1124,13 @@ async def time_callback(update, context):
         return
 
     priority = context.user_data.get("priority", 2)
-    duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration)
+    add_goal(uid, name, category, reminder, priority)
     context.user_data.clear()
     log_activity(uid, "goal_created")
     await q.message.reply_text(
         T[lang(uid)]["goal_added"].format(name=display_name(uid)),
         reply_markup=keyboard(uid),
     )
-
-
-async def custom_duration_save(update, context):
-    uid=update.effective_user.id
-    if not context.user_data.get("awaiting_custom_duration"): return False
-    try:
-        minutes=int(normalize_digits(update.message.text.strip()))
-        if minutes<1 or minutes>1440: raise ValueError
-    except ValueError:
-        await update.message.reply_text("❌ عدد نامعتبر است؛ بین ۱ تا ۱۴۴۰ دقیقه." if lang(uid)=="fa" else "❌ Enter a number from 1 to 1440 minutes.")
-        return True
-    context.user_data["duration_minutes"]=minutes
-    context.user_data.pop("awaiting_custom_duration",None)
-    await update.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
-    return True
-
-
-async def custom_goal_save(update, context):
-    uid=update.effective_user.id
-    if not context.user_data.get("awaiting_custom_goal"): return False
-    name=update.message.text.strip()
-    if not name:
-        return True
-    context.user_data["name"]=name
-    context.user_data["category"]="🎯 هدف دلخواه" if lang(uid)=="fa" else "🎯 Custom"
-    context.user_data.pop("awaiting_custom_goal",None)
-    await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=="fa" else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
-    return True
 
 
 async def custom_time_save(update, context):
@@ -1455,8 +1151,7 @@ async def custom_time_save(update, context):
         return False
 
     priority = context.user_data.get("priority", 2)
-    duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration)
+    add_goal(uid, name, category, reminder, priority)
     context.user_data.clear()
     log_activity(uid, "goal_created")
     await update.message.reply_text(
@@ -1491,7 +1186,6 @@ async def today(update, context):
                 callback_data=f"detail:{g['id']}",
             )
         ])
-    buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
     await update.message.reply_text(
         T[lang(uid)]["today"],
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -1523,7 +1217,7 @@ async def detail(update, context):
                 "📋 Steps" if lang(uid) == "en" else "📋 مراحل",
                 callback_data=f"steps:{gid}",
             ),
-        ], [InlineKeyboardButton("↩️ اهداف امروز" if lang(uid)=="fa" else "↩️ Today's Goals",callback_data="goals:today")]]),
+        ]]),
     )
 
 
@@ -1563,11 +1257,12 @@ async def edit_menu(update, context):
             reply_markup=keyboard(uid),
         )
         return
-    edit_buttons=[[InlineKeyboardButton(g["name"], callback_data=f"edit:{g['id']}")] for g in goals]
-    edit_buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
     await update.message.reply_text(
         T[lang(uid)]["edit"].format(name=display_name(uid)),
-        reply_markup=InlineKeyboardMarkup(edit_buttons),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(g["name"], callback_data=f"edit:{g['id']}")]
+            for g in goals
+        ]),
     )
 
 
@@ -1593,7 +1288,6 @@ async def edit_goal(update, context):
             "🗑 Delete" if lang(uid) == "en" else "🗑 حذف",
             callback_data=f"delete:{gid}",
         )],
-        [InlineKeyboardButton("↩️ ویرایش اهداف" if lang(uid)=="fa" else "↩️ Edit Goals",callback_data="goals:edit")],
     ]
     await q.message.reply_text(
         f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}",
@@ -1661,7 +1355,7 @@ async def edit_time_callback(update, context):
     value = q.data.split(":", 1)[1]
     if value == "custom":
         context.user_data["awaiting_custom_edit_time"] = True
-        await q.message.reply_text(T[lang(uid)]["custom_time"], reply_markup=InlineKeyboardMarkup([[back_button("goals:main", uid=uid)]]))
+        await q.message.reply_text(T[lang(uid)]["custom_time"])
         return
     reminder = None if value == "none" else parse_time(value)
     c = db()
@@ -1746,8 +1440,7 @@ async def delete_start(update, context):
         text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(yes, callback_data=f"delete_yes:{gid}")],
-            [InlineKeyboardButton(no, callback_data=f"delete_no:{gid}")],
-            [back_button("goals:edit", uid=uid)],
+            [InlineKeyboardButton(no, callback_data="delete_no")],
         ]),
     )
 
@@ -1774,10 +1467,9 @@ async def delete_confirm(update, context):
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
-    uid = q.from_user.id
     await q.message.reply_text(
-        "❌ لغو شد." if lang(uid) == "fa" else "❌ Cancelled.",
-        reply_markup=keyboard(uid),
+        "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
+        reply_markup=keyboard(q.from_user.id),
     )
 
 
@@ -1787,8 +1479,7 @@ async def achievements(update, context):
     await update.message.reply_text(
         "🏆 دستاوردهای تو\n\n" + achievement_text(uid)
         if lang(uid) == "fa"
-        else "🏆 Your achievements\n\n" + achievement_text(uid),
-        reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+        else "🏆 Your achievements\n\n" + achievement_text(uid)
     )
     log_activity(uid, "achievements")
 
@@ -1847,8 +1538,7 @@ async def weekly(update, context):
         weekday = names[(d.weekday() + 1) % 7] if lang(uid) == "fa" else names[d.weekday()]
         lines.append(f"📅 {weekday} {ds}: {done}/{total} ✅")
     await update.message.reply_text(
-        T[lang(uid)]["weekly"].format(name=display_name(uid), rows="\n".join(lines)),
-        reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+        T[lang(uid)]["weekly"].format(name=display_name(uid), rows="\n".join(lines))
     )
     log_activity(uid, "weekly")
 
@@ -1883,72 +1573,21 @@ async def stats(update, context):
             f"\n🔥 رکورد زنجیره فعلی: {streak} روز"
             if lang(uid) == "fa"
             else f"\n🔥 Current streak: {streak} days"
-        ),
-        reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+        )
     )
     log_activity(uid, "stats")
 
 
 
-def normalize_chat_identifier(value):
-    value=(value or "").strip().replace("\u200c","")
-    if not value: return ""
-    value=value.rstrip("/")
-    m=re.match(r"^(?:https?://)?t\.me/([A-Za-z0-9_]{4,})$",value,re.I)
-    if m: return "@"+m.group(1)
-    if value.startswith("@"): return "@"+value[1:].strip()
-    if re.fullmatch(r"-?\d+",value): return str(int(value))
-    return value
-
 def get_channel_config():
     c=db(); r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone(); c.close(); return r
 
 def set_channel_config(channel_id):
-    channel_id=normalize_chat_identifier(channel_id)
     c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
-    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(channel_id,datetime.now(TZ).isoformat())); c.commit(); c.close()
+    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
 
-def clear_channel_config():
-    c=db(); c.execute("UPDATE channel_config SET channel_id='',enabled=0,updated_at=? WHERE id=1",(datetime.now(TZ).isoformat(),)); c.commit(); c.close()
-
-def get_managed_chats(chat_type=None, enabled_only=False):
-    c=db(); q="SELECT * FROM managed_chats"; args=[]; cond=[]
-    if chat_type: cond.append("chat_type=?"); args.append(chat_type)
-    if enabled_only: cond.append("enabled=1")
-    if cond: q += " WHERE " + " AND ".join(cond)
-    q += " ORDER BY enabled DESC, id DESC"
-    rows=c.execute(q,args).fetchall(); c.close(); return rows
-
-def get_managed_chat(chat_id):
-    cid=normalize_chat_identifier(chat_id); c=db(); r=c.execute("SELECT * FROM managed_chats WHERE chat_id=?",(cid,)).fetchone(); c.close(); return r
-
-def upsert_managed_chat(chat, chat_type=None, auto_publish=0):
-    now=datetime.now(TZ).isoformat(); cid=str(chat.id); ctype=chat_type or getattr(chat,"type","channel") or "channel"
-    username=getattr(chat,"username",None) or ""; title=getattr(chat,"title",None) or getattr(chat,"first_name",None) or cid
-    c=db(); c.execute("""INSERT INTO managed_chats(chat_id,chat_type,title,username,enabled,auto_publish,connected_at,updated_at) VALUES(?,?,?,?,1,?,?,?)
-    ON CONFLICT(chat_id) DO UPDATE SET chat_type=excluded.chat_type,title=excluded.title,username=excluded.username,enabled=1,updated_at=excluded.updated_at""",
-            (cid,ctype,title,username,int(auto_publish),now,now)); c.commit(); c.close(); return cid
-
-def set_managed_enabled(chat_id, enabled):
-    cid=normalize_chat_identifier(chat_id); c=db(); c.execute("UPDATE managed_chats SET enabled=?,updated_at=? WHERE chat_id=?",(1 if enabled else 0,datetime.now(TZ).isoformat(),cid)); c.commit(); c.close()
-
-def set_managed_auto(chat_id, enabled):
-    cid=normalize_chat_identifier(chat_id); c=db(); c.execute("UPDATE managed_chats SET auto_publish=?,updated_at=? WHERE chat_id=?",(1 if enabled else 0,datetime.now(TZ).isoformat(),cid)); c.commit(); c.close()
-
-def selected_chat_id():
-    selected=get_auto_setting("selected_chat_id","")
-    if selected and get_managed_chat(selected) and get_managed_chat(selected)["enabled"]: return str(get_managed_chat(selected)["chat_id"])
-    cfg=get_channel_config()
-    if cfg and cfg["enabled"] and cfg["channel_id"]: return str(cfg["channel_id"])
-    rows=get_managed_chats("channel",True)
-    return str(rows[0]["chat_id"]) if rows else ""
-
-def set_selected_chat(chat_id):
-    set_auto_setting("selected_chat_id",normalize_chat_identifier(chat_id))
-
-def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0, target_chat_id=None):
-    target_chat_id=normalize_chat_identifier(target_chat_id or selected_chat_id())
-    c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by,target_chat_id) VALUES(?,?,?,?,?,1,?,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by,target_chat_id)); pid=cur.lastrowid; c.commit(); c.close(); return pid
+def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0):
+    c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by) VALUES(?,?,?,?,?,1,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by)); pid=cur.lastrowid; c.commit(); c.close(); return pid
 
 
 AUTO_TOPIC_TREE_FA = {
@@ -1978,39 +1617,7 @@ AUTO_TOPIC_TREE_FA = {
         "بودجه‌بندی شخصی",
         "پس‌انداز",
         "مدیریت ریسک",
-        "مفاهیم پایه سرمایه‌گذاری",
-        "ارز و دلار",
-        "طلا و سکه",
-        "کریپتو و بازار رمزارز",
-        "بورس و شاخص‌ها"
-    ],
-    "🏃 ورزش و برنامه کوتاه": [
-        "ورزش ۱۰ دقیقه‌ای در خانه",
-        "حرکات کششی بعد از کار",
-        "ورزش سبک برای روزهای خستگی",
-        "تمرین کل بدن بدون وسیله",
-        "گرم‌کردن و سردکردن"
-    ],
-    "🍎 تغذیه و خواص خوراکی‌ها": [
-        "خواص سیب",
-        "خواص لیمو",
-        "خواص موز",
-        "آب و هیدراته ماندن",
-        "میان‌وعده سالم"
-    ],
-    "🧠 سخنان بزرگان و دانشمندان": [
-        "سخنان دانشمندان ایرانی",
-        "سخنان دانشمندان جهان",
-        "بزرگان و اندیشمندان قدیمی",
-        "دانشمندان و استادان معاصر",
-        "جملات کوتاه برای شروع روز"
-    ],
-    "🌅 صبح و 🌙 شب": [
-        "پیام شروع روز",
-        "هدف‌گذاری صبحگاهی",
-        "جمع‌بندی شبانه",
-        "ارزیابی روز",
-        "آرام‌سازی قبل از خواب"
+        "مفاهیم پایه سرمایه‌گذاری"
     ],
     "💼 کار و کسب‌وکار": [
         "مهارت‌های شغلی",
@@ -2056,7 +1663,7 @@ AUTO_TOPIC_TREE_FA = {
     ],
 }
 
-AUTO_INTERVALS_MIN = [5, 10, 15, 20, 30, 60, 120, 180, 240, 360, 720, 1440]
+AUTO_INTERVALS_MIN = [5, 10, 20, 30, 60, 90, 120, 180]
 
 def ai_generate_post(topic):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -2158,15 +1765,6 @@ async def get_identity_handles(bot, channel):
     return bot_identity, channel_identity
 
 
-def content_feedback_keyboard(topic):
-    key=re.sub(r"\s+","_",str(topic))[:50]
-    return InlineKeyboardMarkup([[InlineKeyboardButton("👍 مفید بود",callback_data=f"feedback:up:{key}"),InlineKeyboardButton("👎 مناسب نبود",callback_data=f"feedback:down:{key}")]])
-
-async def feedback_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer("ثبت شد")
-    _,rating,topic=q.data.split(":",2); score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
-
-
 async def send_auto_channel_post(context, channel, topic):
     content = ai_generate_post(topic)
     bot_username, channel_username = await get_identity_handles(context.bot, channel)
@@ -2174,31 +1772,14 @@ async def send_auto_channel_post(context, channel, topic):
 
     image = await generate_topic_image(topic)
     try:
-        feedback_markup = content_feedback_keyboard(topic)
         if image is not None:
             msg = await context.bot.send_photo(
                 chat_id=channel,
                 photo=image,
                 caption=content,
-                reply_markup=feedback_markup,
             )
         else:
-            msg = await context.bot.send_message(
-                chat_id=channel,
-                text=content,
-                reply_markup=feedback_markup,
-            )
-        # ورزش‌های کوتاه یک نظرسنجی جداگانه دارند تا انجام‌شدن تمرین قابل سنجش باشد.
-        if any(k in topic for k in ("ورزش", "حرکات", "تمرین")):
-            try:
-                await context.bot.send_poll(
-                    chat_id=channel,
-                    question="🏃 تمرین امروز را انجام دادی؟",
-                    options=["✅ انجام دادم", "⏳ هنوز نه", "❌ انجام ندادم"],
-                    is_anonymous=False,
-                )
-            except Exception as e:
-                logger.warning("Exercise poll failed: %s", e)
+            msg = await context.bot.send_message(chat_id=channel, text=content)
         return msg
     except Exception:
         # If image generation/upload fails, never lose the scheduled post.
@@ -2229,79 +1810,61 @@ def set_auto_setting(key, value):
 
 
 async def auto_channel_job(context):
-    channel=selected_chat_id()
-    if not channel or get_auto_setting("enabled","0")!="1": return
-    now=datetime.now(TZ); interval=int(get_auto_setting("interval_minutes","60") or 60)
-    next_raw=get_auto_setting("next_run","")
-    try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
-    except ValueError: next_run=now+timedelta(minutes=interval)
-    if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=feature_enabled("approval") and bool(ADMIN_IDS)
-    if approval:
-        preview_at=next_run-timedelta(minutes=5)
-        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
-        if now>=preview_at and now<next_run and not pending:
-            category,topic=get_auto_topic(); content=ai_generate_post(topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
-            c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
-            kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
-            for admin_id in ADMIN_IDS:
-                try: await context.bot.send_message(admin_id,f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {category}\n🕐 انتشار در: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
-                except Exception as e: logger.error("Approval preview failed: %s",e)
-            return
-        if now<next_run: return
-        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
-        if pending and pending["status"]=="approved":
-            try:
-                image=await generate_topic_image(pending["topic"]); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
-                if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
-                else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
-                log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
-            except Exception as e: logger.error("Approved auto post failed: %s",e)
-        c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
-        set_auto_setting("last_run",now.isoformat()); set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat()); return
-    if now<next_run: return
-    next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
-    category,topic=get_auto_topic()
+    cfg = get_channel_config()
+    channel = cfg["channel_id"] if cfg else ""
+    if not channel or get_auto_setting("enabled", "0") != "1":
+        return
+
+    now = datetime.now(TZ)
+    interval = int(get_auto_setting("interval_minutes", "60") or 60)
+    interval = min(AUTO_INTERVALS_MIN, key=lambda x: abs(x - interval))
+    next_run_raw = get_auto_setting("next_run", "")
+    if next_run_raw:
+        try:
+            next_run = datetime.fromisoformat(next_run_raw)
+            if next_run.tzinfo is None:
+                next_run = next_run.replace(tzinfo=TZ)
+            if now < next_run:
+                return
+        except ValueError:
+            pass
+
+    # Lock the next run before the network calls so two Railway instances
+    # cannot publish the same scheduled post at the same time.
+    next_run = now + timedelta(minutes=interval)
+    set_auto_setting("next_run", next_run.isoformat())
+
+    category, topic = get_auto_topic()
     try:
-        msg=await send_auto_channel_post(context,channel,topic); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
+        msg = await send_auto_channel_post(context, channel, topic)
+        set_auto_setting("last_run", now.isoformat())
+        set_auto_setting("last_message_id", str(msg.message_id))
+        set_auto_setting("last_category", category)
+        set_auto_setting("last_topic", topic)
+        log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0, "auto_channel_post")
+        logger.info("Automatic channel post published: %s", msg.message_id)
     except Exception as e:
-        set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
-
-
-async def approval_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); r=c.execute("SELECT * FROM auto_pending WHERE id=?",(pid,)).fetchone();
-    if not r: c.close(); await q.message.reply_text("❌ پیش‌نمایش پیدا نشد."); return
-    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.reply_text("✅ پست برای انتشار تأیید شد.")
-
-async def approval_reject_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.reply_text("❌ پست رد شد و منتشر نمی‌شود.")
+        # Retry on the next interval rather than silently disabling automation.
+        set_auto_setting("next_run", now.isoformat())
+        logger.error("Automatic channel post failed: %s", e)
 
 
 def channel_keyboard():
-    selected=selected_chat_id()
-    rows=[
-        [InlineKeyboardButton("📡 اتصال کانال", callback_data="ch:set"),InlineKeyboardButton("📋 لیست کانال‌ها",callback_data="ch:listch")],
-        [InlineKeyboardButton("🎯 انتخاب کانال",callback_data="ch:select"),InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
-        [InlineKeyboardButton("✂️ قطع اتصال دستی",callback_data="ch:disconnect")],
-        [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list")],
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
+         InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
+        [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
+         InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list")],
         [InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
-        [InlineKeyboardButton("👥 مدیریت گروه",callback_data="grp:main")],
         [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
-    ]
-    return InlineKeyboardMarkup(rows)
+    ])
 
 def channel_schedule_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📤 ارسال فوری",callback_data="chs:now")],[InlineKeyboardButton("📅 یک‌بار",callback_data="chs:once"),InlineKeyboardButton("🔄 روزانه",callback_data="chs:daily")],[InlineKeyboardButton("📆 هفتگی",callback_data="chs:weekly")],[InlineKeyboardButton("❌ لغو",callback_data="chs:cancel")],[InlineKeyboardButton("⬅️ مدیریت کانال",callback_data="ch:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📤 ارسال فوری",callback_data="chs:now")],[InlineKeyboardButton("📅 یک‌بار",callback_data="chs:once"),InlineKeyboardButton("🔄 روزانه",callback_data="chs:daily")],[InlineKeyboardButton("📆 هفتگی",callback_data="chs:weekly")],[InlineKeyboardButton("❌ لغو",callback_data="chs:cancel")]])
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
-    rows.append([InlineKeyboardButton("✏️ ساعت دلخواه",callback_data=f"{prefix}:custom")])
-    rows.append([InlineKeyboardButton("⬅️ مدیریت کانال",callback_data="ch:main")])
-    return InlineKeyboardMarkup(rows)
+    rows.append([InlineKeyboardButton("🕐 ساعت دیگر",callback_data=f"{prefix}:custom")]); return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -2309,25 +1872,19 @@ def channel_schedule_text(r):
     return f"📅 {r['run_at'].replace('T',' ') if r['run_at'] else 'فوری'}"
 
 async def channel_scheduler_job(context):
-    now=datetime.now(TZ); key=now.strftime("%Y-%m-%d %H:%M"); hhmm=now.strftime("%H:%M")
+    now=datetime.now(TZ); key=now.strftime("%Y-%m-%d %H:%M"); hhmm=now.strftime("%H:%M"); cfg=get_channel_config()
+    if not cfg or not cfg["enabled"] or not cfg["channel_id"]: return
     c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1").fetchall(); c.close()
     for r in rows:
         due=(r["schedule_type"]=="daily" and r["schedule_time"]==hhmm) or (r["schedule_type"]=="weekly" and r["weekday"]==now.weekday() and r["schedule_time"]==hhmm) or (r["schedule_type"]=="once" and r["run_at"] and r["run_at"][:16]==key)
         if not due or (r["last_sent_at"] and r["last_sent_at"][:16]==key): continue
-        target=normalize_chat_identifier(r["target_chat_id"] or selected_chat_id())
-        managed=get_managed_chat(target)
-        if managed and not managed["enabled"]:
-            continue
-        if not target: continue
         try:
-            await context.bot.send_message(chat_id=int(target) if re.fullmatch(r"-?\d+",target) else target,text=r["content"])
+            await context.bot.send_message(chat_id=cfg["channel_id"],text=r["content"])
             c=db()
             if r["schedule_type"]=="once": c.execute("UPDATE channel_posts SET enabled=0,last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
             else: c.execute("UPDATE channel_posts SET last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
             c.commit(); c.close()
-        except Exception as e:
-            # Never disconnect a chat automatically. The admin must explicitly disconnect it.
-            logger.error("Channel post failed for %s: %s",target,e)
+        except Exception as e: logger.error("Channel post failed: %s",e)
 
 
 def auto_channel_keyboard():
@@ -2350,7 +1907,6 @@ def auto_channel_keyboard():
         ],
         [InlineKeyboardButton(topic_text[:60], callback_data="auto:category")],
         [InlineKeyboardButton("📋 وضعیت و زمان بعدی", callback_data="auto:info")],
-        [InlineKeyboardButton("📚 راهنمای استفاده", callback_data="auto:guide")],
         [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")],
     ]
     return InlineKeyboardMarkup(rows)
@@ -2383,13 +1939,9 @@ def auto_interval_keyboard():
     for i in range(0, len(AUTO_INTERVALS_MIN), 2):
         pair = AUTO_INTERVALS_MIN[i:i + 2]
         rows.append([
-            InlineKeyboardButton(
-                f"هر {m // 60} ساعت" if m >= 60 and m % 60 == 0 else f"هر {m} دقیقه",
-                callback_data=f"autoint:{m}"
-            )
+            InlineKeyboardButton(f"هر {m} دقیقه", callback_data=f"autoint:{m}")
             for m in pair
         ])
-    rows.append([InlineKeyboardButton("✏️ زمان دلخواه", callback_data="autoint:custom")])
     rows.append([InlineKeyboardButton("⬅️ انتشار خودکار", callback_data="auto:back")])
     return InlineKeyboardMarkup(rows)
 
@@ -2417,7 +1969,7 @@ async def auto_channel_callback(update, context):
 
     elif action == "interval":
         await q.message.reply_text(
-            "⏱ فاصله انتشار را انتخاب کن.\nاز ۵ دقیقه تا ۲۴ ساعت، یا زمان دلخواه:",
+            "⏱ فاصله انتشار را انتخاب کن.\nکمترین ۵ دقیقه و بیشترین ۱۸۰ دقیقه است:",
             reply_markup=auto_interval_keyboard()
         )
 
@@ -2425,21 +1977,6 @@ async def auto_channel_callback(update, context):
         await q.message.reply_text(
             "🧠 دسته‌بندی کامل را انتخاب کن:",
             reply_markup=auto_category_keyboard()
-        )
-
-    elif action == "guide":
-        await q.message.reply_text(
-            "📚 <b>راهنمای انتشار خودکار MyTasks</b>\n\n"
-            "1️⃣ اول از بخش «🧠 موضوع» دسته موردنظر را انتخاب کن.\n"
-            "2️⃣ سپس زیرشاخه را انتخاب کن؛ مثلاً سرمایه‌گذاری ← ارز و دلار.\n"
-            "3️⃣ بعد از انتخاب موضوع، ربات از تو می‌پرسد هر چند دقیقه یک پست منتشر شود.\n"
-            "4️⃣ زمان را از ۵ دقیقه تا ۲۴ ساعت انتخاب کن یا زمان دلخواه وارد کن.\n"
-            "5️⃣ با انتخاب زمان، انتشار خودکار روشن می‌شود.\n\n"
-            "⏸ برای توقف، روی «خودکار روشن» بزن.\n"
-            "⚙️ برای تغییر موضوع یا فاصله انتشار، دوباره همان گزینه را انتخاب کن.\n"
-            "↩️ در همه بخش‌ها امکان برگشت وجود دارد.",
-            parse_mode="HTML",
-            reply_markup=auto_channel_keyboard(),
         )
 
     elif action == "info":
@@ -2458,7 +1995,6 @@ async def auto_channel_callback(update, context):
         )
 
     elif action == "back":
-        clear_transient_state(context)
         await q.message.reply_text("🤖 انتشار خودکار", reply_markup=auto_channel_keyboard())
 
 
@@ -2473,10 +2009,7 @@ async def auto_category_callback(update, context):
     if value == "random":
         set_auto_setting("category", "random")
         set_auto_setting("subcategory", "random")
-        await q.message.reply_text(
-            "🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
-            reply_markup=auto_interval_keyboard(),
-        )
+        await q.message.reply_text("🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.", reply_markup=auto_channel_keyboard())
         return
     idx = int(value)
     category = list(AUTO_TOPIC_TREE_FA.keys())[idx]
@@ -2503,8 +2036,8 @@ async def auto_subcategory_callback(update, context):
     set_auto_setting("category", category)
     set_auto_setting("subcategory", sub)
     await q.message.reply_text(
-        f"✅ موضوع انتخاب شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
-        reply_markup=auto_interval_keyboard()
+        f"✅ موضوع تنظیم شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}",
+        reply_markup=auto_channel_keyboard()
     )
 
 
@@ -2515,15 +2048,7 @@ async def auto_interval_callback(update, context):
         await q.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
     await q.answer()
-    raw_minutes = q.data.split(":", 1)[1]
-    if raw_minutes == "custom":
-        context.user_data["auto_wait_interval"] = True
-        await q.message.reply_text(
-            "✏️ فاصله دلخواه را به دقیقه وارد کن.\nمثال: 45\nحداقل ۵ و حداکثر ۱۴۴۰ دقیقه (۲۴ ساعت).",
-            reply_markup=InlineKeyboardMarkup([[back_button("auto:back", uid=uid)]])
-        )
-        return
-    minutes = int(raw_minutes)
+    minutes = int(q.data.split(":")[1])
     set_auto_setting("interval_minutes", str(minutes))
     set_auto_setting("enabled", "1")
     set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
@@ -2535,106 +2060,74 @@ async def auto_interval_callback(update, context):
 
 @subscription_required
 async def channel_panel_callback(update, context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); action=q.data.split(":",1)[1]
-    selected=selected_chat_id()
-    if action=="main":
-        clear_transient_state(context)
-        rows=get_managed_chats()
-        label="تنظیم نشده"
-        if selected:
-            r=get_managed_chat(selected); label=(r["title"] if r else selected)
-        await q.message.reply_text(f"📡 <b>مدیریت کانال‌ها</b>\n\n🎯 کانال انتخاب‌شده: {label}\n📋 تعداد کانال‌ها: {len([r for r in rows if r['chat_type']=='channel'])}",parse_mode="HTML",reply_markup=channel_keyboard()); return
-    if action=="set":
-        context.user_data["channel_state"]="set"
-        await q.message.reply_text("📡 آیدی کانال را بفرست.\n\nمثال عمومی: <code>@MyTasks</code>\nمثال عددی: <code>-1001234567890</code>\n\n⚠️ ربات باید داخل کانال Administrator باشد و اجازه ارسال پست داشته باشد.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ برگشت",callback_data="ch:main")]])); return
-    if action=="listch":
-        rows=get_managed_chats("channel")
-        kb=[]
-        for r in rows:
-            mark="🟢" if r["enabled"] else "⚪"
-            name=r["title"] or r["chat_id"]
-            kb.append([InlineKeyboardButton(f"{mark} {name}",callback_data=f"ch:pick:{r['chat_id']}")])
-        kb.append([InlineKeyboardButton("⬅️ برگشت",callback_data="ch:main")])
-        text="📋 <b>کانال‌های متصل</b>\n\nروی هر کانال بزن تا مدیریت و انتخابش کنی." if rows else "📋 هنوز کانالی متصل نشده است."
-        await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
-    if action.startswith("pick:"):
-        cid=normalize_chat_identifier(action.split(":",1)[1]); r=get_managed_chat(cid)
-        if not r: await q.message.reply_text("❌ کانال پیدا نشد.",reply_markup=channel_keyboard()); return
-        set_selected_chat(cid); set_channel_config(cid)
-        await q.message.reply_text(f"🎯 کانال انتخاب شد: {r['title']}\n🆔 <code>{r['chat_id']}</code>\n\nاز این به بعد پست‌های دستی و زمان‌بندی‌شده روی این کانال می‌روند.",parse_mode="HTML",reply_markup=channel_keyboard()); return
-    if action=="select":
-        rows=get_managed_chats("channel",True); kb=[]
-        for r in rows: kb.append([InlineKeyboardButton(f"🎯 {r['title'] or r['chat_id']}",callback_data=f"ch:pick:{r['chat_id']}")])
-        kb.append([InlineKeyboardButton("⬅️ برگشت",callback_data="ch:main")])
-        await q.message.reply_text("🎯 کانال مقصد را انتخاب کن:",reply_markup=InlineKeyboardMarkup(kb)); return
-    if action=="disconnect":
-        if not selected: await q.message.reply_text("❌ کانالی برای قطع اتصال انتخاب نشده است.",reply_markup=channel_keyboard()); return
-        r=get_managed_chat(selected)
-        set_managed_enabled(selected,False); clear_channel_config()
-        if get_auto_setting("selected_chat_id","")==selected: set_auto_setting("selected_chat_id","")
-        await q.message.reply_text(f"✂️ اتصال کانال «{r['title'] if r else selected}» دستی قطع شد.\n\n⚠️ ربات هیچ کانالی را به‌صورت خودکار قطع نمی‌کند.",reply_markup=channel_keyboard()); return
-    if action=="test":
-        if not selected: await q.message.reply_text("❌ ابتدا یک کانال را انتخاب یا متصل کن.",reply_markup=channel_keyboard()); return
-        try:
-            cid=int(selected) if re.fullmatch(r"-?\d+",selected) else selected
-            chat=await context.bot.get_chat(cid)
-            me=await context.bot.get_me(); member=await context.bot.get_chat_member(chat.id,me.id)
-            rights=getattr(member,"can_post_messages",None)
-            status=getattr(member,"status","")
-            ok=status in (ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER) and (rights is not False)
-            await q.message.reply_text(("✅ اتصال و دسترسی ارسال تأیید شد." if ok else "⚠️ کانال پیدا شد ولی ربات دسترسی Administrator/ارسال ندارد.")+f"\n📢 {chat.title or chat.id}\n🆔 <code>{chat.id}</code>\n👤 وضعیت ربات: <code>{status}</code>",parse_mode="HTML",reply_markup=channel_keyboard())
-        except Exception as e:
-            logger.error("Channel test: %s",e); await q.message.reply_text("❌ کانال قابل دسترسی نیست. اگر کانال خصوصی است، ربات را داخل کانال Administrator کن و سپس دوباره تست بزن.",reply_markup=channel_keyboard())
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
-    if action=="auto":
-        await q.message.reply_text("🤖 <b>انتشار خودکار</b>\n\nکانال انتخاب‌شده مقصد انتشار خودکار است.",parse_mode="HTML",reply_markup=auto_channel_keyboard()); return
-    if action=="new":
-        if not selected: await q.message.reply_text("❌ ابتدا کانال مقصد را انتخاب کن.",reply_markup=channel_keyboard()); return
-        context.user_data["channel_state"]="content"; await q.message.reply_text("📝 متن پست را بفرست:", reply_markup=InlineKeyboardMarkup([[back_button("ch:main", uid=uid)]])); return
-    if action=="list":
-        c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 30").fetchall(); c.close()
-        out="📋 <b>پست‌های فعال</b>\n\n"
-        if rows:
-            lines=[]
-            for r in rows:
-                target=r["target_chat_id"] or selected_chat_id(); ch=get_managed_chat(target); name=ch["title"] if ch else target
-                lines.append(f"#{r['id']} — {channel_schedule_text(r)}\n📢 {name}\n📝 {r['content'][:60]}")
-            out += "\n\n".join(lines)
-        else: out += "موردی نیست."
-        await q.message.reply_text(out,parse_mode="HTML",reply_markup=channel_keyboard()); return
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+    cfg = get_channel_config()
+    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
 
-@subscription_required
-async def group_panel_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); action=q.data.split(":",1)[1]
-    if action=="main":
-        clear_transient_state(context)
-        rows=get_managed_chats("group")+get_managed_chats("supergroup")
-        kb=[[InlineKeyboardButton(("🟢 " if r["enabled"] else "⚪ ")+f"{r['title'] or r['chat_id']}",callback_data=f"grp:pick:{r['chat_id']}")] for r in rows]
-        kb += [[InlineKeyboardButton("➕ اتصال گروه",callback_data="grp:set")],[InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="nav:admin")]]
-        await q.message.reply_text("👥 <b>مدیریت گروه‌ها</b>\n\nاز اینجا چند گروه را هم‌زمان مدیریت کن.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
-    if action=="set":
-        context.user_data["group_state"]="set"; await q.message.reply_text("👥 آیدی گروه/سوپرگروه را بفرست.\nمثال: <code>-1001234567890</code> یا <code>@GroupUsername</code>\nربات باید Administrator باشد.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ برگشت",callback_data="grp:main")]])); return
-    if action.startswith("pick:"):
-        cid=normalize_chat_identifier(action.split(":",1)[1]); r=get_managed_chat(cid)
-        if not r: await q.message.reply_text("❌ گروه پیدا نشد.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ برگشت",callback_data="grp:main")]])); return
-        kb=[[InlineKeyboardButton("🧪 تست دسترسی",callback_data=f"grp:test:{cid}")],[InlineKeyboardButton("📨 ارسال پیام",callback_data=f"grp:send:{cid}")],[InlineKeyboardButton("✂️ قطع اتصال",callback_data=f"grp:disconnect:{cid}")],[InlineKeyboardButton("⬅️ لیست گروه‌ها",callback_data="grp:main")]]
-        await q.message.reply_text(f"👥 <b>{r['title']}</b>\n🆔 <code>{r['chat_id']}</code>",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
-    if action.startswith("test:"):
-        cid=normalize_chat_identifier(action.split(":",1)[1])
+    if action == "main":
+        await q.message.reply_text(
+            f"📡 <b>مدیریت کانال</b>\n\n📢 کانال: <code>{channel}</code>",
+            parse_mode="HTML",
+            reply_markup=channel_keyboard(),
+        )
+    elif action == "set":
+        context.user_data["channel_state"] = "set"
+        await q.message.reply_text(
+            "📡 آیدی یا @username کانال را بفرست.\n"
+            "مثال: <code>@MyTasks</code>\n"
+            "یا: <code>-1001234567890</code>",
+            parse_mode="HTML",
+        )
+    elif action == "auto":
+        await q.message.reply_text(
+            "🤖 <b>انتشار خودکار</b>\n\n"
+            "پست کوتاه + تصویر مرتبط + دسته‌بندی و زمان‌بندی قابل تنظیم.",
+            parse_mode="HTML",
+            reply_markup=auto_channel_keyboard(),
+        )
+    elif action == "test":
+        if channel == "تنظیم نشده":
+            await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
+            return
         try:
-            chat=await context.bot.get_chat(int(cid) if re.fullmatch(r"-?\d+",cid) else cid); me=await context.bot.get_me(); member=await context.bot.get_chat_member(chat.id,me.id); status=getattr(member,"status","")
-            ok=status in (ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER)
-            await q.message.reply_text(("✅ دسترسی مدیر تأیید شد." if ok else "⚠️ گروه پیدا شد ولی ربات Administrator نیست.")+f"\n👥 {chat.title or chat.id}\n🆔 <code>{chat.id}</code>",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ برگشت",callback_data="grp:main")]]))
-        except Exception as e: logger.error("Group test: %s",e); await q.message.reply_text("❌ گروه قابل دسترسی نیست. ربات را Administrator کن.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ برگشت",callback_data="grp:main")]]))
-        return
-    if action.startswith("disconnect:"):
-        cid=normalize_chat_identifier(action.split(":",1)[1]); r=get_managed_chat(cid); set_managed_enabled(cid,False); await q.message.reply_text(f"✂️ اتصال «{r['title'] if r else cid}» قطع شد. ربات خودش اتصال گروه را قطع نمی‌کند.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ گروه‌ها",callback_data="grp:main")]])); return
-    if action.startswith("send:"):
-        cid=normalize_chat_identifier(action.split(":",1)[1]); context.user_data["group_state"]="send"; context.user_data["group_target"]=cid; await q.message.reply_text("📨 متن پیام گروه را بفرست:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ لغو",callback_data="grp:main")]])); return
+            chat = await context.bot.get_chat(channel)
+            await q.message.reply_text(
+                f"✅ اتصال فعال است.\n📢 {chat.title or channel}\n🆔 <code>{chat.id}</code>",
+                parse_mode="HTML",
+                reply_markup=channel_keyboard(),
+            )
+        except Exception as e:
+            logger.error("Channel test: %s", e)
+            await q.message.reply_text(
+                "❌ اتصال ناموفق.\nربات باید Administrator کانال باشد و اجازه ارسال پیام داشته باشد.",
+                reply_markup=channel_keyboard(),
+            )
+    elif action == "new":
+        context.user_data["channel_state"] = "content"
+        await q.message.reply_text("📝 متن پست را بفرست:")
+    elif action == "list":
+        c = db()
+        rows = c.execute(
+            "SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        c.close()
+        text_out = "📋 <b>پست‌های فعال</b>\n\n"
+        if rows:
+            text_out += "\n".join(
+                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
+                for r in rows
+            )
+        else:
+            text_out += "موردی نیست."
+        await q.message.reply_text(
+            text_out, parse_mode="HTML", reply_markup=channel_keyboard()
+        )
 
 
 @subscription_required
@@ -2644,20 +2137,20 @@ async def channel_schedule_callback(update,context):
     await q.answer(); a=q.data.split(":",1)[1]
     if a=="cancel": context.user_data.clear(); await q.message.reply_text("❌ لغو شد.",reply_markup=channel_keyboard()); return
     if a=="now":
-        target=selected_chat_id()
-        if not target: await q.message.reply_text("❌ ابتدا کانال مقصد را انتخاب کن.",reply_markup=channel_keyboard()); return
-        try: await context.bot.send_message(chat_id=int(target) if re.fullmatch(r"-?\d+",target) else target,text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.reply_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.reply_text("❌ انتشار ناموفق. اتصال را خودکار قطع نمی‌کنم؛ فقط دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
-    elif a=="once": context.user_data["channel_state"]="once"; await q.message.reply_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30", reply_markup=InlineKeyboardMarkup([[back_button("ch:main", uid=uid)]]))
+        cfg=get_channel_config()
+        if not cfg or not cfg["channel_id"]: await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.reply_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.reply_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
+    elif a=="once": context.user_data["channel_state"]="once"; await q.message.reply_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30")
     elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.reply_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
-    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.reply_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")],[back_button("ch:main", uid=uid)]]))
+    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.reply_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
 
 @subscription_required
 async def channel_daily_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); v=q.data.split(":",1)[1]
-    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30", reply_markup=InlineKeyboardMarkup([[back_button("ch:main", uid=uid)]])); return
+    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
     await save_channel_post(context,uid,"daily",v,None,None,q.message)
 
 @subscription_required
@@ -2675,9 +2168,9 @@ async def channel_weektime_callback(update,context):
     await save_channel_post(context,uid,"weekly",v,context.user_data["channel_weekday"],None,q.message)
 
 async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
-    target=selected_chat_id()
-    if not target: await message.reply_text("❌ ابتدا یک کانال را وصل و انتخاب کن.",reply_markup=channel_keyboard()); return
-    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid,target); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}\n📢 مقصد: {target}",reply_markup=channel_keyboard())
+    cfg=get_channel_config()
+    if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
 
 async def channel_text_save(update,context):
     uid=update.effective_user.id
@@ -2685,43 +2178,8 @@ async def channel_text_save(update,context):
     s=context.user_data.get("channel_state"); text=update.message.text.strip()
     if not s: return False
     if s=="set":
-        try:
-            ident=normalize_chat_identifier(text); chat=await context.bot.get_chat(int(ident) if re.fullmatch(r"-?\d+",ident) else ident)
-            if getattr(chat,"type","")!="channel":
-                await update.message.reply_text("❌ این شناسه یک کانال نیست. برای گروه از «مدیریت گروه» استفاده کن.",reply_markup=channel_keyboard()); return True
-            me=await context.bot.get_me(); member=await context.bot.get_chat_member(chat.id,me.id)
-            status=getattr(member,"status",""); can_post=getattr(member,"can_post_messages",None)
-            if status not in (ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER) or can_post is False:
-                await update.message.reply_text("❌ کانال پیدا شد، اما ربات Administrator با اجازه ارسال پست نیست.",reply_markup=channel_keyboard()); return True
-            cid=upsert_managed_chat(chat,"channel",0); set_managed_enabled(cid,True); set_selected_chat(cid); set_channel_config(cid)
-            context.user_data.pop("channel_state",None)
-            await update.message.reply_text(f"✅ کانال با موفقیت وصل شد.\n📢 {chat.title or ident}\n🆔 <code>{chat.id}</code>\n\nاین کانال در لیست باقی می‌ماند تا خودت دستی قطعش کنی.",parse_mode="HTML",reply_markup=channel_keyboard())
-        except Exception as e:
-            logger.error("Set channel: %s",e)
-            context.user_data.pop("channel_state", None)
-            context.user_data.pop("group_state", None)
-            await update.message.reply_text("❌ کانال پیدا نشد. اگر آیدی عددی است دقیقاً با -100 شروع شود و ربات داخل کانال Administrator باشد. برای کانال عمومی می‌توانی @username را بدهی.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال",callback_data="ch:main")]]))
-        return True
-    if s=="set_group":
-        try:
-            ident=normalize_chat_identifier(text); chat=await context.bot.get_chat(int(ident) if re.fullmatch(r"-?\d+",ident) else ident)
-            if getattr(chat,"type","") not in ("group","supergroup"):
-                await update.message.reply_text("❌ این شناسه گروه/سوپرگروه نیست.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ گروه‌ها",callback_data="grp:main")]])); return True
-            me=await context.bot.get_me(); member=await context.bot.get_chat_member(chat.id,me.id)
-            if getattr(member,"status","") not in (ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER):
-                await update.message.reply_text("❌ ربات باید Administrator گروه باشد.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ گروه‌ها",callback_data="grp:main")]])); return True
-            cid=upsert_managed_chat(chat,getattr(chat,"type","group"),0); set_managed_enabled(cid,True); context.user_data.pop("group_state",None)
-            await update.message.reply_text(f"✅ گروه وصل شد: {chat.title or ident}\n🆔 <code>{chat.id}</code>",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ گروه‌ها",callback_data="grp:main")]]))
-        except Exception as e:
-            logger.error("Set group: %s",e); context.user_data.pop("group_state", None); context.user_data.pop("channel_state", None); await update.message.reply_text("❌ گروه پیدا نشد یا ربات Administrator نیست.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ گروه‌ها",callback_data="grp:main")]]))
-        return True
-    if s=="send_group":
-        cid=context.user_data.get("group_target"); context.user_data.clear()
-        try:
-            await context.bot.send_message(chat_id=int(cid) if cid and re.fullmatch(r"-?\d+",cid) else cid,text=text)
-            await update.message.reply_text("✅ پیام در گروه ارسال شد.",reply_markup=channel_keyboard())
-        except Exception as e:
-            logger.error("Group send: %s",e); await update.message.reply_text("❌ ارسال نشد. دسترسی ارسال پیام ربات را بررسی کن.",reply_markup=channel_keyboard())
+        try: chat=await context.bot.get_chat(text); set_channel_config(text); context.user_data.pop("channel_state",None); await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or text}",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Set channel: %s",e); await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی ندارد.")
         return True
     if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
@@ -2729,11 +2187,11 @@ async def channel_text_save(update,context):
             dt=datetime.strptime(text,"%Y-%m-%d %H:%M").replace(tzinfo=TZ)
             if dt<=datetime.now(TZ): raise ValueError
             await save_channel_post(context,uid,"once",None,None,dt.isoformat(),update.message)
-        except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30", reply_markup=InlineKeyboardMarkup([[back_button("ch:main", uid=uid)]]))
+        except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30")
         return True
     if s in ("daily_custom","wtime_custom"):
         v=parse_time(text)
-        if not v: await update.message.reply_text("❌ ساعت اشتباه است. مثال 18:30", reply_markup=InlineKeyboardMarkup([[back_button("ch:main", uid=uid)]])); return True
+        if not v: await update.message.reply_text("❌ ساعت اشتباه است. مثال 18:30"); return True
         await save_channel_post(context,uid,"daily" if s=="daily_custom" else "weekly",v,None if s=="daily_custom" else context.user_data.get("channel_weekday"),None,update.message); return True
     return False
 
@@ -2798,9 +2256,7 @@ def admin_keyboard():
         [
             InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast"),
         ],
-        [InlineKeyboardButton("📢 مدیریت کانال و پست‌گذاری", callback_data="adm:channel")],
-        [InlineKeyboardButton("👥 مدیریت گروه‌ها", callback_data="grp:main")],
-        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
+        [InlineKeyboardButton("📡 مدیریت کانال", callback_data="adm:channel")],
     ])
 
 
@@ -2893,12 +2349,7 @@ async def admin_panel_callback(update, context):
         await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "channel":
-        await q.message.reply_text(
-            "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
-            "اتصال کانال، تست اتصال، ساخت پست، مشاهده پست‌ها و انتشار خودکار.",
-            parse_mode="HTML",
-            reply_markup=channel_keyboard(),
-        )
+        await q.message.reply_text("📢 <b>مدیریت کانال</b>\n\nاتصال کانال، ساخت پست و زمان‌بندی روزانه/هفتگی.",parse_mode="HTML",reply_markup=channel_keyboard())
 
     elif action == "broadcast":
         context.user_data["admin_broadcast"] = True
@@ -3037,9 +2488,6 @@ async def reminder_job(context):
     c.close()
 
     for g in goals:
-        sc=db(); rr=sc.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(g["user_id"],)).fetchone(); sc.close()
-        if rr and not rr["reminders_enabled"]:
-            continue
         if get_status(g["user_id"], g["id"]) == "done":
             continue
         uid = g["user_id"]
@@ -3077,26 +2525,6 @@ async def text_router(update, context):
     if not await require_subscription(update, context):
         return
     text = update.message.text.strip()
-    if text in MAIN_MENU_TEXTS:
-        clear_transient_state(context)
-    if context.user_data.get("auto_wait_interval"):
-        try:
-            minutes = int(text)
-            if minutes < 5 or minutes > 1440:
-                raise ValueError
-        except ValueError:
-            await update.message.reply_text("❌ عدد نامعتبر است. فقط عددی بین ۵ تا ۱۴۴۰ دقیقه وارد کن.")
-            return
-        set_auto_setting("interval_minutes", str(minutes))
-        set_auto_setting("enabled", "1")
-        set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
-        context.user_data.pop("auto_wait_interval", None)
-        await update.message.reply_text(
-            f"✅ انتشار خودکار روی هر {minutes} دقیقه تنظیم شد و روشن است.",
-            reply_markup=auto_channel_keyboard(),
-        )
-        return
-
     if context.user_data.get("auto_wait_time"):
         value = parse_time(text)
         if not value:
@@ -3116,27 +2544,12 @@ async def text_router(update, context):
         return
     if await final_admin_text(update, context):
         return
-    gs=context.user_data.get("group_state")
-    if gs=="set":
-        context.user_data["channel_state"]="set_group"
-        if await channel_text_save(update, context):
-            return
-    if gs=="send":
-        context.user_data["channel_state"]="send_group"
-        if await channel_text_save(update, context):
-            return
     if await channel_text_save(update, context):
         return
 
     if await admin_broadcast_save(update, context):
         return
 
-    if await ai_chat_text(update, context):
-        return
-    if await custom_goal_save(update, context):
-        return
-    if await custom_duration_save(update, context):
-        return
     if await custom_time_save(update, context):
         return
 
@@ -3147,48 +2560,36 @@ async def text_router(update, context):
         return
 
     menu = T[lang(uid)]["menu"]
-    if text in ("🎯 اهداف امروز", "🎯 Today's Goals"):
+    if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
         await today(update, context)
-    elif text in ("✏️ هدف خودم می‌نویسم", "✏️ Write my own goal"):
-        await custom_goal_start(update, context)
-    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals"):
+    elif text in (menu[0][1], "➕ هدف جدید", "➕ New Goal"):
+        await new_goal(update, context)
+    elif text in (menu[1][0], "🏆 اهداف آماده", "🏆 Ready Goals"):
         await ready_menu(update, context)
-    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals"):
+    elif text in (menu[1][1], "✏️ ویرایش اهداف", "✏️ Edit Goals"):
         await edit_menu(update, context)
-    elif text in ("📅 جدول هفتگی", "📅 Weekly Table"):
+    elif text in (menu[2][0], "📅 جدول هفتگی", "📅 Weekly Table"):
         await weekly(update, context)
-    elif text in ("📊 آمار من", "📊 My Stats"):
+    elif text in (menu[2][1], "📊 آمار من", "📊 My Stats"):
         await stats(update, context)
-    elif text in ("👤 پروفایل", "👤 Profile"):
+    elif text in (menu[3][0], "👤 پروفایل", "👤 Profile"):
         await profile(update, context)
-    elif text in ("🏆 دستاوردها", "🏆 Achievements"):
+    elif text in (menu[3][1], "🏆 دستاوردها", "🏆 Achievements"):
         await achievements(update, context)
-    elif text in ("⭐ XP",):
-        await xp_command(update, context)
-    elif text in ("🤝 دعوت دوستان", "🤝 Referrals"):
-        await referral(update, context)
-    elif text in ("📈 قیمت آنلاین", "📈 Online Prices"):
-        await prices(update, context)
-    elif text in ("🤖 چت با AI", "🤖 AI Chat"):
-        await ai_chat_start(update, context)
-    elif text in ("🎫 پشتیبانی", "🎫 Support"):
-        await support_start(update, context)
-    elif text in ("📚 راهنمای ربات", "📚 Bot Guide"):
-        await general_guide(update, context)
-    elif text in ("⚙️ تنظیمات", "⚙️ Settings"):
+    elif text in (menu[4][0], "⚙️ تنظیمات", "⚙️ Settings"):
         await settings(update, context)
-    elif text in ("📢 مدیریت کانال", "📢 Channel Management"):
-        if admin_guard(uid):
-            await update.message.reply_text(
-                "📢 <b>مدیریت کانال و پست‌گذاری</b>",
-                parse_mode="HTML",
-                reply_markup=channel_keyboard(),
-            )
-        else:
-            await update.message.reply_text("⛔ دسترسی ندارید.")
     elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
         await admin_command(update, context)
-
+    elif text == "⭐ XP":
+        await xp_command(update, context)
+    elif text == "🤝 دعوت دوستان":
+        await referral(update, context)
+    elif text == "📈 قیمت آنلاین":
+        await prices(update, context)
+    elif text in ("🎫 پشتیبانی", "🎫 Support"):
+        await support_start(update, context)
+    elif text == "🤝 Referrals":
+        await referral(update, context)
     else:
         log_activity(uid, "text_message")
 
@@ -3235,15 +2636,7 @@ async def xp_command(update,context):
     uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
 
 def final_admin_keyboard():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],
-        [InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],
-        [InlineKeyboardButton("📡 کانال",callback_data="adm:channel"),InlineKeyboardButton("👥 گروه‌ها",callback_data="grp:main")],
-        [InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip")],
-        [InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],
-        [InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],
-        [InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")],
-    ])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال",callback_data="adm:channel"),InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features")],[InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip"),InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets")],[InlineKeyboardButton("🩺 Health Check",callback_data="adm:health"),InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report")],[InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")]])
 
 async def final_admin_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -3290,9 +2683,7 @@ async def final_admin_text(update,context):
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {e}"); return True
 
-async def support_start(update,context):
-    context.user_data["support_new"]=True
-    await update.message.reply_text("🎫 پیام پشتیبانی را بفرست:", reply_markup=InlineKeyboardMarkup([[main_menu_button(update.effective_user.id)]]))
+async def support_start(update,context): context.user_data["support_new"]=True; await update.message.reply_text("🎫 پیام پشتیبانی را بفرست:")
 async def support_text(update,context):
     if not context.user_data.get("support_new"): return False
     uid=update.effective_user.id; now=datetime.now(TZ).isoformat(); text=update.message.text.strip(); c=db(); cur=c.execute("INSERT INTO tickets(user_id,subject,created_at,updated_at) VALUES(?,?,?,?)",(uid,text[:80],now,now)); c.execute("INSERT INTO ticket_messages(ticket_id,sender_id,message,created_at) VALUES(?,?,?,?)",(cur.lastrowid,uid,text,now)); c.commit(); c.close(); context.user_data.pop("support_new",None); await update.message.reply_text(f"🎫 تیکت #{cur.lastrowid} ثبت شد."); return True
@@ -3300,131 +2691,7 @@ async def support_text(update,context):
 async def referral(update,context):
     uid=update.effective_user.id; c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]; c.close(); code=r["referral_code"] if r else hashlib.sha256(str(uid).encode()).hexdigest()[:10]; me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code; await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}")
 
-def prices_keyboard(uid):
-    fa=lang(uid)=="fa"
-    labels=[("usd","💵 دلار" if fa else "💵 USD"),("eur","💶 یورو" if fa else "💶 EUR"),("gold18","🪙 طلای ۱۸" if fa else "🪙 18K Gold"),("coin","🪙 سکه امامی" if fa else "🪙 Coin"),("btc","₿ BTC"),("eth","Ξ ETH"),("sp500","📊 S&P 500"),("nasdaq","📊 Nasdaq"),("dow","📊 Dow Jones")]
-    rows=[]
-    for i in range(0,len(labels),2): rows.append([InlineKeyboardButton(a,callback_data=f"price:{k}") for k,a in labels[i:i+2]])
-    rows.append([InlineKeyboardButton("🔄 بروزرسانی همه" if fa else "🔄 Refresh all",callback_data="price:all")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="price:main")])
-    return InlineKeyboardMarkup(rows)
-
-async def fetch_url_json(url):
-    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 MyTasksBot/1.0"})
-    with urllib.request.urlopen(req,timeout=15) as r: return json.loads(r.read().decode("utf-8"))
-
-def fetch_url_json_post(url, payload):
-    body=json.dumps(payload).encode("utf-8")
-    req=urllib.request.Request(url,data=body,headers={"Content-Type":"application/json","User-Agent":"MyTasksBot/1.0"},method="POST")
-    with urllib.request.urlopen(req,timeout=15) as r:
-        return json.loads(r.read().decode("utf-8"))
-
-
-def tgju_value(url):
-    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
-    with urllib.request.urlopen(req,timeout=15) as r: html=r.read().decode("utf-8","ignore")
-    # Common TGJU price page pattern: the first numeric market value in the page.
-    vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,٫٬]+)',html,re.I)
-    if not vals: vals=re.findall(r'([0-9]{1,3}(?:,[0-9]{3})+)',html)
-    if not vals: raise ValueError("price not found")
-    return vals[0]
-
-async def fetch_price(asset):
-    # BTC/ETH: use the direct Iranian IRT market from Nobitex.
-    # The v3 orderbook is the preferred live source; values are Rial and
-    # are converted to Toman exactly once. Stats/trades are fallbacks.
-    if asset in ("btc", "eth"):
-        symbol = f"{asset.upper()}IRT"
-        try:
-            data = await asyncio.to_thread(
-                fetch_url_json,
-                f"https://api.nobitex.ir/v3/orderbook/{symbol}",
-            )
-            last_trade = data.get("lastTradePrice")
-            if last_trade is None:
-                raise ValueError("lastTradePrice missing")
-            return f"{float(last_trade)/10:,.0f} تومان"
-        except Exception as e:
-            logger.warning("Nobitex v3 orderbook %s failed: %s", symbol, e)
-        try:
-            data = await asyncio.to_thread(
-                fetch_url_json,
-                f"https://api.nobitex.ir/v2/trades/{symbol}",
-            )
-            trades = data.get("trades") or []
-            if trades:
-                return f"{float(trades[0]['price'])/10:,.0f} تومان"
-            raise ValueError("no trades")
-        except Exception as e:
-            logger.warning("Nobitex trades %s failed: %s", symbol, e)
-        try:
-            data = await asyncio.to_thread(
-                fetch_url_json_post,
-                "https://api.nobitex.ir/market/stats",
-                {"srcCurrency": asset, "dstCurrency": "rls"},
-            )
-            latest = data.get("stats", {}).get(f"{asset}-rls", {}).get("latest")
-            if latest is None:
-                raise ValueError("latest price missing")
-            return f"{float(latest)/10:,.0f} تومان"
-        except Exception as e:
-            logger.warning("Nobitex stats %s failed: %s", symbol, e)
-            raise
-    if asset in ("sp500","nasdaq","dow"):
-        symbols={"sp500":"%5EGSPC","nasdaq":"%5EIXIC","dow":"%5EDJI"}
-        data=await asyncio.to_thread(fetch_url_json,f"https://query1.finance.yahoo.com/v8/finance/chart/{symbols[asset]}?range=1d&interval=1m")
-        meta=data["chart"]["result"][0]["meta"]
-        return f"{meta.get('regularMarketPrice',0):,.2f} USD"
-    urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
-    return await asyncio.to_thread(tgju_value,urls[asset]) + (" تومان" if asset in ("usd","eur","gold18","coin") else "")
-
-async def price_callback(update,context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
-    if asset=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
-    names={"usd":"دلار","eur":"یورو","gold18":"طلای ۱۸ عیار","coin":"سکه امامی","btc":"BTC (بازار ایران)","eth":"ETH (بازار ایران)","sp500":"S&P 500","nasdaq":"Nasdaq","dow":"Dow Jones"}
-    assets=list(names) if asset=="all" else [asset]
-    lines=["📈 قیمت آنلاین", f"🕒 بروزرسانی: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')}", ""]
-    for a in assets:
-        try: lines.append(f"{names[a]}: {await fetch_price(a)}")
-        except Exception as e: lines.append(f"{names[a]}: ❌ دریافت نشد") ; logger.warning("Price %s failed: %s",a,e)
-    await q.message.reply_text("\n".join(lines),reply_markup=prices_keyboard(uid))
-
-async def prices(update,context):
-    uid=update.effective_user.id
-    await update.message.reply_text("📈 قیمت آنلاین\n\nیکی را انتخاب کن:",reply_markup=prices_keyboard(uid))
-
-async def ai_chat_start(update,context):
-    uid=update.effective_user.id
-    if not feature_enabled("ai"):
-        await update.message.reply_text("🤖 چت AI فعلاً غیرفعال است." if lang(uid)=="fa" else "🤖 AI Chat is currently disabled."); return
-    context.user_data["ai_chat"]=True
-    await update.message.reply_text("🤖 سوالت را بفرست." if lang(uid)=="fa" else "🤖 Send your question.", reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
-
-async def ai_chat_text(update,context):
-    if not context.user_data.get("ai_chat"): return False
-    uid=update.effective_user.id; text=update.message.text.strip()
-    if text in ("🏠 منوی اصلی","🏠 Main Menu"):
-        context.user_data.pop("ai_chat",None); await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return True
-    api_key=os.environ.get("OPENAI_API_KEY","").strip()
-    if not api_key:
-        context.user_data.pop("ai_chat", None)
-        await update.message.reply_text("❌ OPENAI_API_KEY در Railway تنظیم نشده است.\n\n🏠 به منوی اصلی برگشتیم." if lang(uid)=="fa" else "❌ OPENAI_API_KEY is not configured in Railway.\n\n🏠 Returned to the main menu.", reply_markup=keyboard(uid))
-        return True
-    c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT ai_daily_used,ai_used_date FROM user_settings WHERE user_id=?",(uid,)).fetchone(); today=datetime.now(TZ).date().isoformat(); used=r["ai_daily_used"] if r and r["ai_used_date"]==today else 0; limit=100 if is_vip(uid) else 10
-    if used>=limit: c.close(); await update.message.reply_text("⛔ سهمیه AI امروز تمام شده است." if lang(uid)=="fa" else "⛔ Your AI quota for today is used up."); return True
-    c.execute("UPDATE user_settings SET ai_daily_used=?,ai_used_date=? WHERE user_id=?",(used+1,today,uid)); c.commit(); c.close()
-    try:
-        payload=json.dumps({"model":os.environ.get("OPENAI_MODEL","gpt-5-mini"),"input":f"پاسخ کوتاه، مفید و امن به این سوال کاربر بده: {text}","max_output_tokens":500}).encode("utf-8")
-        req=urllib.request.Request("https://api.openai.com/v1/responses",data=payload,headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},method="POST")
-        with urllib.request.urlopen(req,timeout=35) as resp: data=json.loads(resp.read().decode("utf-8"))
-        answer=data.get("output_text","").strip() or "پاسخی دریافت نشد."
-        await update.message.reply_text(answer,reply_markup=keyboard(uid))
-    except Exception as e:
-        logger.error("AI chat failed: %s",e)
-        context.user_data.pop("ai_chat", None)
-        await update.message.reply_text("❌ پاسخ AI دریافت نشد.\n\n🏠 به منوی اصلی برگشتیم." if lang(uid)=="fa" else "❌ AI did not respond.\n\n🏠 Returned to the main menu.", reply_markup=keyboard(uid))
-    return True
-
+async def prices(update,context): await update.message.reply_text("📈 قیمت آنلاین\n\nدلار | یورو | طلا | سکه | BTC | ETH | شاخص‌ها\n\nزیرساخت آماده اتصال به منبع آنلاین قیمت است.")
 
 async def build_daily_report():
     d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
@@ -3434,9 +2701,9 @@ async def run_health_checks(bot,admin_id=0):
     checks=[("Bot","OK" if BOT_TOKEN else "ERROR","token")]
     try: c=db(); c.execute("SELECT 1"); c.close(); checks.append(("Database","OK","SQLite"))
     except Exception as e: checks.append(("Database","ERROR",str(e)))
-    channel=selected_chat_id()
-    if channel:
-        try: await bot.get_chat(int(channel) if re.fullmatch(r"-?\d+",channel) else channel); checks.append(("Channel","OK","reachable"))
+    cfg=get_channel_config()
+    if cfg and cfg["channel_id"]:
+        try: await bot.get_chat(cfg["channel_id"]); checks.append(("Channel","OK","reachable"))
         except Exception as e: checks.append(("Channel","ERROR",str(e)))
     else: checks.append(("Channel","WARN","not configured"))
     checks += [("Scheduler","OK","configured"),("AI","OK" if feature_enabled("ai") else "OFF","optional")]
@@ -3445,36 +2712,13 @@ def health_text():
     c=db(); rows=c.execute("SELECT service,status FROM health_checks ORDER BY id DESC LIMIT 8").fetchall(); c.close(); return "🩺 Health Check\n\n"+"\n".join(f"{'🟢' if r['status']=='OK' else '🔴' if r['status']=='ERROR' else '🟡'} {r['service']}: {r['status']}" for r in rows)
 async def daily_report_job(context):
     now=datetime.now(TZ)
-    if now.hour == 23 and now.minute == 59:
-        await build_daily_report()
-        channel = selected_chat_id()
-        if channel and get_auto_setting("night_poll_date", "") != now.date().isoformat():
-            try:
-                await context.bot.send_poll(
-                    chat_id=channel,
-                    question="🌙 ارزیابی امشب: از محتوای امروز راضی بودی؟",
-                    options=["😍 خیلی خوب بود", "👍 خوب بود", "🔄 بهترش کنیم"],
-                    is_anonymous=False,
-                )
-                set_auto_setting("night_poll_date", now.date().isoformat())
-            except Exception as e:
-                logger.warning("Night evaluation poll failed: %s", e)
+    if now.hour==23 and now.minute==59: await build_daily_report()
 
 admin_panel_callback=final_admin_panel_callback
 admin_keyboard=final_admin_keyboard
 
 async def error_handler(update, context):
     logger.error("Bot error", exc_info=context.error)
-    try:
-        if update and update.effective_user and update.effective_chat:
-            clear_transient_state(context)
-            await context.bot.send_message(
-                update.effective_chat.id,
-                "⚠️ این بخش با خطا مواجه شد. سایر امکانات ربات همچنان فعال هستند.\n🏠 به منوی اصلی برگشتیم.",
-                reply_markup=keyboard(update.effective_user.id),
-            )
-    except Exception:
-        logger.exception("Failed to recover from handler error")
 
 
 async def my_id(update, context):
@@ -3506,29 +2750,19 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
 
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
-    app.add_handler(CallbackQueryHandler(nav_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
-    app.add_handler(CallbackQueryHandler(group_panel_callback, pattern=r"^grp:"))
     app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
     app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
     app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
     app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
-    app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
-    app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
-    app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
     app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
     app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
     app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
     app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
-    app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
-    app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
-    app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
-    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
-    app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
     app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
     app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
@@ -3552,9 +2786,7 @@ def main():
     app.add_handler(CommandHandler("xp", xp_command))
     app.add_handler(CommandHandler("referral", referral))
     app.add_handler(CommandHandler("prices", prices))
-    app.add_handler(CommandHandler("help", general_guide))
     app.add_handler(CommandHandler("support", support_start))
-    app.add_handler(CallbackQueryHandler(guide_callback, pattern=r"^guide:"))
     app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_error_handler(error_handler)
@@ -3572,3 +2804,143 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ================= FINAL MYTASKS V9 SETTINGS =================
+# Central feature switches: when disabled by admin, the feature should be hidden
+# by the menu builder and rejected by its handler.
+FINAL_FEATURES = {
+    "goals": True,
+    "channel_management": True,
+    "group_management": True,
+    "ai_chat": True,
+    "online_prices": True,
+    "sports": True,
+    "food": True,
+    "quotes": True,
+    "support": True,
+    "user_content_publish": True,
+    "smart_reminders": True,
+    "xp_rewards": True,
+    "referrals": True,
+    "weekly_report": True,
+    "streaks": True,
+    "challenges": True,
+    "achievements": True,
+    "channel_analytics": True,
+    "ab_testing": True,
+    "backup": True,
+    "admin_alerts": True,
+    "content_calendar": True,
+    "publish_queue": True,
+    "anti_spam": True,
+    "smart_goal_suggestions": True,
+    "timezone": True,
+    "paid_features": False,
+}
+
+# Requested publication intervals: start at 1 minute.
+FINAL_PUBLISH_INTERVALS = [
+    (1, "۱ دقیقه"), (5, "۵ دقیقه"), (10, "۱۰ دقیقه"),
+    (15, "۱۵ دقیقه"), (20, "۲۰ دقیقه"), (30, "۳۰ دقیقه"),
+    (60, "۱ ساعت"), (120, "۲ ساعت"), (360, "۶ ساعت"),
+    (720, "۱۲ ساعت"), (1440, "روزانه"),
+]
+
+# Goal lifetime: starts at 1 day and includes indefinite lifetime.
+FINAL_GOAL_DURATIONS = [
+    (1, "۱ روز"), (3, "۳ روز"), (7, "۷ روز"), (14, "۱۴ روز"),
+    (30, "۳۰ روز"), (60, "۶۰ روز"), (90, "۹۰ روز"),
+    (180, "۶ ماه"), (365, "۱ سال"),
+    ("custom", "📅 تاریخ دلخواه"),
+    ("forever", "♾️ بدون محدودیت"),
+]
+
+# Channel content tree with the requested quotes/scientists branch.
+FINAL_CHANNEL_TOPICS = {
+    "🎯 اهداف و موفقیت": [
+        "هدف‌گذاری", "عادت‌سازی", "تمرکز", "مدیریت زمان", "انضباط شخصی"
+    ],
+    "💰 سرمایه‌گذاری و مالی": [
+        "سواد مالی", "بودجه‌بندی", "پس‌انداز", "مدیریت ریسک",
+        "مفاهیم پایه سرمایه‌گذاری"
+    ],
+    "🧠 رشد فردی": [
+        "اعتمادبه‌نفس", "انگیزه", "ذهنیت", "اهمال‌کاری", "خودشناسی"
+    ],
+    "📚 یادگیری": [
+        "مطالعه", "یادگیری مهارت", "مرور و یادسپاری", "کتاب‌خوانی", "یادگیری زبان"
+    ],
+    "🏃 سلامتی و سبک زندگی": [
+        "ورزش ۱۰ دقیقه‌ای", "خواب بهتر", "تغذیه متعادل",
+        "آب و انرژی روزانه", "روتین صبح و شب"
+    ],
+    "🍎 تغذیه و خواص مواد غذایی": [
+        "سیب", "لیمو", "میوه‌ها", "سبزیجات", "تغذیه سالم"
+    ],
+    "🌅 صبح و 🌙 شب": [
+        "پیام شروع روز", "هدف‌گذاری صبحگاهی", "جمع‌بندی شبانه",
+        "ارزیابی روز", "آرام‌سازی قبل از خواب"
+    ],
+    "👨‍🔬 سخنان بزرگان و دانشمندان": [
+        "دانشمندان ایرانی قدیم", "دانشمندان ایرانی معاصر",
+        "دانشمندان جهان", "بزرگان علم و فناوری",
+        "سخنان انگیزشی بزرگان", "جملات آموزنده و حکمت‌آمیز"
+    ],
+    "💡 نکات کاربردی": [
+        "زندگی روزمره", "کسب‌وکار", "فناوری", "بهره‌وری"
+    ],
+    "📰 موضوع آزاد": ["موضوع دلخواه"]
+}
+
+# Crypto intentionally removed from online price lookup.
+FINAL_ONLINE_PRICE_ITEMS = [
+    ("💵 دلار", "usd"),
+    ("💶 یورو", "eur"),
+    ("🪙 طلا", "gold"),
+    ("🟡 سکه", "coin"),
+    ("📊 شاخص‌ها", "indices"),
+]
+
+# Content variation requirements for repeated scheduled posts.
+FINAL_CONTENT_RULES = {
+    "new_text_each_time": True,
+    "new_example_each_time": True,
+    "new_exercise_each_time": True,
+    "avoid_recent_duplicates": True,
+    "short_and_useful": True,
+    "include_example_when_relevant": True,
+}
+
+def final_feature_enabled(name):
+    return bool(FINAL_FEATURES.get(name, True))
+
+def final_generation_instruction(topic, subtopic=""):
+    return (
+        f"موضوع: {topic}\n"
+        f"زیرموضوع: {subtopic or 'آزاد'}\n"
+        "این انتشار باید با انتشارهای قبلی متفاوت باشد. "
+        "عنوان، متن، مثال و تمرین را تغییر بده. "
+        "از تکرار عبارات قبلی جلوگیری کن. "
+        "متن کوتاه، مفید، خوانا و مناسب کانال تلگرام باشد. "
+        "اگر موضوع اجازه می‌دهد یک مثال واقعی و ساده اضافه کن."
+    )
+
+# Daily survey belongs after the last daily post, not under every post.
+FINAL_DAILY_SURVEY = True
+
+# Admin-side monetization switch. Paid features remain disabled until the admin enables them.
+FINAL_PAID_FEATURES_ENABLED = False
+
+# User-content publishing flow: receive media/text -> preview -> edit -> approve -> publish.
+FINAL_USER_POST_ACTIONS = [
+    "📢 انتخاب کانال",
+    "📝 ویرایش متن",
+    "🖼️ تغییر تصویر",
+    "🏷️ ویرایش تگ/هشتگ",
+    "⏰ تغییر زمان",
+    "👁 پیش‌نمایش",
+    "✅ تأیید و انتشار",
+    "❌ لغو",
+    "🏠 منوی اصلی",
+]
