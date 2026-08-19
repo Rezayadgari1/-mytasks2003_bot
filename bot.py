@@ -32,6 +32,9 @@ ADMIN_IDS = {
     for x in os.environ.get("ADMIN_IDS", "").split(",")
     if x.strip().isdigit()
 }
+_single_admin_id = os.environ.get("ADMIN_ID", "").strip()
+if _single_admin_id.isdigit():
+    ADMIN_IDS.add(int(_single_admin_id))
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -411,7 +414,10 @@ def display_name(uid):
 
 
 def keyboard(uid):
-    return ReplyKeyboardMarkup(T[lang(uid)]["menu"], resize_keyboard=True)
+    rows = [list(row) for row in T[lang(uid)]["menu"]]
+    if admin_is_allowed(uid):
+        rows.append(["🛡 پنل مدیریت"] if lang(uid) == "fa" else ["🛡 Admin Panel"])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 
 def normalize_digits(s):
@@ -1569,7 +1575,7 @@ async def admin_panel_callback(update, context):
 async def admin_command(update, context):
     uid = update.effective_user.id
     if not admin_guard(uid):
-        await update.message.reply_text("⛔ دسترسی به پنل مدیریت ندارید.")
+        await update.message.reply_text("⛔ دسترسی به پنل مدیریت ندارید.\n\nاگر مدیر ربات هستی، /myid را بزن و شناسه‌ات را در ADMIN_ID قرار بده.")
         return
     log_activity(uid, "admin_open")
     await update.message.reply_text(
@@ -1758,12 +1764,23 @@ async def text_router(update, context):
         await achievements(update, context)
     elif text in (menu[4][0], "⚙️ تنظیمات", "⚙️ Settings"):
         await settings(update, context)
+    elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+        await admin_command(update, context)
     else:
         log_activity(uid, "text_message")
 
 
 async def error_handler(update, context):
     logger.error("Bot error", exc_info=context.error)
+
+
+async def my_id(update, context):
+    uid = update.effective_user.id
+    await update.message.reply_text(
+        f"🆔 شناسه تلگرام شما: <code>{uid}</code>\n\n"
+        "این عدد را داخل ADMIN_ID قرار بده و ربات را دوباره اجرا کن.",
+        parse_mode="HTML",
+    )
 
 
 def main():
@@ -1775,6 +1792,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("myid", my_id))
     app.add_handler(CommandHandler("admin", admin_command))
 
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
