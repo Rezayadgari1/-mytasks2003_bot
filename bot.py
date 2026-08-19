@@ -375,6 +375,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS channel_config(
         id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL DEFAULT '',
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS bot_settings(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT ''
+    )""")
+    c.execute("INSERT OR IGNORE INTO bot_settings(key,value) VALUES('required_subscription_enabled','1')")
+    c.execute("INSERT OR IGNORE INTO bot_settings(key,value) VALUES('required_channel_url','')")
     c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
         id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL,
         schedule_type TEXT NOT NULL DEFAULT 'once', schedule_time TEXT, weekday INTEGER,
@@ -828,6 +833,24 @@ def gender_keyboard(uid):
     ])
 
 
+def get_bot_setting(key, default=""):
+    c = db()
+    r = c.execute("SELECT value FROM bot_settings WHERE key=?", (key,)).fetchone()
+    c.close()
+    return r["value"] if r else default
+
+
+def set_bot_setting(key, value):
+    c = db()
+    c.execute("INSERT INTO bot_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    c.commit()
+    c.close()
+
+
+def required_subscription_enabled():
+    return get_bot_setting("required_subscription_enabled", "1") == "1"
+
+
 def required_channel():
     cfg = get_channel_config()
     return cfg["channel_id"] if cfg and cfg["channel_id"] else ""
@@ -852,6 +875,9 @@ def normalize_channel_input(value):
 
 
 def required_channel_url():
+    configured = get_bot_setting("required_channel_url", "").strip()
+    if configured:
+        return configured
     if REQUIRED_CHANNEL_URL:
         return REQUIRED_CHANNEL_URL
     channel = required_channel()
@@ -887,6 +913,8 @@ async def bot_can_manage_channel(bot, channel):
 
 
 async def is_channel_member(bot, uid):
+    if not required_subscription_enabled():
+        return True
     channel = required_channel()
     if not channel:
         return True
@@ -1988,7 +2016,35 @@ async def channel_text_save(update,context):
     uid=update.effective_user.id
     if not admin_guard(uid): return False
     s=context.user_data.get("channel_state"); text=update.message.text.strip()
+    if not s and context.user_data.get("membership_state"):
+        s = "membership_" + context.user_data.get("membership_state")
     if not s: return False
+    if s=="membership_channel":
+        channel = normalize_channel_input(text)
+        if not channel:
+            await update.message.reply_text("❌ شناسه کانال خالی است.", reply_markup=membership_admin_keyboard())
+            return True
+        ok, result = await bot_can_manage_channel(context.bot, channel)
+        if not ok:
+            await update.message.reply_text(result, reply_markup=membership_admin_keyboard())
+            return True
+        stored_channel = f"@{result.username}" if getattr(result, "username", None) else str(result.id)
+        set_channel_config(stored_channel)
+        set_bot_setting("required_channel_url", "")
+        context.user_data.pop("membership_state", None)
+        await update.message.reply_text(
+            f"✅ کانال عضویت با موفقیت تنظیم شد.\n\n📢 {result.title or channel}\n🆔 <code>{result.id}</code>",
+            parse_mode="HTML", reply_markup=membership_admin_keyboard()
+        )
+        return True
+    if s=="membership_url":
+        if not re.match(r"^https?://t\.me/\S+$", text, re.I):
+            await update.message.reply_text("❌ لینک نامعتبر است. مثال: https://t.me/MyTasks", reply_markup=membership_admin_keyboard())
+            return True
+        set_bot_setting("required_channel_url", text)
+        context.user_data.pop("membership_state", None)
+        await update.message.reply_text("✅ لینک عضویت ذخیره شد.", reply_markup=membership_admin_keyboard())
+        return True
     if s=="set":
         channel = normalize_channel_input(text)
         if not channel:
@@ -2087,8 +2143,36 @@ def admin_keyboard():
         [
             InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast"),
         ],
+        [InlineKeyboardButton("🔒 عضویت اجباری", callback_data="adm:membership")],
         [InlineKeyboardButton("📡 مدیریت کانال", callback_data="adm:channel")],
     ])
+
+
+def membership_admin_keyboard():
+    enabled = required_subscription_enabled()
+    state = "🟢 عضویت اجباری روشن" if enabled else "⚪ عضویت اجباری خاموش"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(state, callback_data="adm:membership_toggle")],
+        [InlineKeyboardButton("📡 تنظیم کانال عضویت", callback_data="adm:membership_channel")],
+        [InlineKeyboardButton("🔗 تنظیم لینک عضویت", callback_data="adm:membership_url")],
+        [InlineKeyboardButton("🧪 تست عضویت", callback_data="adm:membership_test")],
+        [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+    ])
+
+
+async def show_membership_admin(q):
+    channel = required_channel() or "تنظیم نشده"
+    enabled = required_subscription_enabled()
+    url = required_channel_url() or "برای کانال خصوصی تنظیم نشده"
+    text = (
+        "🔒 <b>مدیریت عضویت اجباری</b>\n\n"
+        f"وضعیت: <b>{'🟢 روشن' if enabled else '⚪ خاموش'}</b>\n"
+        f"📢 کانال: <code>{channel}</code>\n"
+        f"🔗 لینک عضویت: <code>{url}</code>\n\n"
+        "وقتی روشن باشد، کاربر قبل از استفاده از امکانات ربات باید عضو کانال باشد.\n"
+        "برای مدیر ربات محدودیت عضویت اعمال نمی‌شود."
+    )
+    await q.message.reply_text(text, parse_mode="HTML", reply_markup=membership_admin_keyboard())
 
 
 @subscription_required
@@ -2100,6 +2184,51 @@ async def admin_panel_callback(update, context):
         return
     await q.answer()
     action = q.data.split(":", 1)[1]
+
+    if action == "membership":
+        await show_membership_admin(q)
+        return
+
+    if action == "membership_toggle":
+        new_value = "0" if required_subscription_enabled() else "1"
+        set_bot_setting("required_subscription_enabled", new_value)
+        await q.message.reply_text(
+            "🟢 عضویت اجباری روشن شد." if new_value == "1" else "⚪ عضویت اجباری خاموش شد.",
+            reply_markup=membership_admin_keyboard(),
+        )
+        return
+
+    if action == "membership_channel":
+        context.user_data["membership_state"] = "channel"
+        await q.message.reply_text(
+            "📡 شناسه کانال را بفرست.\n\nمثال: <code>@MyTasks</code>\nیا: <code>https://t.me/MyTasks</code>\nیا برای کانال خصوصی: <code>-1001234567890</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if action == "membership_url":
+        context.user_data["membership_state"] = "url"
+        await q.message.reply_text(
+            "🔗 لینک عضویت کانال را بفرست.\n\nمثال: <code>https://t.me/MyTasks</code>\nبرای کانال خصوصی، لینک دعوت را وارد کن.",
+            parse_mode="HTML",
+        )
+        return
+
+    if action == "membership_test":
+        channel = required_channel()
+        if not channel:
+            await q.message.reply_text("❌ هنوز کانال عضویت تنظیم نشده است.", reply_markup=membership_admin_keyboard())
+            return
+        ok, result = await bot_can_manage_channel(context.bot, channel)
+        if ok:
+            await q.message.reply_text(
+                f"✅ کانال عضویت قابل دسترسی است.\n📢 {result.title or channel}\n🆔 <code>{result.id}</code>",
+                parse_mode="HTML", reply_markup=membership_admin_keyboard()
+            )
+        else:
+            await q.message.reply_text(result, reply_markup=membership_admin_keyboard())
+        return
+
     s = admin_stats()
 
     if action == "stats":
