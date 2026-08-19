@@ -237,7 +237,8 @@ T = {
             ["🎯 Today's Goals", "➕ New Goal"],
             ["🏆 Ready Goals", "✏️ Edit Goals"],
             ["📅 Weekly Table", "📊 My Stats"],
-            ["👤 Profile", "⚙️ Settings"],
+            ["👤 Profile", "🏆 Achievements"],
+            ["⚙️ Settings"],
         ],
         "today": "🎯 Today's Goals",
         "no_goals": "🎯 {name}, you have no goals yet.\nLet's start with «➕ New Goal».",
@@ -597,7 +598,6 @@ def achievement_check(uid):
         (uid,),
     ).fetchone()["n"]
     c.close()
-    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
 
     found = []
     if total_goals >= 1 and unlock_achievement(uid, "first_goal"):
@@ -1205,7 +1205,7 @@ async def edit_time_callback(update, context):
         return
     value = q.data.split(":", 1)[1]
     if value == "custom":
-        context.user_data["awaiting_custom_edit_time"] = True
+        context.user_data["awaiting_edit_time"] = True
         await q.message.reply_text(T[lang(uid)]["custom_time"])
         return
     reminder = None if value == "none" else parse_time(value)
@@ -1301,6 +1301,7 @@ async def delete_confirm(update, context):
     gid = int(q.data.split(":")[1])
     c = db()
     c.execute("DELETE FROM goal_days WHERE user_id=? AND goal_id=?", (uid, gid))
+    c.execute("DELETE FROM goal_steps WHERE user_id=? AND goal_id=?", (uid, gid))
     c.execute("DELETE FROM goals WHERE user_id=? AND id=?", (uid, gid))
     c.commit()
     c.close()
@@ -1408,6 +1409,7 @@ async def stats(update, context):
         (uid,),
     ).fetchone()["n"]
     c.close()
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     await update.message.reply_text(
         T[lang(uid)]["stats"].format(
             name=display_name(uid),
@@ -1620,27 +1622,64 @@ async def auto_channel_callback(update, context):
             reply_markup=auto_channel_keyboard()
         )
 
-async def channel_panel_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); a=q.data.split(":",1)[1]; cfg=get_channel_config(); channel=cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
-    if a=="auto":
+async def channel_panel_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+    cfg = get_channel_config()
+    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
+
+    if action == "main":
+        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
+    elif action == "set":
+        context.user_data["channel_state"] = "set"
+        await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
+    elif action == "auto":
         await q.message.reply_text(
             "🤖 <b>انتشار خودکار</b>\n\n"
             "ربات می‌تواند درباره موفقیت، هدف‌گذاری، رشد فردی و آموزش، "
             "هر روز یا هر هفته یک پست جدید تولید و در کانال منتشر کند.",
-            parse_mode="HTML", reply_markup=auto_channel_keyboard()
+            parse_mode="HTML",
+            reply_markup=auto_channel_keyboard(),
         )
-    elif a=="main":
-        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
-        if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
-    elif a=="test":
-        if channel=="تنظیم نشده": await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        try: chat=await context.bot.get_chat(channel); await q.message.reply_text(f"✅ اتصال موفق است.\n📢 {chat.title or channel}",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Channel test: %s",e); await q.message.reply_text("❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",reply_markup=channel_keyboard())
-    elif a=="new": context.user_data["channel_state"]="content"; await q.message.reply_text("📝 متن پست را بفرست:")
-    elif a=="list":
-        c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20").fetchall(); c.close(); text="📋 <b>پست‌های فعال</b>\n\n"+("\n".join(f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}" for r in rows) if rows else "موردی نیست."); await q.message.reply_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
+    elif action == "test":
+        if channel == "تنظیم نشده":
+            await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
+            return
+        try:
+            chat = await context.bot.get_chat(channel)
+            await q.message.reply_text(
+                f"✅ اتصال موفق است.\n📢 {chat.title or channel}",
+                reply_markup=channel_keyboard(),
+            )
+        except Exception as e:
+            logger.error("Channel test: %s", e)
+            await q.message.reply_text(
+                "❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",
+                reply_markup=channel_keyboard(),
+            )
+    elif action == "new":
+        context.user_data["channel_state"] = "content"
+        await q.message.reply_text("📝 متن پست را بفرست:")
+    elif action == "list":
+        c = db()
+        rows = c.execute(
+            "SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+        c.close()
+        text = "📋 <b>پست‌های فعال</b>\n\n"
+        if rows:
+            text += "\n".join(
+                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
+                for r in rows
+            )
+        else:
+            text += "موردی نیست."
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=channel_keyboard())
 
 async def channel_schedule_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -1828,7 +1867,7 @@ async def admin_panel_callback(update, context):
         ).fetchall()
         c.close()
         text = "📈 <b>فعالیت‌ها</b>\n\n"
-        text += "\n".join(f"• {r['action']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        text += "\n".join(f"• {r['activity']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
         await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "reminders":
@@ -2058,23 +2097,23 @@ async def text_router(update, context):
         return
 
     menu = T[lang(uid)]["menu"]
-    if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
+    if text in ("🎯 اهداف امروز", "🎯 Today's Goals") or text == menu[0][0]:
         await today(update, context)
-    elif text in (menu[0][1], "➕ هدف جدید", "➕ New Goal"):
+    elif text in ("➕ هدف جدید", "➕ New Goal") or text == menu[0][1]:
         await new_goal(update, context)
-    elif text in (menu[1][0], "🏆 اهداف آماده", "🏆 Ready Goals"):
+    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals") or text == menu[1][0]:
         await ready_menu(update, context)
-    elif text in (menu[1][1], "✏️ ویرایش اهداف", "✏️ Edit Goals"):
+    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals") or text == menu[1][1]:
         await edit_menu(update, context)
-    elif text in (menu[2][0], "📅 جدول هفتگی", "📅 Weekly Table"):
+    elif text in ("📅 جدول هفتگی", "📅 Weekly Table") or text == menu[2][0]:
         await weekly(update, context)
-    elif text in (menu[2][1], "📊 آمار من", "📊 My Stats"):
+    elif text in ("📊 آمار من", "📊 My Stats") or text == menu[2][1]:
         await stats(update, context)
-    elif text in (menu[3][0], "👤 پروفایل", "👤 Profile"):
+    elif text in ("👤 پروفایل", "👤 Profile") or (len(menu) > 3 and text == menu[3][0]):
         await profile(update, context)
-    elif text in (menu[3][1], "🏆 دستاوردها", "🏆 Achievements"):
+    elif text in ("🏆 دستاوردها", "🏆 Achievements") or (len(menu) > 3 and len(menu[3]) > 1 and text == menu[3][1]):
         await achievements(update, context)
-    elif text in (menu[4][0], "⚙️ تنظیمات", "⚙️ Settings"):
+    elif text in ("⚙️ تنظیمات", "⚙️ Settings") or (len(menu) > 4 and text == menu[4][0]):
         await settings(update, context)
     elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
         await admin_command(update, context)
