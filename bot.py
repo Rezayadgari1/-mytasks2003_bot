@@ -1,4 +1,3 @@
-
 import logging
 import os
 import re
@@ -354,6 +353,14 @@ def init_db():
         c.execute("ALTER TABLE users ADD COLUMN gender TEXT")
     if "last_active_at" not in columns:
         c.execute("ALTER TABLE users ADD COLUMN last_active_at TEXT")
+    c.execute("""CREATE TABLE IF NOT EXISTS channel_config(
+        id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL,
+        schedule_type TEXT NOT NULL DEFAULT 'once', schedule_time TEXT, weekday INTEGER,
+        run_at TEXT, enabled INTEGER NOT NULL DEFAULT 1, last_sent_at TEXT,
+        created_at TEXT NOT NULL, created_by INTEGER NOT NULL)""")
     c.commit()
     c.close()
 
@@ -1418,6 +1425,120 @@ async def stats(update, context):
 
 
 
+def get_channel_config():
+    c=db(); r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone(); c.close(); return r
+
+def set_channel_config(channel_id):
+    c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
+    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
+
+def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0):
+    c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by) VALUES(?,?,?,?,?,1,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by)); pid=cur.lastrowid; c.commit(); c.close(); return pid
+
+def channel_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📡 تنظیم کانال",callback_data="ch:set"),InlineKeyboardButton("🔌 تست اتصال",callback_data="ch:test")],[InlineKeyboardButton("📝 ساخت پست",callback_data="ch:new"),InlineKeyboardButton("📋 پست‌ها",callback_data="ch:list")],[InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]])
+
+def channel_schedule_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📤 ارسال فوری",callback_data="chs:now")],[InlineKeyboardButton("📅 یک‌بار",callback_data="chs:once"),InlineKeyboardButton("🔄 روزانه",callback_data="chs:daily")],[InlineKeyboardButton("📆 هفتگی",callback_data="chs:weekly")],[InlineKeyboardButton("❌ لغو",callback_data="chs:cancel")]])
+
+def channel_time_keyboard(prefix):
+    rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
+    rows.append([InlineKeyboardButton("🕐 ساعت دیگر",callback_data=f"{prefix}:custom")]); return InlineKeyboardMarkup(rows)
+
+def channel_schedule_text(r):
+    if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
+    if r["schedule_type"]=="weekly": return f"📆 هفتگی روز {r['weekday']} ساعت {r['schedule_time']}"
+    return f"📅 {r['run_at'].replace('T',' ') if r['run_at'] else 'فوری'}"
+
+async def channel_scheduler_job(context):
+    now=datetime.now(TZ); key=now.strftime("%Y-%m-%d %H:%M"); hhmm=now.strftime("%H:%M"); cfg=get_channel_config()
+    if not cfg or not cfg["enabled"] or not cfg["channel_id"]: return
+    c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1").fetchall(); c.close()
+    for r in rows:
+        due=(r["schedule_type"]=="daily" and r["schedule_time"]==hhmm) or (r["schedule_type"]=="weekly" and r["weekday"]==now.weekday() and r["schedule_time"]==hhmm) or (r["schedule_type"]=="once" and r["run_at"] and r["run_at"][:16]==key)
+        if not due or (r["last_sent_at"] and r["last_sent_at"][:16]==key): continue
+        try:
+            await context.bot.send_message(chat_id=cfg["channel_id"],text=r["content"])
+            c=db()
+            if r["schedule_type"]=="once": c.execute("UPDATE channel_posts SET enabled=0,last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
+            else: c.execute("UPDATE channel_posts SET last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
+            c.commit(); c.close()
+        except Exception as e: logger.error("Channel post failed: %s",e)
+
+async def channel_panel_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); a=q.data.split(":",1)[1]; cfg=get_channel_config(); channel=cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
+    if a=="set": context.user_data["channel_state"]="set"; await q.message.reply_text("📡 @username یا ID کانال را بفرست.")
+    elif a=="test":
+        if channel=="تنظیم نشده": await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        try: chat=await context.bot.get_chat(channel); await q.message.reply_text(f"✅ اتصال موفق است.\n📢 {chat.title or channel}",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Channel test: %s",e); await q.message.reply_text("❌ اتصال ناموفق. ربات را Administrator کانال کن و اجازه ارسال پیام بده.",reply_markup=channel_keyboard())
+    elif a=="new": context.user_data["channel_state"]="content"; await q.message.reply_text("📝 متن پست را بفرست:")
+    elif a=="list":
+        c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20").fetchall(); c.close(); text="📋 <b>پست‌های فعال</b>\n\n"+("\n".join(f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}" for r in rows) if rows else "موردی نیست."); await q.message.reply_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
+
+async def channel_schedule_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); a=q.data.split(":",1)[1]
+    if a=="cancel": context.user_data.clear(); await q.message.reply_text("❌ لغو شد.",reply_markup=channel_keyboard()); return
+    if a=="now":
+        cfg=get_channel_config()
+        if not cfg or not cfg["channel_id"]: await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.reply_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.reply_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
+    elif a=="once": context.user_data["channel_state"]="once"; await q.message.reply_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30")
+    elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.reply_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
+    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.reply_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
+
+async def channel_daily_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); v=q.data.split(":",1)[1]
+    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    await save_channel_post(context,uid,"daily",v,None,None,q.message)
+
+async def channel_weekday_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.reply_text("⏰ ساعت هفتگی:",reply_markup=channel_time_keyboard("chwtime"))
+
+async def channel_weektime_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); v=q.data.split(":",1)[1]
+    if v=="custom": context.user_data["channel_state"]="wtime_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    await save_channel_post(context,uid,"weekly",v,context.user_data["channel_weekday"],None,q.message)
+
+async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
+    cfg=get_channel_config()
+    if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
+
+async def channel_text_save(update,context):
+    uid=update.effective_user.id
+    if not admin_guard(uid): return False
+    s=context.user_data.get("channel_state"); text=update.message.text.strip()
+    if not s: return False
+    if s=="set":
+        try: chat=await context.bot.get_chat(text); set_channel_config(text); context.user_data.pop("channel_state",None); await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or text}",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Set channel: %s",e); await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی ندارد.")
+        return True
+    if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
+    if s=="once":
+        try:
+            dt=datetime.strptime(text,"%Y-%m-%d %H:%M").replace(tzinfo=TZ)
+            if dt<=datetime.now(TZ): raise ValueError
+            await save_channel_post(context,uid,"once",None,None,dt.isoformat(),update.message)
+        except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30")
+        return True
+    if s in ("daily_custom","wtime_custom"):
+        v=parse_time(text)
+        if not v: await update.message.reply_text("❌ ساعت اشتباه است. مثال 18:30"); return True
+        await save_channel_post(context,uid,"daily" if s=="daily_custom" else "weekly",v,None if s=="daily_custom" else context.user_data.get("channel_weekday"),None,update.message); return True
+    return False
+
 def admin_is_allowed(uid):
     return uid in ADMIN_IDS
 
@@ -1479,6 +1600,7 @@ def admin_keyboard():
         [
             InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast"),
         ],
+        [InlineKeyboardButton("📡 مدیریت کانال", callback_data="adm:channel")],
     ])
 
 
@@ -1568,6 +1690,9 @@ async def admin_panel_callback(update, context):
         text = "🏆 <b>دستاوردها</b>\n\n"
         text += "\n".join(f"• {r['code']}: <b>{r['n']}</b>" for r in rows) or "دستاوردی ثبت نشده."
         await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "channel":
+        await q.message.reply_text("📢 <b>مدیریت کانال</b>\n\nاتصال کانال، ساخت پست و زمان‌بندی روزانه/هفتگی.",parse_mode="HTML",reply_markup=channel_keyboard())
 
     elif action == "broadcast":
         context.user_data["admin_broadcast"] = True
@@ -1741,6 +1866,9 @@ async def text_router(update, context):
     register_user(uid, update.effective_user.first_name or "")
     text = update.message.text.strip()
 
+    if await channel_text_save(update, context):
+        return
+
     if await admin_broadcast_save(update, context):
         return
 
@@ -1804,6 +1932,11 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
 
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
+    app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
+    app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
+    app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
+    app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
@@ -1833,6 +1966,7 @@ def main():
     if app.job_queue:
         app.job_queue.run_repeating(reminder_job, interval=60, first=5)
         app.job_queue.run_repeating(morning_job, interval=60, first=10)
+        app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
 
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
