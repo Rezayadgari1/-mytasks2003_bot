@@ -856,6 +856,24 @@ async def settings(update, context):
     )
 
 
+def edit_time_keyboard(uid):
+    buttons = [
+        InlineKeyboardButton(x, callback_data=f"edit_time:{x}") for x in TIME_BUTTONS
+    ]
+    rows = [buttons[i:i + 4] for i in range(0, len(buttons), 4)]
+    rows.append([
+        InlineKeyboardButton(
+            "🔕 بدون یادآوری" if lang(uid) == "fa" else "🔕 No reminder",
+            callback_data="edit_time:none",
+        ),
+        InlineKeyboardButton(
+            "🕐 ساعت دیگر" if lang(uid) == "fa" else "🕐 Custom time",
+            callback_data="edit_time:custom",
+        ),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
 async def new_goal(update, context):
     uid = update.effective_user.id
     log_activity(uid, "new_goal")
@@ -1158,6 +1176,35 @@ async def change_reminder(update, context):
     )
 
 
+
+async def edit_time_callback(update, context):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    gid = context.user_data.get("edit_reminder_id")
+    if not gid:
+        return
+    value = q.data.split(":", 1)[1]
+    if value == "custom":
+        context.user_data["awaiting_custom_edit_time"] = True
+        await q.message.reply_text(T[lang(uid)]["custom_time"])
+        return
+    reminder = None if value == "none" else parse_time(value)
+    c = db()
+    c.execute(
+        "UPDATE goals SET reminder_time=? WHERE user_id=? AND id=?",
+        (reminder, uid, gid),
+    )
+    c.commit()
+    c.close()
+    context.user_data.pop("edit_reminder_id", None)
+    log_activity(uid, "reminder_changed")
+    await q.message.reply_text(
+        "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
+        reply_markup=keyboard(uid),
+    )
+
+
 async def time_change_callback(update, context):
     q = update.callback_query
     await q.answer()
@@ -1359,6 +1406,179 @@ async def stats(update, context):
     log_activity(uid, "stats")
 
 
+
+def admin_is_allowed(uid):
+    return uid in ADMIN_IDS
+
+
+def admin_guard(uid):
+    return admin_is_allowed(uid)
+
+
+def admin_stats():
+    c = db()
+    users = c.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    goals = c.execute("SELECT COUNT(*) AS n FROM goals").fetchone()["n"]
+    reminders = c.execute(
+        "SELECT COUNT(*) AS n FROM goals WHERE enabled=1 AND reminder_time IS NOT NULL"
+    ).fetchone()["n"]
+    activities = c.execute("SELECT COUNT(*) AS n FROM activity_log").fetchone()["n"]
+    achievements = c.execute("SELECT COUNT(*) AS n FROM achievements").fetchone()["n"]
+    today = datetime.now(TZ).date().isoformat()
+    active_today = c.execute(
+        "SELECT COUNT(DISTINCT user_id) AS n FROM activity_log WHERE activity_date=?",
+        (today,),
+    ).fetchone()["n"]
+    done_today = c.execute(
+        """SELECT COUNT(*) AS n FROM goal_days
+           WHERE goal_date=? AND status='done'""",
+        (today,),
+    ).fetchone()["n"]
+    new_today = c.execute(
+        "SELECT COUNT(*) AS n FROM users WHERE substr(created_at,1,10)=?",
+        (today,),
+    ).fetchone()["n"]
+    c.close()
+    return {
+        "users": users,
+        "goals": goals,
+        "reminders": reminders,
+        "activities": activities,
+        "achievements": achievements,
+        "active_today": active_today,
+        "done_today": done_today,
+        "new_today": new_today,
+    }
+
+
+def admin_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 آمار کلی", callback_data="adm:stats"),
+            InlineKeyboardButton("👥 کاربران", callback_data="adm:users"),
+        ],
+        [
+            InlineKeyboardButton("🎯 اهداف", callback_data="adm:goals"),
+            InlineKeyboardButton("📈 فعالیت‌ها", callback_data="adm:activity"),
+        ],
+        [
+            InlineKeyboardButton("⏰ یادآوری‌ها", callback_data="adm:reminders"),
+            InlineKeyboardButton("🏆 دستاوردها", callback_data="adm:achievements"),
+        ],
+        [
+            InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast"),
+        ],
+    ])
+
+
+async def admin_panel_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+    s = admin_stats()
+
+    if action == "stats":
+        text = (
+            "📊 <b>داشبورد مدیریت</b>\n\n"
+            f"👥 کاربران: <b>{s['users']}</b>\n"
+            f"🆕 کاربران جدید امروز: <b>{s['new_today']}</b>\n"
+            f"🟢 فعال امروز: <b>{s['active_today']}</b>\n"
+            f"🎯 اهداف: <b>{s['goals']}</b>\n"
+            f"✅ انجام‌شده امروز: <b>{s['done_today']}</b>\n"
+            f"⏰ یادآوری فعال: <b>{s['reminders']}</b>\n"
+            f"👀 کل فعالیت‌ها: <b>{s['activities']}</b>\n"
+            f"🏆 دستاوردها: <b>{s['achievements']}</b>"
+        )
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "users":
+        c = db()
+        rows = c.execute(
+            """SELECT u.user_id,u.first_name,u.gender,u.created_at,
+                      (SELECT COUNT(*) FROM goals g WHERE g.user_id=u.user_id) AS goals
+               FROM users u ORDER BY u.created_at DESC LIMIT 20"""
+        ).fetchall()
+        c.close()
+        if not rows:
+            text = "👥 کاربری ثبت نشده."
+        else:
+            text = "👥 <b>آخرین کاربران</b>\n\n"
+            for r in rows:
+                name = r["first_name"] or "بدون نام"
+                text += f"👤 {name} | ID: <code>{r['user_id']}</code> | 🎯 {r['goals']}\n"
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "goals":
+        c = db()
+        rows = c.execute(
+            """SELECT category,COUNT(*) AS n
+               FROM goals GROUP BY category ORDER BY n DESC"""
+        ).fetchall()
+        c.close()
+        text = "🎯 <b>اهداف بر اساس دسته</b>\n\n"
+        text += "\n".join(f"• {r['category']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "activity":
+        c = db()
+        rows = c.execute(
+            """SELECT action,COUNT(*) AS n
+               FROM activity_log GROUP BY action ORDER BY n DESC LIMIT 15"""
+        ).fetchall()
+        c.close()
+        text = "📈 <b>فعالیت‌ها</b>\n\n"
+        text += "\n".join(f"• {r['action']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "reminders":
+        c = db()
+        rows = c.execute(
+            """SELECT reminder_time,COUNT(*) AS n
+               FROM goals
+               WHERE enabled=1 AND reminder_time IS NOT NULL
+               GROUP BY reminder_time ORDER BY reminder_time"""
+        ).fetchall()
+        c.close()
+        text = "⏰ <b>یادآوری‌ها</b>\n\n"
+        text += "\n".join(f"🕐 {r['reminder_time']}: <b>{r['n']}</b>" for r in rows) or "یادآوری فعالی نیست."
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "achievements":
+        c = db()
+        rows = c.execute(
+            """SELECT code,COUNT(*) AS n
+               FROM achievements GROUP BY code ORDER BY n DESC"""
+        ).fetchall()
+        c.close()
+        text = "🏆 <b>دستاوردها</b>\n\n"
+        text += "\n".join(f"• {r['code']}: <b>{r['n']}</b>" for r in rows) or "دستاوردی ثبت نشده."
+        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+
+    elif action == "broadcast":
+        context.user_data["admin_broadcast"] = True
+        await q.message.reply_text(
+            "📢 متن پیام همگانی را ارسال کن.\n\n"
+            "⚠️ بعد از ارسال، قبل از فرستادن برای همه تأیید می‌گیریم."
+        )
+
+
+async def admin_command(update, context):
+    uid = update.effective_user.id
+    if not admin_guard(uid):
+        await update.message.reply_text("⛔ دسترسی به پنل مدیریت ندارید.")
+        return
+    log_activity(uid, "admin_open")
+    await update.message.reply_text(
+        "🛡 <b>پنل مدیریت حرفه‌ای</b>\n\nیکی از بخش‌ها را انتخاب کن:",
+        parse_mode="HTML",
+        reply_markup=admin_keyboard(),
+    )
+
+
 async def admin(update, context):
     uid = update.effective_user.id
     if uid not in ADMIN_IDS:
@@ -1407,6 +1627,10 @@ async def admin_broadcast_start(update, context):
 
 
 async def admin_broadcast_save(update, context):
+    uid = update.effective_user.id
+    if not admin_guard(uid):
+        context.user_data.pop("admin_broadcast", None)
+        return False
     uid = update.effective_user.id
     if not context.user_data.get("admin_broadcast"):
         return False
@@ -1551,8 +1775,9 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CommandHandler("admin", admin_command))
 
+    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
@@ -1564,7 +1789,8 @@ def main():
     app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
     app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
     app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
-    app.add_handler(CallbackQueryHandler(time_change_callback, pattern=r"^time:"))
+    app.add_handler(CallbackQueryHandler(time_callback, pattern=r"^time:"))
+    app.add_handler(CallbackQueryHandler(edit_time_callback, pattern=r"^edit_time:"))
     app.add_handler(CallbackQueryHandler(detail, pattern=r"^detail:"))
     app.add_handler(CallbackQueryHandler(mark, pattern=r"^(done|miss):"))
     app.add_handler(CallbackQueryHandler(edit_goal, pattern=r"^edit:"))
