@@ -1716,6 +1716,7 @@ async def weekly(update, context):
 async def stats(update, context):
     uid = update.effective_user.id
     goals = get_goals(uid)
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     d = datetime.now(TZ).date().isoformat()
     c = db()
     done = c.execute(

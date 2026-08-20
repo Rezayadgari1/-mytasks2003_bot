@@ -827,6 +827,21 @@ def clear_flow(context):
             context.user_data.pop(key, None)
 
 
+async def finish_callback_with_menu(q, uid, text):
+    """Telegram rejects ReplyKeyboardMarkup on edit_text. Show text, then restore the main menu."""
+    try:
+        await q.message.edit_text(text)
+    except Exception:
+        try:
+            await q.message.reply_text(text)
+        except Exception:
+            pass
+    try:
+        await q.message.chat.send_message("🏠", reply_markup=keyboard(uid))
+    except Exception:
+        pass
+
+
 def normalize_digits(s):
     return s.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
 
@@ -1430,7 +1445,7 @@ async def settings_callback(update, context):
         text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
         await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
-        if action=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+        if action=="main": await finish_callback_with_menu(q, uid, "🏠 منوی اصلی")
         else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
@@ -1585,9 +1600,8 @@ async def time_callback(update, context):
     add_goal(uid, name, category, reminder, priority, duration)
     context.user_data.clear()
     log_activity(uid, "goal_created")
-    await q.message.edit_text(
-        T[lang(uid)]["goal_added"].format(name=display_name(uid)),
-        reply_markup=keyboard(uid),
+    await finish_callback_with_menu(
+        q, uid, T[lang(uid)]["goal_added"].format(name=display_name(uid))
     )
 
 
@@ -1727,11 +1741,12 @@ async def mark(update, context):
                 if lang(uid) == "fa"
                 else ("🏆 New achievement!\n" + "\n".join(new_achievements))
             )
-    await q.message.edit_text(
+    await finish_callback_with_menu(
+        q,
+        uid,
         T[lang(uid)]["done"].format(name=display_name(uid))
         if is_done
         else T[lang(uid)]["missed"].format(name=display_name(uid)),
-        reply_markup=keyboard(uid),
     )
 
 
@@ -1827,7 +1842,7 @@ async def change_reminder(update, context):
     context.user_data["edit_reminder_id"] = gid
     await q.message.edit_text(
         T[lang(uid)]["choose_time"],
-        reply_markup=time_keyboard(uid),
+        reply_markup=edit_time_keyboard(uid),
     )
 
 
@@ -1855,9 +1870,8 @@ async def edit_time_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await q.message.edit_text(
-        "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
-        reply_markup=keyboard(uid),
+    await finish_callback_with_menu(
+        q, uid, "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
     )
 
 
@@ -1886,12 +1900,12 @@ async def time_change_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await q.message.edit_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+    await finish_callback_with_menu(q, uid, T[lang(uid)]["changed"])
 
 
 async def custom_edit_time_save(update, context):
     uid = update.effective_user.id
-    if not context.user_data.get("awaiting_edit_time"):
+    if not (context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time")):
         return False
     gid = context.user_data.get("edit_reminder_id")
     reminder = parse_time(update.message.text.strip())
@@ -1907,6 +1921,7 @@ async def custom_edit_time_save(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     context.user_data.pop("awaiting_edit_time", None)
+    context.user_data.pop("awaiting_custom_edit_time", None)
     log_activity(uid, "reminder_changed")
     await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
     return True
@@ -1945,19 +1960,15 @@ async def delete_confirm(update, context):
     c.commit()
     c.close()
     log_activity(uid, "goal_deleted")
-    await q.message.edit_text(
-        T[lang(uid)]["deleted"],
-        reply_markup=keyboard(uid),
-    )
+    await finish_callback_with_menu(q, uid, T[lang(uid)]["deleted"])
 
 
 @subscription_required
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
-    await q.message.edit_text(
-        "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
-        reply_markup=keyboard(q.from_user.id),
+    await finish_callback_with_menu(
+        q, q.from_user.id, "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
     )
 
 
@@ -2272,7 +2283,7 @@ def _is_topic_relevant(text, topic):
     hits = sum(1 for term in terms if term.lower() in body)
     # Generic topics can have fewer lexical matches, but must still mention
     # the topic itself or a meaningful keyword from it.
-    exact = t in body
+    exact = str(topic or "").lower() in body
     needed = 1 if len(terms) == 1 else 2
     return exact or hits >= min(needed, len(terms))
 
@@ -2525,7 +2536,7 @@ async def auto_channel_job(context):
     try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
     except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=True and bool(ADMIN_IDS)
+    approval=feature_enabled("approval") and bool(ADMIN_IDS)
     if approval:
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
@@ -2545,7 +2556,7 @@ async def auto_channel_job(context):
                 if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
                 else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
                 save_auto_post_history(channel,pending["topic"],get_auto_setting("category","random"),content)
-                log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
+                log_activity(next(iter(ADMIN_IDS), 0),"auto_channel_post_approved")
             except Exception as e: logger.error("Approved auto post failed: %s",e)
         c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
         set_auto_setting("last_run",now.isoformat()); set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat()); return
@@ -2553,7 +2564,7 @@ async def auto_channel_job(context):
     next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
     category,topic=get_auto_topic()
     try:
-        msg=await send_auto_channel_post(context,channel,topic,category); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
+        msg=await send_auto_channel_post(context,channel,topic,category); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(next(iter(ADMIN_IDS), 0),"auto_channel_post")
     except Exception as e:
         set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
 
@@ -2586,6 +2597,8 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
+    rows.append([InlineKeyboardButton("🕐 ساعت دیگر", callback_data=f"{prefix}:custom")])
+    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -4204,6 +4217,8 @@ async def text_router(update, context):
         return
     if await custom_goal_save(update, context):
         return
+    if await step_save(update, context):
+        return
     if await custom_duration_save(update, context):
         return
     if await custom_time_save(update, context):
@@ -4376,11 +4391,11 @@ async def final_admin_panel_callback(update,context):
         s=admin_stats(); text="📊 داشبورد\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
     if a=="users":
         c=db(); rows=c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked,warnings FROM users ORDER BY created_at DESC LIMIT 50").fetchall(); c.close(); kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | ID: {r['user_id']} | ⭐{r['xp']}",callback_data=f"admu:{r['user_id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]); await q.message.edit_text("👥 <b>تمام کاربران</b>\n\nروی هر کاربر بزن تا پرونده کاملش باز شود.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
-    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.edit_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
-    if a in ("tools","xpvip"): context.user_data["admin_tool_mode"]="tools"; await q.message.edit_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
+    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
+    if a in ("tools","xpvip"): context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="features":
         await q.message.edit_text(feature_admin_text(),reply_markup=feature_admin_keyboard()); return
-    if a=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+    if a=="main": await finish_callback_with_menu(q, uid, "🏠 منوی اصلی"); return
     if a=="channel": await q.message.edit_text("📡 مدیریت کانال و پست‌گذاری",reply_markup=channel_keyboard()); return
     if a=="customers":
         c=db()
@@ -4414,7 +4429,7 @@ async def final_admin_panel_callback(update,context):
         c=db(); rows=c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close(); await q.message.edit_text("🎫 تیکت‌های باز\n\n"+"\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}" for r in rows) or "تیکت بازی نیست",reply_markup=final_admin_keyboard()); return
     if a=="health": await run_health_checks(context.bot,uid); await q.message.edit_text(health_text(),reply_markup=final_admin_keyboard()); return
     if a=="report": await build_daily_report(); await q.message.edit_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
-    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.edit_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
+    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
 
 
 FEATURE_LABELS_FA = {
@@ -4804,7 +4819,7 @@ async def ai_chat_start(update,context):
         clear_flow(context)
         await update.message.reply_text(
             "⚠️ چت AI فعلاً آماده نیست چون OPENAI_API_KEY در Railway تنظیم نشده است.\n\n"
-            "بقیه امکانات ربات بدون AI باید正常 کار کنند.",
+            "بقیه امکانات ربات بدون AI باید درست کار کنند.",
             reply_markup=keyboard(uid),
         )
         return
