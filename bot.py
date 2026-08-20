@@ -2986,6 +2986,14 @@ async def text_router(update, context):
         await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:",reply_markup=priority_keyboard(uid))
         return
 
+    # Global home command: it must work even when the user has just left a
+    # submenu (for example Online Prices) and must restore the actual keyboard.
+    if text in (
+        "منوی اصلی", "🏠 منوی اصلی", "🏠 Main Menu", "Main Menu", "/main"
+    ):
+        await show_main_menu(update, context)
+        return
+
     menu = T[lang(uid)]["menu"]
     if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
         await today(update, context)
@@ -3222,9 +3230,36 @@ def fetch_tgju_market(kind):
     return label, value
 
 
+async def show_main_menu(update, context, *, edit=False):
+    """Return the user to the real main menu from any text/callback flow."""
+    uid = update.effective_user.id
+    # Do not let an old multi-step flow capture the next message after returning home.
+    for key in (
+        "channel_state", "channel_new_state", "channel_draft", "channel_content",
+        "channel_target_chat_id", "channel_weekday", "custom_goal_name_wait",
+        "awaiting_custom_time", "awaiting_custom_edit_time", "rename_goal_id",
+        "admin_broadcast", "admin_tool_mode", "support_new",
+    ):
+        context.user_data.pop(key, None)
+
+    text = "🏠 <b>منوی اصلی</b>\n\nاز منوی زیر یکی از امکانات را انتخاب کن:"
+    if edit and update.callback_query:
+        try:
+            await update.callback_query.message.edit_text(
+                text, parse_mode="HTML", reply_markup=keyboard(uid)
+            )
+            return
+        except Exception:
+            pass
+    message = update.effective_message
+    await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard(uid))
+
+
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); kind=q.data.split(":",1)[1]
-    if kind=="back": await q.message.reply_text("🏠 منوی اصلی"); return
+    if kind=="back":
+        await show_main_menu(update, context)
+        return
     try:
         label,value=await asyncio.to_thread(fetch_tgju_market,kind)
         await q.message.reply_text(f"📈 <b>{label}</b>\n\n💰 قیمت فعلی: <b>{value}</b>\n\n🌐 منبع: TGJU\n🕐 استعلام در لحظه درخواست انجام شد.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی",callback_data=f"price:{kind}")],[InlineKeyboardButton("↩️ بازگشت",callback_data="price:back")]]))
