@@ -1731,6 +1731,7 @@ async def stats(update, context):
         (uid,),
     ).fetchone()["n"]
     c.close()
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     await update.message.reply_text(
         T[lang(uid)]["stats"].format(
             name=display_name(uid),
@@ -2105,6 +2106,8 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
+    rows.append([InlineKeyboardButton("✏️ زمان دلخواه",callback_data=f"{prefix}:custom")])
+    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -2442,6 +2445,28 @@ async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
     cfg=get_channel_config()
     if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
     pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
+
+def normalize_channel_input(text):
+    """Normalize channel input: accept @username, numeric ID, or t.me link."""
+    text = text.strip()
+    # Handle t.me links
+    m = re.match(r'https?://t\.me/(\w+)', text)
+    if m:
+        return f"@{m.group(1)}"
+    # Already a @username or numeric ID
+    return text
+
+async def bot_can_manage_channel(bot, channel):
+    """Check if the bot is an administrator in the channel with post permission."""
+    try:
+        me = await bot.get_me()
+        member = await bot.get_chat_member(chat_id=channel, user_id=me.id)
+        if member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):
+            return True, "✅ ربات مدیر کانال است."
+        return False, "❌ ربات باید Administrator کانال باشد. لطفاً ربات را به عنوان مدیر اضافه کن."
+    except Exception as e:
+        logger.error("bot_can_manage_channel check failed: %s", e)
+        return False, "❌ بررسی دسترسی ربات به کانال ناموفق بود."
 
 async def channel_text_save(update,context):
     uid=update.effective_user.id

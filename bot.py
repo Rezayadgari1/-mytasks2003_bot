@@ -2586,6 +2586,8 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
+    rows.append([InlineKeyboardButton("✏️ زمان دلخواه",callback_data=f"{prefix}:custom")])
+    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
