@@ -1589,8 +1589,46 @@ def set_channel_config(channel_id):
     c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
     ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
 
-def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0):
-    c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by) VALUES(?,?,?,?,?,1,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by)); pid=cur.lastrowid; c.commit(); c.close(); return pid
+def migrate_channel_posts_v12():
+    """Adds topic metadata used to regenerate text for recurring approved posts."""
+    try:
+        c = db()
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(channel_posts)").fetchall()}
+        if "category" not in cols:
+            c.execute("ALTER TABLE channel_posts ADD COLUMN category TEXT")
+        if "subtopic" not in cols:
+            c.execute("ALTER TABLE channel_posts ADD COLUMN subtopic TEXT")
+        c.commit()
+        c.close()
+    except Exception as exc:
+        logger.exception("channel_posts migration failed: %s", exc)
+
+def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None,
+                    created_by=0, category=None, subtopic=None):
+    c = db()
+    # Backward compatible insert for migrated databases.
+    try:
+        cur = c.execute(
+            """INSERT INTO channel_posts(
+                content,schedule_type,schedule_time,weekday,run_at,enabled,
+                created_at,created_by,category,subtopic
+            ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (content,typ,schedule_time,weekday,run_at,1,
+             datetime.now(TZ).isoformat(),created_by,category,subtopic)
+        )
+    except Exception:
+        cur = c.execute(
+            """INSERT INTO channel_posts(
+                content,schedule_type,schedule_time,weekday,run_at,enabled,
+                created_at,created_by
+            ) VALUES(?,?,?,?,?,?,?,?)""",
+            (content,typ,schedule_time,weekday,run_at,1,
+             datetime.now(TZ).isoformat(),created_by)
+        )
+    pid = cur.lastrowid
+    c.commit()
+    c.close()
+    return pid
 
 
 AUTO_TOPIC_TREE_FA = {
@@ -1668,22 +1706,68 @@ AUTO_TOPIC_TREE_FA = {
 
 AUTO_INTERVALS_MIN = [1, 5, 10, 15, 20, 30, 60, 120, 360, 720, 1440]
 
+def _recent_channel_texts(topic, limit=20):
+    try:
+        c = db()
+        rows = c.execute(
+            "SELECT content FROM channel_posts WHERE content IS NOT NULL "
+            "ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        c.close()
+        return [str(r["content"]).strip() for r in rows if r["content"]]
+    except Exception:
+        return []
+
+def _fallback_post(topic, variant=None):
+    variants = [
+        (
+            f"🎯 {topic}\n\n"
+            "امروز یک اقدام کوچک و قابل اندازه‌گیری برای این موضوع انتخاب کن.\n"
+            "• هدف را دقیق مشخص کن.\n• فقط یک قدم را شروع کن.\n• نتیجه را در پایان روز ثبت کن."
+        ),
+        (
+            f"📌 {topic}\n\n"
+            "اگر می‌خواهی در این موضوع پیشرفت کنی، کار را از یک قدم ساده شروع کن.\n"
+            "• اولویت امروزت را بنویس.\n• زمان انجامش را مشخص کن.\n• بعد از انجام، نتیجه را بررسی کن."
+        ),
+        (
+            f"💡 {topic}\n\n"
+            "پیشرفت همیشه با تغییرهای بزرگ شروع نمی‌شود.\n"
+            "• یک کار مشخص انتخاب کن.\n• برایش زمان کوتاه تعیین کن.\n• چیزی را که انجام دادی ثبت کن."
+        ),
+        (
+            f"🚀 {topic}\n\n"
+            "امروز به‌جای منتظر ماندن برای شرایط بهتر، یک حرکت واقعی انجام بده.\n"
+            "• کار مهم‌تر را انتخاب کن.\n• شروع را ساده کن.\n• پیشرفتت را اندازه بگیر."
+        ),
+        (
+            f"🧠 {topic}\n\n"
+            "یک تصمیم کوچک می‌تواند مسیر امروزت را بهتر کند.\n"
+            "• دقیقاً چه چیزی می‌خواهی؟\n• اولین قدم چیست؟\n• چه زمانی انجامش می‌دهی؟"
+        ),
+    ]
+    return variants[(variant if variant is not None else random.randrange(len(variants))) % len(variants)]
+
 def ai_generate_post(topic):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     model = os.environ.get("OPENAI_MODEL", "gpt-5-mini").strip()
+    recent = _recent_channel_texts(topic)
+    avoid = "\n".join(f"- {x[:500]}" for x in recent[:10])
     if api_key:
         try:
             prompt = (
-                f"شناسه تولید: {datetime.now(TZ).isoformat()}-{random.randint(1000,999999)}. "
-                f"یک پست فارسی کوتاه و مفید برای کانال MyTasks درباره «{topic}» بنویس. "
-                "حداکثر 90 کلمه. یک تیتر کوتاه، 2 یا 3 نکته کاربردی و در پایان یک تمرین یک‌خطی بده. "
-                "لحن دوستانه و حرفه‌ای باشد. از توضیح اضافه، مقدمه طولانی، ادعاهای قطعی پزشکی یا مالی "
-                "و ایموجی زیاد خودداری کن. فقط متن پست را برگردان."
+                f"شناسه تولید: {datetime.now(TZ).isoformat()}-{random.randint(1000,999999999)}. "
+                f"یک پست فارسی کوتاه، مفید و متفاوت برای کانال درباره «{topic}» بنویس. "
+                "حداکثر 100 کلمه. تیتر کوتاه، 2 تا 4 نکته کاربردی و یک جمع‌بندی کوتاه داشته باشد. "
+                "هر بار زاویه، مثال، جمله‌بندی و ساختار را عوض کن. "
+                "از عبارت‌های تبلیغاتی درباره ربات، «تأیید کن»، «زمان انتشار»، «۱۰ دقیقه» و توضیحات مدیریتی استفاده نکن. "
+                "فقط متن خود پست را برگردان. "
+                + (f"این متن‌های اخیر را تکرار نکن:\n{avoid}" if avoid else "")
             )
             payload = json.dumps({
                 "model": model,
                 "input": prompt,
-                "max_output_tokens": 260
+                "max_output_tokens": 320,
             }).encode("utf-8")
             req = urllib.request.Request(
                 "https://api.openai.com/v1/responses",
@@ -1696,20 +1780,20 @@ def ai_generate_post(topic):
             )
             with urllib.request.urlopen(req, timeout=35) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-            text_out = data.get("output_text", "").strip()
-            if text_out:
+            text_out = str(data.get("output_text", "")).strip()
+            if text_out and not any(text_out == x for x in recent):
                 return text_out
         except Exception as e:
             logger.error("AI text generation failed: %s", e)
 
-    return (
-        f"🎯 {topic}\n\n"
-        "یک قدم کوچک اما مشخص انتخاب کن و همان را امروز انجام بده.\n"
-        "• هدف را ساده و قابل اندازه‌گیری کن.\n"
-        "• برایش زمان مشخص بگذار.\n"
-        "• نتیجه را ثبت کن.\n\n"
-        "💡 تمرین امروز: فقط ۱۰ دقیقه برای این موضوع وقت بگذار."
-    )
+    # Deterministic anti-repeat fallback: choose a variant not equal to recent text.
+    variants = list(range(5))
+    random.shuffle(variants)
+    for v in variants:
+        candidate = _fallback_post(topic, v)
+        if candidate not in recent:
+            return candidate
+    return _fallback_post(topic, random.randrange(5))
 
 
 def get_auto_topic():
@@ -1736,22 +1820,9 @@ def compact_channel_footer(bot_username, channel_username):
 
 
 async def generate_topic_image(topic):
-    """Generate a related local PNG image at zero API cost."""
-    try:
-        bg=(17,24,39); accent=(124,58,237)
-        img=Image.new("RGB",(1024,1024),bg); d=ImageDraw.Draw(img)
-        d.rounded_rectangle((80,80,944,944),radius=60,outline=(255,255,255),width=3)
-        d.ellipse((690,70,950,330),fill=(255,255,255),outline=None)
-        d.ellipse((40,690,360,1010),fill=(255,255,255),outline=None)
-        try: font_big=ImageFont.truetype("DejaVuSans-Bold.ttf",72); font=ImageFont.truetype("DejaVuSans.ttf",42); small=ImageFont.truetype("DejaVuSans.ttf",30)
-        except: font_big=font=small=ImageFont.load_default()
-        d.text((512,380),"MyTasks",font=font_big,anchor="mm",fill="white")
-        topic_text=str(topic)[:70]
-        d.multiline_text((512,510),topic_text,font=font,anchor="mm",align="center",fill=(229,231,235),spacing=10)
-        d.text((512,820),"یک قدم کوچک، هر روز",font=small,anchor="mm",fill=(203,213,225))
-        bio=io.BytesIO(); img.save(bio,format="PNG",optimize=True); bio.seek(0); bio.name="mytasks_post.png"; return bio
-    except Exception as e:
-        logger.error("Free image generation failed: %s",e); return None
+    # Images are disabled during the text-only validation phase.
+    return None
+
 
 async def get_identity_handles(bot, channel):
     bot_identity = ""
@@ -1770,25 +1841,8 @@ async def get_identity_handles(bot, channel):
 
 
 async def send_auto_channel_post(context, channel, topic):
-    content = ai_generate_post(topic)
-    bot_username, channel_username = await get_identity_handles(context.bot, channel)
-    content = content[:950] + compact_channel_footer(bot_username, channel_username)
-
-    image = await generate_topic_image(topic)
-    try:
-        if image is not None:
-            msg = await context.bot.send_photo(
-                chat_id=channel,
-                photo=image,
-                caption=content,
-            )
-        else:
-            msg = await context.bot.send_message(chat_id=channel, text=content)
-        return msg
-    except Exception:
-        # If image generation/upload fails, never lose the scheduled post.
-        msg = await context.bot.send_message(chat_id=channel, text=content)
-        return msg
+    # Disabled in the current validation phase. No automatic channel publishing.
+    return None
 
 
 def get_auto_setting(key, default=""):
@@ -1814,43 +1868,9 @@ def set_auto_setting(key, value):
 
 
 async def auto_channel_job(context):
-    cfg = get_channel_config()
-    channel = cfg["channel_id"] if cfg else ""
-    if not channel or get_auto_setting("enabled", "0") != "1":
-        return
-
-    now = datetime.now(TZ)
-    interval = int(get_auto_setting("interval_minutes", "60") or 60)
-    interval = min(AUTO_INTERVALS_MIN, key=lambda x: abs(x - interval))
-    next_run_raw = get_auto_setting("next_run", "")
-    if next_run_raw:
-        try:
-            next_run = datetime.fromisoformat(next_run_raw)
-            if next_run.tzinfo is None:
-                next_run = next_run.replace(tzinfo=TZ)
-            if now < next_run:
-                return
-        except ValueError:
-            pass
-
-    # Lock the next run before the network calls so two Railway instances
-    # cannot publish the same scheduled post at the same time.
-    next_run = now + timedelta(minutes=interval)
-    set_auto_setting("next_run", next_run.isoformat())
-
-    category, topic = get_auto_topic()
-    try:
-        msg = await send_auto_channel_post(context, channel, topic)
-        set_auto_setting("last_run", now.isoformat())
-        set_auto_setting("last_message_id", str(msg.message_id))
-        set_auto_setting("last_category", category)
-        set_auto_setting("last_topic", topic)
-        log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0, "auto_channel_post")
-        logger.info("Automatic channel post published: %s", msg.message_id)
-    except Exception as e:
-        # Retry on the next interval rather than silently disabling automation.
-        set_auto_setting("next_run", now.isoformat())
-        logger.error("Automatic channel post failed: %s", e)
+    # Safety lock: no post is ever published by this background job.
+    # Posts may only reach the channel through an admin-approved channel_posts row.
+    return
 
 
 def channel_keyboard():
@@ -1876,19 +1896,72 @@ def channel_schedule_text(r):
     return f"📅 {r['run_at'].replace('T',' ') if r['run_at'] else 'فوری'}"
 
 async def channel_scheduler_job(context):
-    now=datetime.now(TZ); key=now.strftime("%Y-%m-%d %H:%M"); hhmm=now.strftime("%H:%M"); cfg=get_channel_config()
-    if not cfg or not cfg["enabled"] or not cfg["channel_id"]: return
-    c=db(); rows=c.execute("SELECT * FROM channel_posts WHERE enabled=1").fetchall(); c.close()
+    now = datetime.now(TZ)
+    key = now.strftime("%Y-%m-%d %H:%M")
+    hhmm = now.strftime("%H:%M")
+    cfg = get_channel_config()
+    if not cfg or not cfg["enabled"] or not cfg["channel_id"]:
+        return
+
+    c = db()
+    rows = c.execute("SELECT * FROM channel_posts WHERE enabled=1").fetchall()
+    c.close()
+
     for r in rows:
-        due=(r["schedule_type"]=="daily" and r["schedule_time"]==hhmm) or (r["schedule_type"]=="weekly" and r["weekday"]==now.weekday() and r["schedule_time"]==hhmm) or (r["schedule_type"]=="once" and r["run_at"] and r["run_at"][:16]==key)
-        if not due or (r["last_sent_at"] and r["last_sent_at"][:16]==key): continue
+        once_due = False
+        if r["schedule_type"] == "once" and r["run_at"]:
+            try:
+                run_at = datetime.fromisoformat(r["run_at"])
+                if run_at.tzinfo is None:
+                    run_at = run_at.replace(tzinfo=TZ)
+                once_due = run_at <= now
+            except Exception:
+                once_due = r["run_at"][:16] == key
+        due = (
+            (r["schedule_type"] == "daily" and r["schedule_time"] == hhmm)
+            or (r["schedule_type"] == "weekly" and r["weekday"] == now.weekday()
+                and r["schedule_time"] == hhmm)
+            or once_due
+        )
+        if not due or (r["last_sent_at"] and r["last_sent_at"][:16] == key):
+            continue
+
         try:
-            await context.bot.send_message(chat_id=cfg["channel_id"],text=r["content"])
-            c=db()
-            if r["schedule_type"]=="once": c.execute("UPDATE channel_posts SET enabled=0,last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
-            else: c.execute("UPDATE channel_posts SET last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
-            c.commit(); c.close()
-        except Exception as e: logger.error("Channel post failed: %s",e)
+            content = r["content"] or ""
+            # For recurring approved schedules, regenerate the content each run.
+            # A one-time post always sends exactly the version the admin approved.
+            if r["schedule_type"] in ("daily", "weekly") and r["subtopic"]:
+                content = ai_generate_post(r["subtopic"])
+
+            bot_username, channel_username = await get_identity_handles(
+                context.bot, cfg["channel_id"]
+            )
+            publish_text = content.rstrip()
+            footer = compact_channel_footer(bot_username, channel_username)
+            if footer and footer.strip() not in publish_text:
+                publish_text = publish_text[:950] + footer
+
+            # Images are intentionally disabled for this test/final text-only phase.
+            await context.bot.send_message(
+                chat_id=cfg["channel_id"],
+                text=publish_text
+            )
+
+            c = db()
+            if r["schedule_type"] == "once":
+                c.execute(
+                    "UPDATE channel_posts SET enabled=0,last_sent_at=? WHERE id=?",
+                    (now.isoformat(), r["id"])
+                )
+            else:
+                c.execute(
+                    "UPDATE channel_posts SET content=?,last_sent_at=? WHERE id=?",
+                    (content, now.isoformat(), r["id"])
+                )
+            c.commit()
+            c.close()
+        except Exception as e:
+            logger.exception("Channel post failed: %s", e)
 
 
 def auto_channel_keyboard():
@@ -2145,41 +2218,130 @@ def channel_new_subtopic_keyboard(ci):
 
 def channel_new_preview_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ ویرایش متن",callback_data="chnew:edit")],
-        [InlineKeyboardButton("⏱ ۱ دقیقه",callback_data="chnew:in:1"),InlineKeyboardButton("⏱ ۵ دقیقه",callback_data="chnew:in:5")],
-        [InlineKeyboardButton("⏱ ۱۰ دقیقه",callback_data="chnew:in:10"),InlineKeyboardButton("⏱ ۱۵ دقیقه",callback_data="chnew:in:15")],
-        [InlineKeyboardButton("⏱ ۳۰ دقیقه",callback_data="chnew:in:30"),InlineKeyboardButton("🕐 زمان دلخواه",callback_data="chnew:custom")],
-        [InlineKeyboardButton("❌ لغو",callback_data="chnew:cancel"),InlineKeyboardButton("↩️ مدیریت کانال",callback_data="chnew:back")],
+        [InlineKeyboardButton("🔄 تغییر متن", callback_data="chnew:change_text"),
+         InlineKeyboardButton("✏️ ویرایش متن", callback_data="chnew:edit")],
+        [InlineKeyboardButton("⏱ ۱ دقیقه", callback_data="chnew:in:1"),
+         InlineKeyboardButton("⏱ ۵ دقیقه", callback_data="chnew:in:5")],
+        [InlineKeyboardButton("⏱ ۱۰ دقیقه", callback_data="chnew:in:10"),
+         InlineKeyboardButton("⏱ ۱۵ دقیقه", callback_data="chnew:in:15")],
+        [InlineKeyboardButton("⏱ ۳۰ دقیقه", callback_data="chnew:in:30"),
+         InlineKeyboardButton("🕐 زمان دلخواه", callback_data="chnew:custom")],
+        [InlineKeyboardButton("❌ لغو", callback_data="chnew:cancel"),
+         InlineKeyboardButton("↩️ مدیریت کانال", callback_data="chnew:back")],
     ])
 
-async def channel_new_show_preview(message,context):
-    d=context.user_data.get("channel_draft") or {}; content=d.get("content","")
-    text=f"👁 <b>پیش‌نمایش پست</b>\\n\\n📂 {html.escape(d.get('category',''))}\\n↳ {html.escape(d.get('subtopic',''))}\\n\\n{html.escape(content)}\\n\\n👇 تأیید کن و زمان انتشار را انتخاب کن."
-    await message.reply_text(text,parse_mode="HTML",reply_markup=channel_new_preview_keyboard())
 
-async def channel_new_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); a=q.data.split(":",1)[1]
-    if a in ("back","cancel"):
-        context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
-        await q.message.reply_text("📡 مدیریت کانال",reply_markup=channel_keyboard()); return
-    if a=="topics": await q.message.reply_text("📝 موضوع پست را انتخاب کن:",reply_markup=channel_new_topic_keyboard()); return
-    if a=="edit":
-        context.user_data["channel_new_state"]="edit"
-        await q.message.reply_text("✏️ متن جدید را بفرست.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ پیش‌نمایش",callback_data="chnew:preview")]])); return
-    if a=="preview": await channel_new_show_preview(q.message,context); return
-    if a=="custom":
-        context.user_data["channel_new_state"]="custom_time"
-        await q.message.reply_text("🕐 تاریخ و ساعت را وارد کن؛ مثال: 2026-08-20 18:30",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ پیش‌نمایش",callback_data="chnew:preview")]])); return
+async def channel_new_show_preview(message, context):
+    d = context.user_data.get("channel_draft") or {}
+    content = d.get("content", "").strip()
+    text = (
+        "👁 <b>پیش‌نمایش پست</b>\n\n"
+        f"📂 {html.escape(d.get('category',''))}\n"
+        f"↳ {html.escape(d.get('subtopic',''))}\n\n"
+        f"{html.escape(content)}"
+    )
+    await message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=channel_new_preview_keyboard()
+    )
+
+
+async def channel_new_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer()
+    a = q.data.split(":", 1)[1]
+
+    if a in ("back", "cancel"):
+        context.user_data.pop("channel_draft", None)
+        context.user_data.pop("channel_new_state", None)
+        await q.message.reply_text("📡 مدیریت کانال", reply_markup=channel_keyboard())
+        return
+
+    if a == "topics":
+        await q.message.reply_text(
+            "📝 موضوع پست را انتخاب کن:",
+            reply_markup=channel_new_topic_keyboard()
+        )
+        return
+
+    if a == "change_text":
+        d = context.user_data.get("channel_draft") or {}
+        topic = d.get("subtopic")
+        if not topic:
+            await q.message.reply_text(
+                "❌ موضوع پیش‌نویس پیدا نشد.",
+                reply_markup=channel_keyboard()
+            )
+            return
+        old = d.get("content", "").strip()
+        # Generate several candidates and avoid the current text.
+        candidates = [ai_generate_post(topic) for _ in range(3)]
+        candidate = next((x for x in candidates if x.strip() and x.strip() != old), None)
+        if not candidate:
+            candidate = _fallback_post(topic, random.randrange(5))
+        d["content"] = candidate.strip()
+        context.user_data["channel_draft"] = d
+        await channel_new_show_preview(q.message, context)
+        return
+
+    if a == "edit":
+        context.user_data["channel_new_state"] = "edit"
+        await q.message.reply_text(
+            "✏️ متن جدید را بفرست.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ پیش‌نمایش", callback_data="chnew:preview")
+            ]])
+        )
+        return
+
+    if a == "preview":
+        await channel_new_show_preview(q.message, context)
+        return
+
+    if a == "custom":
+        context.user_data["channel_new_state"] = "custom_time"
+        await q.message.reply_text(
+            "🕐 تاریخ و ساعت را وارد کن؛ مثال: 2026-08-20 18:30",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ پیش‌نمایش", callback_data="chnew:preview")
+            ]])
+        )
+        return
+
     if a.startswith("in:"):
-        minutes=int(a.split(":")[1]); cfg=get_channel_config(); d=context.user_data.get("channel_draft")
-        if not cfg or not cfg["channel_id"]: await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        if not d: await q.message.reply_text("❌ پیش‌نویس پیدا نشد.",reply_markup=channel_keyboard()); return
-        run_at=datetime.now(TZ)+timedelta(minutes=minutes)
-        pid=add_channel_post(d["content"],"once",None,None,run_at.isoformat(),uid)
-        context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
-        await q.message.reply_text(f"✅ پست تأیید شد.\\n⏰ انتشار: {run_at.strftime('%Y-%m-%d %H:%M')}\\n🆔 #{pid}",reply_markup=channel_keyboard())
+        minutes = int(a.split(":")[1])
+        cfg = get_channel_config()
+        d = context.user_data.get("channel_draft")
+        if not cfg or not cfg["channel_id"]:
+            await q.message.reply_text(
+                "❌ ابتدا کانال را تنظیم کن.",
+                reply_markup=channel_keyboard()
+            )
+            return
+        if not d:
+            await q.message.reply_text(
+                "❌ پیش‌نویس پیدا نشد.",
+                reply_markup=channel_keyboard()
+            )
+            return
+
+        run_at = datetime.now(TZ) + timedelta(minutes=minutes)
+        pid = add_channel_post(
+            d["content"], "once", None, None, run_at.isoformat(), uid,
+            d.get("category"), d.get("subtopic")
+        )
+        context.user_data.pop("channel_draft", None)
+        context.user_data.pop("channel_new_state", None)
+        await q.message.reply_text(
+            f"✅ پست تأیید شد.\n⏰ انتشار: {run_at.strftime('%Y-%m-%d %H:%M')}\n🆔 #{pid}",
+            reply_markup=channel_keyboard()
+        )
+
 
 async def channel_new_category_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -2204,7 +2366,7 @@ async def channel_new_text_save(update,context):
         dt=datetime.strptime(text,"%Y-%m-%d %H:%M").replace(tzinfo=TZ)
         d=context.user_data.get("channel_draft")
         if dt<=datetime.now(TZ) or not d: raise ValueError
-        pid=add_channel_post(d["content"],"once",None,None,dt.isoformat(),update.effective_user.id)
+        pid=add_channel_post(d["content"],"once",None,None,dt.isoformat(),update.effective_user.id,d.get("category"),d.get("subtopic"))
         context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
         await update.message.reply_text(f"✅ پست تأیید و زمان‌بندی شد.\\n⏰ {dt.strftime('%Y-%m-%d %H:%M')}\\n🆔 #{pid}",reply_markup=channel_keyboard())
     except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30")
@@ -2835,69 +2997,43 @@ def _fetch_url_text(url, timeout=15):
 
 
 def _extract_tgju_profile_price(html_text):
-    # TGJU profile pages expose the current price as visible text:
-    # «نرخ فعلی: 1,886,000». We intentionally take the first current-rate
-    # value rather than an arbitrary number elsewhere on the page.
+    translated = str.maketrans("۰۱۲۳۴۵۶۷۸۹٬", "0123456789,")
+    clean = re.sub(r"<[^>]+>", " ", html_text)
+    clean = html.unescape(clean)
+    clean = clean.replace("\xa0", " ")
+    clean = re.sub(r"\s+", " ", clean)
+
     patterns = [
-        r"نرخ\s*فعلی\s*:?\s*</?[^>]*>\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)",
-        r"نرخ\s*فعلی\s*:\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)",
-        r'"current"\s*:\s*"?(?P<v>[0-9۰-۹][0-9۰-۹,\u066c\.]*)',
-        r'"price"\s*:\s*"?(?P<v2>[0-9۰-۹][0-9۰-۹,\u066c\.]*)',
+        r"نرخ\s*فعلی\s*:?\s*([0-9۰-۹][0-9۰-۹,٬\.]*)",
+        r"نرخ\s*فعلی\s*:\s*:?\s*([0-9۰-۹][0-9۰-۹,٬\.]*)",
+        r"\bLast\s*:?\s*([0-9][0-9,\.]*)",
+        r"\bآخرین\s*:?\s*([0-9۰-۹][0-9۰-۹,٬\.]*)",
     ]
     for pat in patterns:
-        m = re.search(pat, html_text, re.I | re.S)
-        if m:
-            value = next((g for g in m.groups() if g), None)
-            if value:
-                return _clean_market_number(
-                    value.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-                )
-    # Fallback on the rendered phrase stripped of tags.
-    clean = re.sub(r"<[^>]+>", " ", html_text)
-    clean = re.sub(r"\s+", " ", clean)
-    m = re.search(r"نرخ\s*فعلی\s*:?\s*([0-9۰-۹][0-9۰-۹,\u066c\.]*)", clean)
-    if m:
-        return _clean_market_number(
-            m.group(1).translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
-        )
+        mm = re.search(pat, clean, re.I)
+        if mm:
+            raw = mm.group(1).translate(translated).replace(",", "").replace(".", "")
+            if raw.isdigit():
+                return f"{int(raw):,}"
     return None
 
 
 def fetch_tgju_market(kind):
     specs = {
-        "usd": ("price_dollar_rl", "دلار", "https://www.tgju.org/profile/price_dollar_rl"),
-        "eur": ("price_eur", "یورو", "https://www.tgju.org/profile/price_eur"),
-        "gold": ("geram18", "طلای ۱۸ عیار", "https://www.tgju.org/profile/geram18"),
-        "coin": ("sekee", "سکه امامی", "https://www.tgju.org/profile/sekee"),
-        # TGJU's public page for the Tehran index is on the شاخص‌بان domain.
-        "indices": ("bourse", "شاخص بورس", "https://www.shakhesban.com/markets"),
+        "usd": ("دلار", "https://www.tgju.org/profile/price_dollar_rl"),
+        "eur": ("یورو", "https://www.tgju.org/profile/price_eur"),
+        "gold": ("طلای ۱۸ عیار", "https://www.tgju.org/profile/geram18"),
+        "coin": ("سکه امامی", "https://www.tgju.org/profile/sekee"),
     }
     if kind not in specs:
         raise ValueError("مورد قیمت نامعتبر است")
 
-    symbol, label, profile_url = specs[kind]
-
-    # Primary: TGJU public JSON endpoint.
-    try:
-        raw = _fetch_url_text("https://call1.tgju.org/ajax.json", timeout=12)
-        data = json.loads(raw)
-        candidates = [symbol]
-        value = _market_find_value(data, candidates)
-        if value is not None:
-            return label, _clean_market_number(value)
-    except Exception as exc:
-        logger.warning("TGJU JSON source failed for %s: %s", kind, exc)
-
-    # Fallback: the actual public profile page.
-    try:
-        page = _fetch_url_text(profile_url, timeout=15)
-        value = _extract_tgju_profile_price(page)
-        if value is not None:
-            return label, value
-    except Exception as exc:
-        logger.warning("TGJU profile source failed for %s: %s", kind, exc)
-
-    raise RuntimeError(f"قیمت آنلاین {label} از منابع در دسترس دریافت نشد")
+    label, url = specs[kind]
+    page = _fetch_url_text(url, timeout=15)
+    value = _extract_tgju_profile_price(page)
+    if value is None:
+        raise RuntimeError(f"قیمت آنلاین {label} در صفحه منبع پیدا نشد")
+    return label, value
 
 
 async def price_callback(update,context):
@@ -3208,6 +3344,7 @@ def main():
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
 
     init_db()
+    migrate_channel_posts_v12()
     # Safe defaults for automatic channel publishing.
     if not get_auto_setting("interval_minutes", ""):
         set_auto_setting("interval_minutes", "60")
