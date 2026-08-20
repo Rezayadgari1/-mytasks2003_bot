@@ -218,7 +218,7 @@ T = {
         "gender_saved": "✅ ممنون {name} عزیز 🌷",
         "menu": [
             ["🎯 اهداف امروز", "➕ هدف جدید"],
-            ["🏆 اهداف آماده", "✏️ ویرایش اهداف"],
+            ["✍️ هدف خودم می‌نویسم", "✏️ ویرایش اهداف"],
             ["📅 جدول هفتگی", "📊 آمار من"],
             ["👤 پروفایل", "🏆 دستاوردها"],
             ["⭐ XP", "🤝 دعوت دوستان"],
@@ -264,7 +264,7 @@ T = {
         "gender_saved": "✅ Thanks, {name} 🌷",
         "menu": [
             ["🎯 Today's Goals", "➕ New Goal"],
-            ["🏆 Ready Goals", "✏️ Edit Goals"],
+            ["✍️ Write My Goal", "✏️ Edit Goals"],
             ["📅 Weekly Table", "📊 My Stats"],
             ["👤 Profile", "⭐ XP"],
             ["🤝 Referrals", "🎫 Support"],
@@ -388,6 +388,18 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS channel_config(
         id INTEGER PRIMARY KEY CHECK(id=1), channel_id TEXT NOT NULL DEFAULT '',
         enabled INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)""")
+    # Multi-channel / group management. The legacy channel_config remains for backward compatibility.
+    c.execute("""CREATE TABLE IF NOT EXISTS managed_chats(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL UNIQUE,
+        chat_type TEXT NOT NULL CHECK(chat_type IN ('channel','group')),
+        title TEXT NOT NULL DEFAULT '',
+        username TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_by INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
         id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL,
         schedule_type TEXT NOT NULL DEFAULT 'once', schedule_time TEXT, weekday INTEGER,
@@ -1586,8 +1598,63 @@ def get_channel_config():
     c=db(); r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone(); c.close(); return r
 
 def set_channel_config(channel_id):
+    channel_id=str(channel_id).strip()
+    now=datetime.now(TZ).isoformat()
     c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
-    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
+    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(channel_id,now))
+    c.execute("""INSERT OR IGNORE INTO managed_chats(chat_id,chat_type,title,username,enabled,created_by,created_at,updated_at)
+                 VALUES(?,?,?,?,1,0,?,?)""",(channel_id,"channel","","",now,now))
+    c.commit(); c.close()
+
+def managed_chats(chat_type=None, enabled_only=False):
+    c=db(); sql="SELECT * FROM managed_chats WHERE 1=1"; args=[]
+    if chat_type: sql += " AND chat_type=?"; args.append(chat_type)
+    if enabled_only: sql += " AND enabled=1"
+    sql += " ORDER BY id ASC"
+    rows=c.execute(sql,args).fetchall(); c.close(); return rows
+
+def get_managed_chat(chat_id):
+    c=db(); r=c.execute("SELECT * FROM managed_chats WHERE chat_id=?",(str(chat_id),)).fetchone(); c.close(); return r
+
+def save_managed_chat(chat, chat_type, created_by):
+    chat_id=str(chat.id); title=(getattr(chat,"title",None) or getattr(chat,"full_name",None) or chat_id).strip(); username=(getattr(chat,"username",None) or "").strip()
+    now=datetime.now(TZ).isoformat(); c=db()
+    c.execute("""INSERT INTO managed_chats(chat_id,chat_type,title,username,enabled,created_by,created_at,updated_at)
+                 VALUES(?,?,?,?,1,?,?,?)
+                 ON CONFLICT(chat_id) DO UPDATE SET chat_type=excluded.chat_type,title=excluded.title,username=excluded.username,enabled=1,updated_at=excluded.updated_at""",(chat_id,chat_type,title,username,created_by,now,now))
+    if chat_type=="channel":
+        c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
+                     ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,enabled=1,updated_at=excluded.updated_at""",(chat_id,now))
+    c.commit(); c.close(); return chat_id
+
+def disconnect_managed_chat(chat_id):
+    chat_id=str(chat_id); now=datetime.now(TZ).isoformat(); c=db()
+    c.execute("UPDATE managed_chats SET enabled=0,updated_at=? WHERE chat_id=?",(now,chat_id))
+    # Only an explicit user/admin action disables a target. No background job removes connections.
+    cfg=c.execute("SELECT channel_id FROM channel_config WHERE id=1").fetchone()
+    if cfg and str(cfg["channel_id"])==chat_id:
+        c.execute("UPDATE channel_config SET enabled=0,updated_at=? WHERE id=1",(now,))
+    c.commit(); c.close()
+
+def managed_chat_keyboard(chat_type="channel", prefix="mchat"):
+    rows=[]
+    chats=managed_chats(chat_type, True)
+    for i,r in enumerate(chats):
+        label=(r["title"] or r["username"] or r["chat_id"])[:45]
+        rows.append([InlineKeyboardButton("📢 " + label if chat_type=="channel" else "👥 " + label, callback_data=f"{prefix}:select:{r['id']}")])
+    rows.append([InlineKeyboardButton("➕ اتصال جدید", callback_data=f"{prefix}:add:{chat_type}")])
+    rows.append([InlineKeyboardButton("🧪 تست اتصال", callback_data=f"{prefix}:test:{chat_type}")])
+    rows.append([InlineKeyboardButton("🧹 قطع اتصال", callback_data=f"{prefix}:disconnect:{chat_type}")])
+    rows.append([InlineKeyboardButton("↩️ بازگشت", callback_data="ch:main")])
+    return InlineKeyboardMarkup(rows)
+
+def managed_disconnect_keyboard(chat_type):
+    rows=[]
+    for r in managed_chats(chat_type, True):
+        label=(r["title"] or r["username"] or r["chat_id"])[:45]
+        rows.append([InlineKeyboardButton("❌ " + label, callback_data=f"mchat:confirm_disconnect:{r['id']}")])
+    rows.append([InlineKeyboardButton("↩️ بازگشت", callback_data="mchat:main:"+chat_type)])
+    return InlineKeyboardMarkup(rows)
 
 def migrate_channel_posts_v12():
     """Adds topic metadata used to regenerate text for recurring approved posts."""
@@ -1598,23 +1665,32 @@ def migrate_channel_posts_v12():
             c.execute("ALTER TABLE channel_posts ADD COLUMN category TEXT")
         if "subtopic" not in cols:
             c.execute("ALTER TABLE channel_posts ADD COLUMN subtopic TEXT")
+        if "target_chat_id" not in cols:
+            c.execute("ALTER TABLE channel_posts ADD COLUMN target_chat_id TEXT")
+        # Backfill the legacy channel into the managed-chat registry.
+        cfg = c.execute("SELECT channel_id FROM channel_config WHERE id=1").fetchone()
+        if cfg and cfg["channel_id"]:
+            now = datetime.now(TZ).isoformat()
+            c.execute("""INSERT OR IGNORE INTO managed_chats(
+                chat_id,chat_type,title,username,enabled,created_by,created_at,updated_at
+            ) VALUES(?,?,?,?,1,0,?,?)""", (str(cfg["channel_id"]),"channel","","",now,now))
         c.commit()
         c.close()
     except Exception as exc:
         logger.exception("channel_posts migration failed: %s", exc)
 
 def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None,
-                    created_by=0, category=None, subtopic=None):
+                    created_by=0, category=None, subtopic=None, target_chat_id=None):
     c = db()
     # Backward compatible insert for migrated databases.
     try:
         cur = c.execute(
             """INSERT INTO channel_posts(
                 content,schedule_type,schedule_time,weekday,run_at,enabled,
-                created_at,created_by,category,subtopic
-            ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                created_at,created_by,category,subtopic,target_chat_id
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
             (content,typ,schedule_time,weekday,run_at,1,
-             datetime.now(TZ).isoformat(),created_by,category,subtopic)
+             datetime.now(TZ).isoformat(),created_by,category,subtopic,target_chat_id)
         )
     except Exception:
         cur = c.execute(
@@ -1875,7 +1951,9 @@ async def auto_channel_job(context):
 
 def channel_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
+        [InlineKeyboardButton("📢 کانال‌ها", callback_data="mchat:main:channel"),
+         InlineKeyboardButton("👥 گروه‌ها", callback_data="mchat:main:group")],
+        [InlineKeyboardButton("📡 تنظیم کانال قدیمی", callback_data="ch:set"),
          InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
         [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
          InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list")],
@@ -1900,7 +1978,8 @@ async def channel_scheduler_job(context):
     key = now.strftime("%Y-%m-%d %H:%M")
     hhmm = now.strftime("%H:%M")
     cfg = get_channel_config()
-    if not cfg or not cfg["enabled"] or not cfg["channel_id"]:
+    legacy_channel = cfg["channel_id"] if cfg and cfg["enabled"] and cfg["channel_id"] else ""
+    if not legacy_channel and not managed_chats("channel", True):
         return
 
     c = db()
@@ -1933,8 +2012,15 @@ async def channel_scheduler_job(context):
             if r["schedule_type"] in ("daily", "weekly") and r["subtopic"]:
                 content = ai_generate_post(r["subtopic"])
 
+            target = r["target_chat_id"] or legacy_channel
+            if target:
+                mc = get_managed_chat(target)
+                if mc and not mc["enabled"]:
+                    continue
+            if not target:
+                continue
             bot_username, channel_username = await get_identity_handles(
-                context.bot, cfg["channel_id"]
+                context.bot, target
             )
             publish_text = content.rstrip()
             footer = compact_channel_footer(bot_username, channel_username)
@@ -1943,7 +2029,7 @@ async def channel_scheduler_job(context):
 
             # Images are intentionally disabled for this test/final text-only phase.
             await context.bot.send_message(
-                chat_id=cfg["channel_id"],
+                chat_id=target,
                 text=publish_text
             )
 
@@ -2136,6 +2222,49 @@ async def auto_interval_callback(update, context):
 
 
 @subscription_required
+async def managed_chat_callback(update, context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); parts=q.data.split(":"); action=parts[1] if len(parts)>1 else "main"
+    kind=parts[2] if len(parts)>2 else "channel"
+    if action=="main":
+        title="📢 مدیریت کانال‌ها" if kind=="channel" else "👥 مدیریت گروه‌ها"
+        chats=managed_chats(kind,True)
+        lines=[title,"",f"تعداد متصل: {len(chats)}"]
+        for r in chats: lines.append(f"• {r['title'] or r['username'] or r['chat_id']} — {r['chat_id']}")
+        await q.message.reply_text("\n".join(lines),reply_markup=managed_chat_keyboard(kind)); return
+    if action=="add":
+        context.user_data["managed_chat_state"]="add:"+kind
+        label="کانال" if kind=="channel" else "گروه"
+        await q.message.reply_text(f"{('📢' if kind=='channel' else '👥')} آیدی یا @username {label} را بفرست.\nمثال: @MyChat یا -1001234567890")
+        return
+    if action=="select":
+        row_id=int(parts[2]); c=db(); r=c.execute("SELECT * FROM managed_chats WHERE id=? AND enabled=1",(row_id,)).fetchone(); c.close()
+        if not r: await q.message.reply_text("❌ مقصد دیگر متصل نیست.",reply_markup=channel_keyboard()); return
+        context.user_data["selected_chat_id"]=r["chat_id"]
+        await q.message.reply_text(f"✅ مقصد انتخاب شد: {r['title'] or r['chat_id']}",reply_markup=channel_keyboard()); return
+    if action=="test":
+        chats=managed_chats(kind,True)
+        if not chats:
+            await q.message.reply_text("❌ مورد متصلی وجود ندارد.",reply_markup=managed_chat_keyboard(kind)); return
+        lines=[]
+        for r in chats:
+            try:
+                chat=await context.bot.get_chat(r["chat_id"])
+                lines.append(f"🟢 {chat.title or r['chat_id']} — اتصال فعال")
+            except Exception:
+                lines.append(f"🔴 {r['title'] or r['chat_id']} — دسترسی/اتصال مشکل دارد")
+        await q.message.reply_text("\n".join(lines),reply_markup=managed_chat_keyboard(kind)); return
+    if action=="disconnect":
+        await q.message.reply_text("⚠️ قطع اتصال فقط با تأیید شما انجام می‌شود.\nیکی را انتخاب کن:",reply_markup=managed_disconnect_keyboard(kind)); return
+    if action=="confirm_disconnect":
+        row_id=int(parts[2]); c=db(); r=c.execute("SELECT * FROM managed_chats WHERE id=?",(row_id,)).fetchone(); c.close()
+        if not r: await q.message.reply_text("❌ مورد پیدا نشد.",reply_markup=channel_keyboard()); return
+        disconnect_managed_chat(r["chat_id"])
+        if context.user_data.get("selected_chat_id")==r["chat_id"]: context.user_data.pop("selected_chat_id",None)
+        await q.message.reply_text(f"🔌 اتصال {r['title'] or r['chat_id']} قطع شد.",reply_markup=channel_keyboard()); return
+
+@subscription_required
 async def channel_panel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -2188,6 +2317,10 @@ async def channel_panel_callback(update, context):
     elif action == "new":
         context.user_data.pop("channel_draft", None)
         context.user_data.pop("channel_new_state", None)
+        channels=managed_chats("channel", True)
+        if len(channels) > 1 and not context.user_data.get("selected_chat_id"):
+            await q.message.reply_text("📢 کانال مقصد را انتخاب کن:",reply_markup=managed_chat_keyboard("channel", "mchat"))
+            return
         await q.message.reply_text("📝 موضوع پست را انتخاب کن:", reply_markup=channel_new_topic_keyboard())
     elif action == "list":
         c = db()
@@ -2198,7 +2331,7 @@ async def channel_panel_callback(update, context):
         text_out = "📋 <b>پست‌های فعال</b>\n\n"
         if rows:
             text_out += "\n".join(
-                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
+                f"#{r['id']} — {channel_schedule_text(r)}\n📢 {r['target_chat_id'] or 'پیش‌فرض'}\n📝 {r['content'][:60]}"
                 for r in rows
             )
         else:
@@ -2237,7 +2370,8 @@ async def channel_new_show_preview(message, context):
     text = (
         "👁 <b>پیش‌نمایش پست</b>\n\n"
         f"📂 {html.escape(d.get('category',''))}\n"
-        f"↳ {html.escape(d.get('subtopic',''))}\n\n"
+        f"↳ {html.escape(d.get('subtopic',''))}\n"
+        f"📢 مقصد: {html.escape(str(context.user_data.get('selected_chat_id') or 'کانال پیش‌فرض'))}\n\n"
         f"{html.escape(content)}"
     )
     await message.reply_text(
@@ -2317,7 +2451,8 @@ async def channel_new_callback(update, context):
         minutes = int(a.split(":")[1])
         cfg = get_channel_config()
         d = context.user_data.get("channel_draft")
-        if not cfg or not cfg["channel_id"]:
+        target = context.user_data.get("selected_chat_id") or (cfg["channel_id"] if cfg and cfg["channel_id"] else "")
+        if not target:
             await q.message.reply_text(
                 "❌ ابتدا کانال را تنظیم کن.",
                 reply_markup=channel_keyboard()
@@ -2333,7 +2468,7 @@ async def channel_new_callback(update, context):
         run_at = datetime.now(TZ) + timedelta(minutes=minutes)
         pid = add_channel_post(
             d["content"], "once", None, None, run_at.isoformat(), uid,
-            d.get("category"), d.get("subtopic")
+            d.get("category"), d.get("subtopic"), target
         )
         context.user_data.pop("channel_draft", None)
         context.user_data.pop("channel_new_state", None)
@@ -2366,7 +2501,10 @@ async def channel_new_text_save(update,context):
         dt=datetime.strptime(text,"%Y-%m-%d %H:%M").replace(tzinfo=TZ)
         d=context.user_data.get("channel_draft")
         if dt<=datetime.now(TZ) or not d: raise ValueError
-        pid=add_channel_post(d["content"],"once",None,None,dt.isoformat(),update.effective_user.id,d.get("category"),d.get("subtopic"))
+        cfg=get_channel_config()
+        target=context.user_data.get("selected_chat_id") or (cfg["channel_id"] if cfg and cfg["enabled"] else "")
+        if not target: await update.message.reply_text("❌ ابتدا یک کانال را از 📢 کانال‌ها انتخاب کن.",reply_markup=channel_keyboard()); return True
+        pid=add_channel_post(d["content"],"once",None,None,dt.isoformat(),update.effective_user.id,d.get("category"),d.get("subtopic"),target)
         context.user_data.pop("channel_draft",None); context.user_data.pop("channel_new_state",None)
         await update.message.reply_text(f"✅ پست تأیید و زمان‌بندی شد.\\n⏰ {dt.strftime('%Y-%m-%d %H:%M')}\\n🆔 #{pid}",reply_markup=channel_keyboard())
     except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. مثال: 2026-08-20 18:30")
@@ -2411,8 +2549,39 @@ async def channel_weektime_callback(update,context):
 
 async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
     cfg=get_channel_config()
-    if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
+    target=context.user_data.get("selected_chat_id") or (cfg["channel_id"] if cfg and cfg["channel_id"] else "")
+    if not target: await message.reply_text("❌ ابتدا یک کانال را از 📢 کانال‌ها انتخاب کن.",reply_markup=channel_keyboard()); return
+    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid,target_chat_id=target); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
+
+async def managed_chat_text_save(update, context):
+    uid=update.effective_user.id
+    state=context.user_data.get("managed_chat_state")
+    if not state or not admin_guard(uid): return False
+    text=update.message.text.strip()
+    try:
+        kind=state.split(":",1)[1]
+        chat=await context.bot.get_chat(text)
+        actual_type="channel" if getattr(chat,"type","") == "channel" else "group" if getattr(chat,"type","") in ("group","supergroup") else ""
+        if actual_type != kind:
+            label="کانال" if kind=="channel" else "گروه"
+            await update.message.reply_text(f"❌ این شناسه مربوط به {label} نیست.")
+            return True
+        if kind=="channel":
+            # The bot must be able to inspect/send in the channel.
+            me=await context.bot.get_me()
+            member=await context.bot.get_chat_member(chat.id, me.id)
+            if member.status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+                await update.message.reply_text("❌ ربات باید در کانال Administrator باشد و اجازه ارسال پیام داشته باشد.")
+                return True
+        chat_id=save_managed_chat(chat,kind,uid)
+        if kind=="channel": set_channel_config(chat_id)
+        context.user_data.pop("managed_chat_state",None)
+        await update.message.reply_text(f"✅ {('کانال' if kind=='channel' else 'گروه')} متصل شد: {chat.title or chat_id}",reply_markup=channel_keyboard())
+    except Exception as e:
+        logger.exception("Managed chat connection failed: %s",e)
+        await update.message.reply_text("❌ اتصال انجام نشد. شناسه/دسترسی ربات را بررسی کن.")
+    return True
+
 
 async def channel_text_save(update,context):
     uid=update.effective_user.id
@@ -2789,6 +2958,9 @@ async def text_router(update, context):
     if await channel_new_text_save(update, context):
         return
 
+    if await managed_chat_text_save(update, context):
+        return
+
     if await channel_text_save(update, context):
         return
 
@@ -2804,12 +2976,26 @@ async def text_router(update, context):
     if await rename_save(update, context):
         return
 
+    if context.user_data.get("custom_goal_name_wait"):
+        name=text.strip()
+        if not name:
+            await update.message.reply_text("❌ متن هدف نمی‌تواند خالی باشد."); return
+        context.user_data.pop("custom_goal_name_wait",None)
+        context.user_data["name"]=name
+        context.user_data["category"]="✍️ هدف شخصی"
+        await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:",reply_markup=priority_keyboard(uid))
+        return
+
     menu = T[lang(uid)]["menu"]
     if text in (menu[0][0], "🎯 اهداف امروز", "🎯 Today's Goals"):
         await today(update, context)
     elif text in (menu[0][1], "➕ هدف جدید", "➕ New Goal"):
         await new_goal(update, context)
+    elif text in ("✍️ هدف خودم می‌نویسم", "✍️ Write My Goal"):
+        context.user_data["custom_goal_name_wait"]=True
+        await update.message.reply_text("✍️ هدف خودت را دقیق بنویس:")
     elif text in (menu[1][0], "🏆 اهداف آماده", "🏆 Ready Goals"):
+        # Backward-compatible: old users can still type the old command, but it is no longer shown in the main menu.
         await ready_menu(update, context)
     elif text in (menu[1][1], "✏️ ویرایش اهداف", "✏️ Edit Goals"):
         await edit_menu(update, context)
@@ -3364,6 +3550,7 @@ def main():
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(managed_chat_callback, pattern=r"^mchat:"))
     app.add_handler(CallbackQueryHandler(channel_new_callback, pattern=r"^chnew:"))
     app.add_handler(CallbackQueryHandler(channel_new_category_callback, pattern=r"^chnewcat:"))
     app.add_handler(CallbackQueryHandler(channel_new_subtopic_callback, pattern=r"^chnewsub:"))
