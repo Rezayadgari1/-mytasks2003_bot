@@ -4730,7 +4730,13 @@ def tgju_value(url):
     vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,٫٬]+)',html,re.I)
     if not vals: vals=re.findall(r'([0-9]{1,3}(?:,[0-9]{3})+)',html)
     if not vals: raise ValueError("price not found")
-    return vals[0]
+    # TGJU values are in Toman; convert to Rial (×10)
+    raw = vals[0].replace(",", "")
+    try:
+        rial = int(raw) * 10
+        return f"{rial:,.0f}"
+    except ValueError:
+        return vals[0]
 
 async def fetch_price(asset):
     # BTC/ETH: use the direct Iranian IRT market from Nobitex.
@@ -4746,7 +4752,7 @@ async def fetch_price(asset):
             last_trade = data.get("lastTradePrice")
             if last_trade is None:
                 raise ValueError("lastTradePrice missing")
-            return f"{float(last_trade)/10:,.0f} تومان"
+            return f"{float(last_trade):,.0f} ریال"
         except Exception as e:
             logger.warning("Nobitex v3 orderbook %s failed: %s", symbol, e)
         try:
@@ -4769,7 +4775,7 @@ async def fetch_price(asset):
             latest = data.get("stats", {}).get(f"{asset}-rls", {}).get("latest")
             if latest is None:
                 raise ValueError("latest price missing")
-            return f"{float(latest)/10:,.0f} تومان"
+            return f"{float(latest):,.0f} ریال"
         except Exception as e:
             logger.warning("Nobitex stats %s failed: %s", symbol, e)
             raise
@@ -4779,7 +4785,7 @@ async def fetch_price(asset):
         meta=data["chart"]["result"][0]["meta"]
         return f"{meta.get('regularMarketPrice',0):,.2f} USD"
     urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
-    return await asyncio.to_thread(tgju_value,urls[asset]) + (" تومان" if asset in ("usd","eur","gold18","coin") else "")
+    return await asyncio.to_thread(tgju_value,urls[asset]) + (" ریال" if asset in ("usd","eur","gold18","coin") else "")
 
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
