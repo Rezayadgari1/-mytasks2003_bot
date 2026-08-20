@@ -36,6 +36,18 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
+DB_SCHEMA_VERSION = 18
+
+# DATA PERSISTENCE CONTRACT
+# -------------------------
+# Code updates must never recreate the database.
+# Do not remove goals, users, history, channel_config, channel_posts,
+# payments, VIP records, referrals, or settings during startup.
+# New fields must use additive migrations only.
+# Existing channel connection is updated in place.
+# Keep DB_PATH stable in Railway Variables / Volume.
+
+DB_BACKUP_PATH = os.environ.get("DB_BACKUP_PATH", DB_PATH + ".backup")
 TZ = ZoneInfo("Asia/Tehran")
 
 # اجباری بودن عضویت در کانال برای استفاده از ربات.
@@ -312,13 +324,81 @@ T = {
 TIME_BUTTONS = ["07:00", "08:00", "10:00", "12:00", "15:00", "18:00", "20:00", "22:00"]
 
 
+
+def backup_database():
+    """Create a safe SQLite backup without deleting or replacing live data."""
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        src_conn = sqlite3.connect(DB_PATH, timeout=30)
+        dst_conn = sqlite3.connect(DB_BACKUP_PATH, timeout=30)
+        with dst_conn:
+            src_conn.backup(dst_conn)
+        dst_conn.close()
+        src_conn.close()
+        return True
+    except Exception as e:
+        logger.error("Database backup failed: %s", e)
+        return False
+
+
+def ensure_column(c, table, column, ddl):
+    """Add a column only when the old database does not have it."""
+    columns = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+def get_schema_version(c):
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS app_meta(
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    row = c.execute(
+        "SELECT value FROM app_meta WHERE key='schema_version'"
+    ).fetchone()
+    return int(row["value"]) if row else 0
+
+
+def set_schema_version(c, version):
+    c.execute("""
+        INSERT INTO app_meta(key,value) VALUES('schema_version',?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    """, (str(version),))
+
+
+def migrate_database(c):
+    """
+    Forward-only migrations.
+    Existing users, goals, channel settings, payments and history stay in place.
+    Never DROP TABLE and never DELETE user data during a normal code update.
+    """
+    version = get_schema_version(c)
+
+    # Add future columns here. Each migration must be additive.
+    # Example:
+    # if version < 19:
+    #     ensure_column(c, "users", "new_field", "TEXT")
+    #     set_schema_version(c, 19)
+
+    if version < DB_SCHEMA_VERSION:
+        set_schema_version(c, DB_SCHEMA_VERSION)
+
+
 def db():
     c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=30000")
+    c.execute("PRAGMA foreign_keys=ON")
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
     return c
 
 
 def init_db():
+    backup_database()
     c = db()
     c.execute(
         """CREATE TABLE IF NOT EXISTS users(
@@ -412,6 +492,48 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS referrals(id INTEGER PRIMARY KEY AUTOINCREMENT,inviter_id INTEGER NOT NULL,invited_id INTEGER UNIQUE NOT NULL,created_at TEXT NOT NULL,rewarded INTEGER NOT NULL DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS content_feedback(id INTEGER PRIMARY KEY AUTOINCREMENT,post_key TEXT,user_id INTEGER,rating INTEGER,reaction TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS content_preferences(user_id INTEGER,category TEXT,score INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,category))""")
+
+    # Production indexes and idempotency tables.
+    c.executescript("""
+    CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active_at);
+    CREATE INDEX IF NOT EXISTS idx_goals_user_enabled_reminder ON goals(user_id, enabled, reminder_time);
+    CREATE INDEX IF NOT EXISTS idx_goal_days_user_date ON goal_days(user_id, goal_date);
+    CREATE INDEX IF NOT EXISTS idx_goal_days_status_date ON goal_days(status, goal_date);
+    CREATE INDEX IF NOT EXISTS idx_goal_steps_goal_user ON goal_steps(goal_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_channel_posts_due ON channel_posts(enabled, schedule_type, run_at);
+    CREATE INDEX IF NOT EXISTS idx_xp_log_user_created ON xp_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_referrals_inviter ON referrals(inviter_id);
+    CREATE INDEX IF NOT EXISTS idx_content_feedback_post ON content_feedback(post_key);
+    CREATE INDEX IF NOT EXISTS idx_price_alerts_enabled ON price_alerts(enabled);
+    CREATE TABLE IF NOT EXISTS delivery_log(
+        delivery_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        delivery_type TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_delivery_user_type
+        ON delivery_log(user_id, delivery_type, created_at);
+    CREATE TABLE IF NOT EXISTS reward_log(
+        reward_key TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        reward_type TEXT NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS broadcast_jobs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER NOT NULL,
+        message_text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        sent_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        last_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        finished_at TEXT
+    );
+    """)
     c.execute("""CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,subject TEXT,status TEXT NOT NULL DEFAULT 'open',created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ticket_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,ticket_id INTEGER,sender_id INTEGER,message TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS price_alerts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,asset TEXT,target REAL,direction TEXT,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)""")
@@ -427,6 +549,7 @@ def init_db():
     for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
     c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES('payments',0,?)",(now_iso,))
+    migrate_database(c)
     c.commit()
     c.close()
 
@@ -1752,6 +1875,25 @@ async def stats(update, context):
 def get_channel_config():
     c=db(); r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone(); c.close(); return r
 
+def persistent_channel_config(channel_id):
+    """Update the existing channel connection in place."""
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    try:
+        c.execute(
+            """INSERT INTO channel_config(id,channel_id,enabled,updated_at)
+               VALUES(1,?,?,?)
+               ON CONFLICT(id) DO UPDATE SET
+                   channel_id=excluded.channel_id,
+                   enabled=1,
+                   updated_at=excluded.updated_at""",
+            (str(channel_id), 1, now),
+        )
+        c.commit()
+    finally:
+        c.close()
+
+
 def set_channel_config(channel_id):
     c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
     ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
@@ -2805,7 +2947,9 @@ async def morning_job(context):
     if now.hour != 7 or now.minute != 0:
         return
     c = db()
-    users = c.execute("SELECT user_id FROM users").fetchall()
+    users = c.execute(
+        "SELECT user_id FROM users WHERE COALESCE(blocked,0)=0"
+    ).fetchall()
     c.close()
     for row in users:
         uid = row["user_id"]
@@ -2820,12 +2964,55 @@ async def morning_job(context):
             logger.error("Morning message error: %s", e)
 
 
+
+def delivery_once(delivery_key, user_id, delivery_type):
+    """Atomically claim a notification key. Returns True only once."""
+    c = db()
+    try:
+        cur = c.execute(
+            "INSERT OR IGNORE INTO delivery_log(delivery_key,user_id,delivery_type,created_at) VALUES(?,?,?,?)",
+            (delivery_key, user_id, delivery_type, datetime.now(TZ).isoformat()),
+        )
+        c.commit()
+        return cur.rowcount == 1
+    finally:
+        c.close()
+
+
+def reward_once(reward_key, user_id, reward_type, amount=0):
+    """Atomically claim a reward key. Returns True only once."""
+    c = db()
+    try:
+        cur = c.execute(
+            "INSERT OR IGNORE INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
+            (reward_key, user_id, reward_type, amount, datetime.now(TZ).isoformat()),
+        )
+        c.commit()
+        return cur.rowcount == 1
+    finally:
+        c.close()
+
+
+def cleanup_delivery_log(days=90):
+    cutoff = (datetime.now(TZ) - timedelta(days=days)).isoformat()
+    c = db()
+    try:
+        c.execute("DELETE FROM delivery_log WHERE created_at < ?", (cutoff,))
+        c.commit()
+    finally:
+        c.close()
+
+
 async def reminder_job(context):
     now = datetime.now(TZ)
     hhmm = now.strftime("%H:%M")
     c = db()
     goals = c.execute(
-        "SELECT * FROM goals WHERE enabled=1 AND reminder_time=?",
+        """SELECT g.* FROM goals g
+           JOIN users u ON u.user_id=g.user_id
+           WHERE g.enabled=1
+             AND g.reminder_time=?
+             AND COALESCE(u.blocked,0)=0""",
         (hhmm,),
     ).fetchall()
     c.close()
