@@ -32,8 +32,14 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     PreCheckoutQueryHandler,
+    PollAnswerHandler,
     filters,
 )
+try:
+    from telegram.ext import MessageReactionHandler
+except ImportError:
+    MessageReactionHandler = None
+
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
@@ -549,6 +555,22 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,payload TEXT,currency TEXT,total_amount INTEGER,telegram_charge_id TEXT UNIQUE,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER,asset TEXT,created_at TEXT NOT NULL,PRIMARY KEY(user_id,asset))""")
     c.execute("""CREATE TABLE IF NOT EXISTS daily_reports(report_date TEXT PRIMARY KEY,data TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS channel_reactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, message_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL, reaction TEXT NOT NULL, is_paid INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(channel_id, message_id, user_id, reaction)
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_channel_reactions_day ON channel_reactions(channel_id, created_at)")
+    c.execute("""CREATE TABLE IF NOT EXISTS channel_polls(
+        poll_id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, poll_type TEXT NOT NULL,
+        question TEXT NOT NULL, options TEXT NOT NULL, created_at TEXT NOT NULL, report_date TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS channel_poll_votes(
+        poll_id TEXT NOT NULL, user_id INTEGER NOT NULL, option_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL, PRIMARY KEY(poll_id, user_id)
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_channel_poll_votes_poll ON channel_poll_votes(poll_id)")
     c.execute("""CREATE TABLE IF NOT EXISTS health_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,service TEXT,status TEXT,details TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS auto_pending(
         id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, topic TEXT NOT NULL,
@@ -2342,7 +2364,7 @@ async def auto_channel_job(context):
     try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
     except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=(feature_enabled("approval") or test_mode_active()) and bool(ADMIN_IDS)
+    approval=True and bool(ADMIN_IDS)
     if approval:
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
@@ -3813,6 +3835,146 @@ async def daily_report_job(context):
             except Exception as e:
                 logger.warning("Night evaluation poll failed: %s", e)
 
+
+async def channel_reaction_handler(update, context):
+    """Store channel post reactions for end-of-day analytics."""
+    try:
+        mr = getattr(update, "message_reaction", None)
+        if not mr:
+            return
+        chat = getattr(mr, "chat", None)
+        if not chat or getattr(chat, "type", "") not in ("channel", "supergroup", "group"):
+            return
+        user = getattr(mr, "user", None)
+        if not user:
+            return
+        message_id = int(getattr(mr, "message_id", 0) or 0)
+        channel_id = str(getattr(chat, "id", ""))
+        if not channel_id or not message_id:
+            return
+        old = getattr(mr, "old_reaction", []) or []
+        new = getattr(mr, "new_reaction", []) or []
+        c = db()
+        # Replace this user's reaction set for this message atomically.
+        c.execute("DELETE FROM channel_reactions WHERE channel_id=? AND message_id=? AND user_id=?", (channel_id, message_id, int(user.id)))
+        now = datetime.now(TZ).isoformat()
+        for reaction in new:
+            emoji = getattr(reaction, "emoji", None) or getattr(reaction, "custom_emoji_id", None) or str(reaction)
+            is_paid = 1 if getattr(reaction, "type", "") == "paid" else 0
+            c.execute("INSERT OR IGNORE INTO channel_reactions(channel_id,message_id,user_id,reaction,is_paid,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                      (channel_id, message_id, int(user.id), str(emoji), is_paid, now, now))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("Channel reaction handler failed")
+
+async def channel_poll_answer_handler(update, context):
+    """Persist anonymous/non-anonymous end-of-day poll choices."""
+    try:
+        pa = getattr(update, "poll_answer", None)
+        if not pa:
+            return
+        poll_id = str(getattr(pa, "poll_id", ""))
+        user = getattr(pa, "user", None)
+        if not poll_id or not user:
+            return
+        options = list(getattr(pa, "option_ids", []) or [])
+        c = db()
+        c.execute("DELETE FROM channel_poll_votes WHERE poll_id=? AND user_id=?", (poll_id, int(user.id)))
+        now = datetime.now(TZ).isoformat()
+        for option_id in options:
+            c.execute("INSERT OR REPLACE INTO channel_poll_votes(poll_id,user_id,option_id,created_at) VALUES(?,?,?,?)",
+                      (poll_id, int(user.id), int(option_id), now))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("Channel poll answer handler failed")
+
+def _today_channel_id():
+    cfg = get_channel_config()
+    return str(cfg["channel_id"]) if cfg and cfg["channel_id"] else ""
+
+def _reaction_stats(channel_id, date_iso):
+    c = db()
+    rows = c.execute("SELECT reaction, COUNT(*) n FROM channel_reactions WHERE channel_id=? AND substr(created_at,1,10)=? GROUP BY reaction ORDER BY n DESC", (str(channel_id), date_iso)).fetchall()
+    total = c.execute("SELECT COUNT(*) n FROM channel_reactions WHERE channel_id=? AND substr(created_at,1,10)=?", (str(channel_id), date_iso)).fetchone()["n"]
+    c.close()
+    return [(r["reaction"], r["n"]) for r in rows], total
+
+def _poll_vote_stats(poll_type, date_iso):
+    c = db()
+    rows = c.execute("""SELECT cp.question, cp.options, cp.poll_id, cpv.option_id, COUNT(*) n
+                       FROM channel_polls cp JOIN channel_poll_votes cpv ON cp.poll_id=cpv.poll_id
+                       WHERE cp.poll_type=? AND cp.report_date=? GROUP BY cp.poll_id, cpv.option_id""", (poll_type, date_iso)).fetchall()
+    c.close()
+    return rows
+
+async def send_channel_morning_message(context):
+    now = datetime.now(TZ)
+    if now.hour != int(get_auto_setting("morning_channel_hour", "7") or 7) or now.minute != int(get_auto_setting("morning_channel_minute", "0") or 0):
+        return
+    channel = _today_channel_id()
+    if not channel or get_auto_setting("channel_morning_date", "") == now.date().isoformat():
+        return
+    try:
+        await context.bot.send_message(chat_id=channel, text="☀️ صبح بخیر همراهان MyTasks!\n\nیک روز تازه، یک فرصت تازه برای یک قدم بهتر. 🌱\nامروز هم با هم یک موضوع کاربردی و مفید را بررسی می‌کنیم. 🎯")
+        set_auto_setting("channel_morning_date", now.date().isoformat())
+    except Exception:
+        logger.exception("Channel morning message failed")
+
+async def send_night_channel_feedback(context):
+    now = datetime.now(TZ)
+    if now.hour != 23 or now.minute != 30:
+        return
+    date_iso = now.date().isoformat()
+    channel = _today_channel_id()
+    if not channel or get_auto_setting("night_feedback_date", "") == date_iso:
+        return
+    try:
+        # Night greeting is deliberately separate from both polls.
+        await context.bot.send_message(chat_id=channel, text="🌙 شب بخیر همراهان MyTasks!\n\nممنون که امروز هم همراه ما بودید. ❤️\nقبل از پایان روز، نظرتان درباره محتوای امروز را با ما در میان بگذارید.")
+        msg = await context.bot.send_poll(chat_id=channel, question="📊 محتوای امروز چقدر برایت مفید بود؟", options=["😍 خیلی مفید بود", "👍 مفید بود", "😐 معمولی بود", "👎 مفید نبود"], is_anonymous=False)
+        c=db(); c.execute("INSERT OR REPLACE INTO channel_polls(poll_id,channel_id,poll_type,question,options,created_at,report_date) VALUES(?,?,?,?,?,?,?)", (str(msg.poll.id),str(channel),"usefulness",msg.poll.question,json.dumps(msg.poll.options,ensure_ascii=False,default=lambda o:o.text),datetime.now(TZ).isoformat(),date_iso))
+        c.commit(); c.close()
+        topics = ["🏃 ورزش و سلامتی", "🧠 تمرکز و یادگیری", "😴 خواب و سبک زندگی", "💰 مدیریت مالی", "📚 مطالعه و رشد فردی"]
+        msg2 = await context.bot.send_poll(chat_id=channel, question="🎯 فردا بیشتر درباره کدام موضوع صحبت کنیم؟", options=topics, is_anonymous=False)
+        c=db(); c.execute("INSERT OR REPLACE INTO channel_polls(poll_id,channel_id,poll_type,question,options,created_at,report_date) VALUES(?,?,?,?,?,?,?)", (str(msg2.poll.id),str(channel),"topic",msg2.poll.question,json.dumps(topics,ensure_ascii=False),datetime.now(TZ).isoformat(),date_iso))
+        c.commit(); c.close()
+        set_auto_setting("night_feedback_date", date_iso)
+    except Exception:
+        logger.exception("Night channel feedback failed")
+
+async def final_daily_report_job(context):
+    now = datetime.now(TZ)
+    if now.hour == 23 and now.minute == 59:
+        await build_daily_report()
+        channel = _today_channel_id()
+        date_iso = now.date().isoformat()
+        reactions, reaction_total = _reaction_stats(channel, date_iso) if channel else ([],0)
+        topic_rows = _poll_vote_stats("topic", date_iso)
+        useful_rows = _poll_vote_stats("usefulness", date_iso)
+        # Feed topic preference back into the next day's topic picker without replacing the admin's configured topic.
+        topic_votes = {}
+        for r in topic_rows:
+            try:
+                opts=json.loads(r["options"])
+                label = opts[int(r["option_id"])] if int(r["option_id"]) < len(opts) else str(r["option_id"])
+                topic_votes[label]=topic_votes.get(label,0)+int(r["n"])
+            except Exception: pass
+        top_topic = max(topic_votes, key=topic_votes.get) if topic_votes else ""
+        c=db()
+        c.execute("INSERT OR REPLACE INTO system_settings(key,value,updated_at) VALUES(?,?,?)", ("tomorrow_topic_preference", top_topic, datetime.now(TZ).isoformat()))
+        c.commit(); c.close()
+        # Append channel reaction data to the existing daily report rather than replacing it.
+        c=db(); row=c.execute("SELECT data FROM daily_reports WHERE report_date=?",(date_iso,)).fetchone(); data=json.loads(row["data"]) if row else {}
+        data.update({"channel_reactions":reaction_total,"reaction_breakdown":dict(reactions),"tomorrow_topic":top_topic,"topic_votes":topic_votes})
+        c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(date_iso,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
+        if ADMIN_IDS:
+            report = get_daily_report_text()+f"\n\n📣 واکنش‌های کانال: {reaction_total}"
+            if reactions: report += "\n" + " | ".join(f"{e}: {n}" for e,n in reactions[:8])
+            report += f"\n🎯 موضوع پیشنهادی فردا: {top_topic or 'رأی کافی ثبت نشده'}"
+            for admin_id in ADMIN_IDS:
+                try: await context.bot.send_message(chat_id=admin_id,text=report)
+                except Exception: logger.exception("Admin daily report delivery failed")
+
 admin_panel_callback=final_admin_panel_callback
 admin_keyboard=final_admin_keyboard
 
@@ -3872,6 +4034,9 @@ def main():
     app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
     app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
     app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
+    app.add_handler(PollAnswerHandler(channel_poll_answer_handler))
+    if MessageReactionHandler is not None:
+        app.add_handler(MessageReactionHandler(channel_reaction_handler))
     app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
     app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
     app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
@@ -3921,9 +4086,11 @@ def main():
     if app.job_queue:
         app.job_queue.run_repeating(reminder_job, interval=60, first=5)
         app.job_queue.run_repeating(morning_job, interval=60, first=10)
+        app.job_queue.run_repeating(send_channel_morning_message, interval=60, first=12)
+        app.job_queue.run_repeating(send_night_channel_feedback, interval=60, first=14)
         app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
         app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
-        app.job_queue.run_repeating(daily_report_job, interval=60, first=25)
+        app.job_queue.run_repeating(final_daily_report_job, interval=60, first=25)
 
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
