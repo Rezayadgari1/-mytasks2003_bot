@@ -1922,6 +1922,28 @@ def set_channel_config(channel_id):
     c=db(); c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
     ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id, enabled=1, updated_at=excluded.updated_at""",(str(channel_id).strip(),datetime.now(TZ).isoformat())); c.commit(); c.close()
 
+def normalize_channel_input(value):
+    """Accept a public channel username and convert it to Telegram @username format."""
+    value = (value or "").strip()
+    value = value.replace("https://t.me/", "").replace("http://t.me/", "")
+    value = value.split("?", 1)[0].split("/", 1)[0].strip()
+    value = value.lstrip("@")
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", value):
+        raise ValueError("invalid channel username")
+    return "@" + value
+
+
+async def bot_can_manage_channel(bot, channel):
+    """Check that the bot is an administrator with permission to post in the channel."""
+    me = await bot.get_me()
+    member = await bot.get_chat_member(chat_id=channel, user_id=me.id)
+    if member.status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+        return False, "❌ ربات در کانال ادمین نیست. ابتدا ربات را ادمین کانال کن."
+    if member.status == ChatMemberStatus.ADMINISTRATOR and not bool(getattr(member, "can_post_messages", False)):
+        return False, "❌ ربات ادمین است، ولی اجازه ارسال پست ندارد. دسترسی ارسال پیام را فعال کن."
+    return True, "OK"
+
+
 def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None, created_by=0):
     c=db(); cur=c.execute("INSERT INTO channel_posts(content,schedule_type,schedule_time,weekday,run_at,enabled,created_at,created_by) VALUES(?,?,?,?,?,1,?,?)",(content,typ,schedule_time,weekday,run_at,datetime.now(TZ).isoformat(),created_by)); pid=cur.lastrowid; c.commit(); c.close(); return pid
 
@@ -2633,9 +2655,9 @@ async def channel_panel_callback(update, context):
     elif action == "set":
         context.user_data["channel_state"] = "set"
         await q.message.reply_text(
-            "📡 آیدی یا @username کانال را بفرست.\n"
+            "📡 یوزرنیم کانال را بفرست.\n"
             "مثال: <code>@MyTasks</code>\n"
-            "یا: <code>-1001234567890</code>",
+            "لینک t.me هم پذیرفته می‌شود.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]),
         )
