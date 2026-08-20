@@ -827,21 +827,6 @@ def clear_flow(context):
             context.user_data.pop(key, None)
 
 
-async def finish_callback_with_menu(q, uid, text):
-    """Telegram rejects ReplyKeyboardMarkup on edit_text. Show text, then restore the main menu."""
-    try:
-        await q.message.edit_text(text)
-    except Exception:
-        try:
-            await q.message.reply_text(text)
-        except Exception:
-            pass
-    try:
-        await q.message.chat.send_message("🏠", reply_markup=keyboard(uid))
-    except Exception:
-        pass
-
-
 def normalize_digits(s):
     return s.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
 
@@ -1362,6 +1347,24 @@ async def language_callback(update, context):
     await q.message.reply_text(T[value]["gender"])
 
 
+def onboarding_business_keyboard(uid):
+    types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN
+    rows=[[InlineKeyboardButton(x,callback_data=f"onboardtype:{i}")] for i,x in enumerate(types)]
+    rows.append([InlineKeyboardButton("⏭️ رد کردن / بعداً انتخاب می‌کنم",callback_data="onboardtype:skip")])
+    return InlineKeyboardMarkup(rows)
+
+
+@subscription_required
+async def onboarding_business_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id; await q.answer()
+    value=q.data.split(":",1)[1]
+    if value!="skip":
+        types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN; idx=int(value)
+        ensure_business_profile(uid)
+        c=db(); c.execute("UPDATE business_profiles SET business_type=?,updated_at=? WHERE user_id=?",(types[idx],datetime.now(TZ).isoformat(),uid)); c.commit(); c.close()
+    await q.message.edit_text("✅ تنظیم اولیه انجام شد. هر زمان خواستی از «مدیریت مشتری و نوبت‌دهی» قابل تغییر است." if value!="skip" else "⏭️ رد شد. هر زمان خواستی می‌توانی نوع فعالیتت را انتخاب کنی.",reply_markup=keyboard(uid))
+
+
 @subscription_required
 async def gender_callback(update, context):
     q = update.callback_query
@@ -1371,8 +1374,8 @@ async def gender_callback(update, context):
     set_gender(uid, value)
     log_activity(uid, "gender_selected")
     await q.message.reply_text(
-        T[lang(uid)]["gender_saved"].format(name=display_name(uid)),
-        reply_markup=keyboard(uid),
+        T[lang(uid)]["gender_saved"].format(name=display_name(uid)) + "\n\n💼 اگر دوست داری، نوع فعالیت یا شغلت را هم انتخاب کن. این مرحله اجباری نیست:",
+        reply_markup=onboarding_business_keyboard(uid),
     )
 
 
@@ -1445,7 +1448,7 @@ async def settings_callback(update, context):
         text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
         await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
-        if action=="main": await finish_callback_with_menu(q, uid, "🏠 منوی اصلی")
+        if action=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
         else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
@@ -1600,8 +1603,9 @@ async def time_callback(update, context):
     add_goal(uid, name, category, reminder, priority, duration)
     context.user_data.clear()
     log_activity(uid, "goal_created")
-    await finish_callback_with_menu(
-        q, uid, T[lang(uid)]["goal_added"].format(name=display_name(uid))
+    await q.message.edit_text(
+        T[lang(uid)]["goal_added"].format(name=display_name(uid)),
+        reply_markup=keyboard(uid),
     )
 
 
@@ -1741,12 +1745,11 @@ async def mark(update, context):
                 if lang(uid) == "fa"
                 else ("🏆 New achievement!\n" + "\n".join(new_achievements))
             )
-    await finish_callback_with_menu(
-        q,
-        uid,
+    await q.message.edit_text(
         T[lang(uid)]["done"].format(name=display_name(uid))
         if is_done
         else T[lang(uid)]["missed"].format(name=display_name(uid)),
+        reply_markup=keyboard(uid),
     )
 
 
@@ -1842,7 +1845,7 @@ async def change_reminder(update, context):
     context.user_data["edit_reminder_id"] = gid
     await q.message.edit_text(
         T[lang(uid)]["choose_time"],
-        reply_markup=edit_time_keyboard(uid),
+        reply_markup=time_keyboard(uid),
     )
 
 
@@ -1870,8 +1873,9 @@ async def edit_time_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await finish_callback_with_menu(
-        q, uid, "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
+    await q.message.edit_text(
+        "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
+        reply_markup=keyboard(uid),
     )
 
 
@@ -1900,12 +1904,12 @@ async def time_change_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await finish_callback_with_menu(q, uid, T[lang(uid)]["changed"])
+    await q.message.edit_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
 
 
 async def custom_edit_time_save(update, context):
     uid = update.effective_user.id
-    if not (context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time")):
+    if not context.user_data.get("awaiting_edit_time"):
         return False
     gid = context.user_data.get("edit_reminder_id")
     reminder = parse_time(update.message.text.strip())
@@ -1921,7 +1925,6 @@ async def custom_edit_time_save(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     context.user_data.pop("awaiting_edit_time", None)
-    context.user_data.pop("awaiting_custom_edit_time", None)
     log_activity(uid, "reminder_changed")
     await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
     return True
@@ -1960,15 +1963,19 @@ async def delete_confirm(update, context):
     c.commit()
     c.close()
     log_activity(uid, "goal_deleted")
-    await finish_callback_with_menu(q, uid, T[lang(uid)]["deleted"])
+    await q.message.edit_text(
+        T[lang(uid)]["deleted"],
+        reply_markup=keyboard(uid),
+    )
 
 
 @subscription_required
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
-    await finish_callback_with_menu(
-        q, q.from_user.id, "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
+    await q.message.edit_text(
+        "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
+        reply_markup=keyboard(q.from_user.id),
     )
 
 
@@ -2283,7 +2290,7 @@ def _is_topic_relevant(text, topic):
     hits = sum(1 for term in terms if term.lower() in body)
     # Generic topics can have fewer lexical matches, but must still mention
     # the topic itself or a meaningful keyword from it.
-    exact = str(topic or "").lower() in body
+    exact = t in body
     needed = 1 if len(terms) == 1 else 2
     return exact or hits >= min(needed, len(terms))
 
@@ -2309,7 +2316,21 @@ def recent_auto_posts(channel_id, limit=12):
     finally: c.close()
 
 def post_is_duplicate(channel_id, topic, content, threshold=0.78):
-    for row in recent_auto_posts(channel_id,12):
+    """Never reuse an automatic post on the same channel.
+    Exact duplicates are blocked forever; near-duplicates are checked against
+    the full stored history, not only the last few posts.
+    """
+    normalized=_normalize_post_text(content)
+    digest=hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    c=db()
+    try:
+        exact=c.execute("SELECT 1 FROM auto_post_history WHERE channel_id=? AND content_hash=? LIMIT 1",(str(channel_id),digest)).fetchone()
+        if exact:
+            return True,1.0
+        rows=c.execute("SELECT topic,content FROM auto_post_history WHERE channel_id=? ORDER BY id DESC",(str(channel_id),)).fetchall()
+    finally:
+        c.close()
+    for row in rows:
         sim=_post_similarity(content,row["content"])
         if sim>=threshold or (row["topic"]==topic and sim>=0.62):
             return True,sim
@@ -2339,14 +2360,22 @@ def topic_specific_fallback(topic, attempt=1):
 def generate_unique_auto_post(channel_id, category, topic):
     recent=recent_auto_posts(channel_id,8)
     avoid="\\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
-    for attempt in range(1,4):
+    for attempt in range(1,9):
         content=ai_generate_post(topic, avoid_text=avoid, variation_seed=attempt)
         duplicate,score=post_is_duplicate(channel_id,topic,content)
         if not duplicate and _is_topic_relevant(content,topic):
             return content
         logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
         avoid += f"\\n- نسخه ردشده: {str(content)[:220]}"
-    return topic_specific_fallback(topic,4)
+    for attempt in range(1,9):
+        candidate=topic_specific_fallback(topic,attempt)
+        duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.90)
+        if not duplicate:
+            return candidate
+    # Last-resort uniqueness guard: preserve the topic while making the text
+    # materially different so the database UNIQUE hash can never collide.
+    stamp=datetime.now(TZ).strftime("%Y%m%d%H%M%S")
+    return topic_specific_fallback(topic,8)+f"\n\n🆕 نسخه: {stamp}"
 
 def ai_generate_post(topic, avoid_text='', variation_seed=1):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -2536,7 +2565,7 @@ async def auto_channel_job(context):
     try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
     except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=feature_enabled("approval") and bool(ADMIN_IDS)
+    approval=True and bool(ADMIN_IDS)
     if approval:
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
@@ -2556,7 +2585,7 @@ async def auto_channel_job(context):
                 if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
                 else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
                 save_auto_post_history(channel,pending["topic"],get_auto_setting("category","random"),content)
-                log_activity(next(iter(ADMIN_IDS), 0),"auto_channel_post_approved")
+                log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
             except Exception as e: logger.error("Approved auto post failed: %s",e)
         c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
         set_auto_setting("last_run",now.isoformat()); set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat()); return
@@ -2564,7 +2593,7 @@ async def auto_channel_job(context):
     next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
     category,topic=get_auto_topic()
     try:
-        msg=await send_auto_channel_post(context,channel,topic,category); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(next(iter(ADMIN_IDS), 0),"auto_channel_post")
+        msg=await send_auto_channel_post(context,channel,topic,category); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
     except Exception as e:
         set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
 
@@ -2587,8 +2616,9 @@ def channel_keyboard():
         [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
          InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
         [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
-         InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list")],
-        [InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
+         InlineKeyboardButton("🤖 ساخت پست هوشمند", callback_data="ch:smart")],
+        [InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list"),
+         InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
         [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
     ])
 
@@ -2597,8 +2627,6 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
-    rows.append([InlineKeyboardButton("🕐 ساعت دیگر", callback_data=f"{prefix}:custom")])
-    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -2830,6 +2858,80 @@ async def auto_interval_callback(update, context):
     )
 
 
+def smart_post_category_keyboard():
+    rows=[[InlineKeyboardButton("🎲 موضوع تصادفی",callback_data="chgen:random")]]
+    for i,category in enumerate(AUTO_TOPIC_TREE_FA):
+        rows.append([InlineKeyboardButton(category,callback_data=f"chgen:cat:{i}")])
+    rows.append([InlineKeyboardButton("⬅️ مدیریت کانال",callback_data="ch:main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def smart_post_subcategory_keyboard(cat_idx):
+    categories=list(AUTO_TOPIC_TREE_FA.keys()); category=categories[cat_idx]
+    rows=[[InlineKeyboardButton("🎲 شاخه تصادفی",callback_data=f"chgen:sub:{cat_idx}:random")]]
+    for i,sub in enumerate(AUTO_TOPIC_TREE_FA[category]):
+        rows.append([InlineKeyboardButton(sub,callback_data=f"chgen:sub:{cat_idx}:{i}")])
+    rows.append([InlineKeyboardButton("⬅️ دسته‌ها",callback_data="ch:smart")])
+    return InlineKeyboardMarkup(rows)
+
+
+def smart_post_preview_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 انتشار فوری پست",callback_data="chgen:publish"),InlineKeyboardButton("🔄 ساخت دوباره",callback_data="chgen:regen")],
+        [InlineKeyboardButton("⬅️ انتخاب موضوع",callback_data="ch:smart"),InlineKeyboardButton("🏠 مدیریت کانال",callback_data="ch:main")]
+    ])
+
+
+async def smart_post_show_preview(update,context,category,topic):
+    q=update.callback_query; uid=q.from_user.id
+    channel=get_channel_config()
+    if not channel or not channel["channel_id"]:
+        await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+    content=generate_unique_auto_post(channel["channel_id"],category,topic)
+    context.user_data["smart_post"]={"channel":str(channel["channel_id"]),"category":category,"topic":topic,"content":content}
+    await q.message.edit_text(
+        f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {html.escape(category)}\n🎯 {html.escape(topic)}\n\n{html.escape(content)}",
+        parse_mode="HTML",reply_markup=smart_post_preview_keyboard())
+
+
+async def smart_post_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    await q.answer(); parts=q.data.split(":"); action=parts[1]
+    if action=="smart":
+        context.user_data.pop("smart_post",None)
+        await q.message.edit_text("🤖 <b>ساخت پست هوشمند</b>\n\nموضوع را انتخاب کن. پست قبل از انتشار کامل به تو نمایش داده می‌شود:",parse_mode="HTML",reply_markup=smart_post_category_keyboard()); return
+    if action=="cat":
+        idx=int(parts[2]); categories=list(AUTO_TOPIC_TREE_FA.keys()); category=categories[idx]
+        await q.message.edit_text(f"📂 <b>{html.escape(category)}</b>\n\nزیرموضوع را انتخاب کن:",parse_mode="HTML",reply_markup=smart_post_subcategory_keyboard(idx)); return
+    if action=="random":
+        category,topic=get_auto_topic(); await smart_post_show_preview(update,context,category,topic); return
+    if action=="sub":
+        cat_idx=int(parts[2]); sub_idx=parts[3]; categories=list(AUTO_TOPIC_TREE_FA.keys()); category=categories[cat_idx]
+        topic=random.choice(AUTO_TOPIC_TREE_FA[category]) if sub_idx=="random" else AUTO_TOPIC_TREE_FA[category][int(sub_idx)]
+        await smart_post_show_preview(update,context,category,topic); return
+    if action=="regen":
+        data=context.user_data.get("smart_post")
+        if not data: await q.message.edit_text("❌ پیش‌نمایش منقضی شده است.",reply_markup=channel_keyboard()); return
+        content=generate_unique_auto_post(data["channel"],data["category"],data["topic"])
+        data["content"]=content; context.user_data["smart_post"]=data
+        await q.message.edit_text(f"👁 <b>پیش‌نمایش جدید</b>\n\n📂 {html.escape(data['category'])}\n🎯 {html.escape(data['topic'])}\n\n{html.escape(content)}",parse_mode="HTML",reply_markup=smart_post_preview_keyboard()); return
+    if action=="publish":
+        data=context.user_data.get("smart_post")
+        if not data: await q.message.edit_text("❌ پیش‌نمایش منقضی شده است.",reply_markup=channel_keyboard()); return
+        try:
+            image=await generate_topic_image(data["topic"])
+            content=data["content"][:1024]
+            if image is not None: await context.bot.send_photo(chat_id=data["channel"],photo=image,caption=content,reply_markup=content_feedback_keyboard(data["topic"]))
+            else: await context.bot.send_message(chat_id=data["channel"],text=content,reply_markup=content_feedback_keyboard(data["topic"]))
+            save_auto_post_history(data["channel"],data["topic"],data["category"],content)
+            context.user_data.pop("smart_post",None)
+            await q.message.edit_text("✅ <b>پست با موفقیت فوری منتشر شد.</b>",parse_mode="HTML",reply_markup=channel_keyboard())
+        except Exception as e:
+            logger.exception("Smart immediate post failed")
+            await q.message.edit_text("❌ انتشار ناموفق بود. دسترسی ربات به کانال را بررسی کن.",reply_markup=channel_keyboard())
+
+
 @subscription_required
 async def channel_panel_callback(update, context):
     q = update.callback_query
@@ -2857,6 +2959,9 @@ async def channel_panel_callback(update, context):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]),
         )
+    elif action == "smart":
+        context.user_data.pop("smart_post",None)
+        await q.message.edit_text("🤖 <b>ساخت پست هوشمند</b>\n\nموضوع را انتخاب کن. بعد از انتخاب، پیش‌نمایش کامل پست نمایش داده می‌شود و خودت انتشار فوری را تأیید می‌کنی.",parse_mode="HTML",reply_markup=smart_post_category_keyboard())
     elif action == "auto":
         await q.message.edit_text(
             "🤖 <b>انتشار خودکار</b>\n\n"
@@ -3271,7 +3376,7 @@ async def user_daily_progress_job(context):
             trend="📈 پیشرفت" if diff>0 else "📉 پسرفت" if diff<0 else "➡️ بدون تغییر"
             sign="+" if diff>0 else ""
             xp=xp_info(uid)[0]
-            text=f"🌙 <b>گزارش روزانه تو</b>\n\n🎯 امروز: {td}/{tt} هدف انجام شد ({tp}٪)\n📅 دیروز: {yd}/{yt} هدف انجام شد ({yp}٪)\n\n{trend}: {sign}{diff}٪ نسبت به دیروز\n⭐ XP فعلی: {xp}\n\nفردا یک قدم بهتر شروع می‌کنیم. 💪"
+            text=f"🌙 <b>شب بخیر {html.escape(display_name(uid))}!</b>\n\nگزارش روزانه تو 🌙\n\n🎯 امروز: {td}/{tt} هدف انجام شد ({tp}٪)\n📅 دیروز: {yd}/{yt} هدف انجام شد ({yp}٪)\n\n{trend}: {sign}{diff}٪ نسبت به دیروز\n⭐ XP فعلی: {xp}\n\nفردا یک قدم بهتر شروع می‌کنیم. 💪"
             await context.bot.send_message(uid,text,parse_mode="HTML",reply_markup=keyboard(uid))
         except Exception: logger.exception("User daily progress failed for %s",uid)
     c.close()
@@ -3746,7 +3851,14 @@ async def customer_settings(update,context):
 async def appointment_status(update,context,status,aid):
     q=update.callback_query; uid=q.from_user.id; r=get_appointment(uid,aid)
     if not r:return
-    c=db(); c.execute("UPDATE appointments SET status=?,updated_at=? WHERE id=? AND owner_user_id=?",(status,datetime.now(TZ).isoformat(),aid,uid)); c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r['customer_id'],aid,status,"",datetime.now(TZ).isoformat())); c.commit(); c.close(); await q.message.edit_text("✅ نوبت انجام شد و در سابقه مشتری ثبت شد." if status=="done" else "❌ نوبت لغو شد و سابقه حفظ شد.",reply_markup=customer_back(uid))
+    now=datetime.now(TZ).isoformat()
+    c=db(); c.execute("UPDATE appointments SET status=?,updated_at=? WHERE id=? AND owner_user_id=?",(status,now,aid,uid)); c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r['customer_id'],aid,status,"",now)); c.commit(); c.close()
+    if r["telegram_user_id"]:
+        try:
+            msg = (f"❌ <b>نوبت شما توسط ارائه‌دهنده لغو شد.</b>\n\n📅 {jalali_pretty_date(r['appointment_date'])}\n⏰ {r['appointment_time']}") if status=="cancelled" else (f"✅ <b>نوبت شما انجام‌شده ثبت شد.</b>\n\n📅 {jalali_pretty_date(r['appointment_date'])}\n⏰ {r['appointment_time']}")
+            await context.bot.send_message(r["telegram_user_id"],msg,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]]))
+        except Exception: logger.warning("Customer status notification failed")
+    await q.message.edit_text("✅ نوبت انجام شد و در سابقه مشتری ثبت شد." if status=="done" else "❌ نوبت لغو شد و سابقه حفظ شد.",reply_markup=customer_back(uid))
 
 async def customer_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get("customer_mode"); text=update.message.text.strip()
@@ -3796,7 +3908,18 @@ async def customer_text_save(update,context):
     if mode=="reschedule_time":
         aid=context.user_data["appointment_id"]; tm=parse_time(text); d=context.user_data["booking_date"]
         if not tm or has_conflict(uid,d,tm,30,aid): await update.message.reply_text("❌ این زمان آزاد نیست."); return True
-        c=db(); c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=? AND owner_user_id=?",(d,tm,datetime.now(TZ).isoformat(),aid,uid)); c.commit(); c.close(); context.user_data.clear(); await update.message.reply_text("🔄 نوبت جابه‌جا شد.",reply_markup=customer_keyboard(uid)); return True
+        now=datetime.now(TZ).isoformat()
+        c=db(); r=c.execute("SELECT a.*,c.name,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND a.owner_user_id=?",(aid,uid)).fetchone()
+        if not r:
+            c.close(); context.user_data.clear(); await update.message.reply_text("❌ نوبت پیدا نشد.",reply_markup=customer_keyboard(uid)); return True
+        old_date,old_time=r["appointment_date"],r["appointment_time"]
+        c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=? AND owner_user_id=?",(d,tm,now,aid,uid))
+        c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r["customer_id"],aid,"owner_rescheduled",f"{old_date} {old_time} -> {d} {tm}",now)); c.commit(); c.close()
+        if r["telegram_user_id"]:
+            try:
+                await context.bot.send_message(r["telegram_user_id"],f"🔄 <b>زمان نوبت شما تغییر کرد.</b>\n\n📅 قبلی: {jalali_pretty_date(old_date)}\n⏰ {old_time}\n📅 جدید: {jalali_pretty_date(d)}\n⏰ {tm}",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")]]))
+            except Exception: logger.warning("Customer owner-reschedule notification failed")
+        context.user_data.clear(); await update.message.reply_text("🔄 نوبت جابه‌جا شد و مشتری هم مطلع شد.",reply_markup=customer_keyboard(uid)); return True
     return False
 
 async def customer_contact_save(update,context):
@@ -4148,7 +4271,7 @@ async def text_router(update, context):
         return
     text = update.message.text.strip()
     if any(k in context.user_data for k in (
-        "channel_state", "admin_broadcast", "ai_chat", "auto_wait_interval",
+        "channel_state", "admin_broadcast", "ai_chat", "auto_wait_interval", "admin_health_time",
         "auto_wait_time", "awaiting_custom_duration", "awaiting_custom_edit_time",
         "awaiting_custom_goal", "awaiting_custom_time", "awaiting_edit_time",
         "awaiting_rename", "awaiting_step", "support_new"
@@ -4205,6 +4328,8 @@ async def text_router(update, context):
         return
     if await support_text(update, context):
         return
+    if await admin_health_time_save(update, context):
+        return
     if await final_admin_text(update, context):
         return
     if await channel_text_save(update, context):
@@ -4216,8 +4341,6 @@ async def text_router(update, context):
     if await ai_chat_text(update, context):
         return
     if await custom_goal_save(update, context):
-        return
-    if await step_save(update, context):
         return
     if await custom_duration_save(update, context):
         return
@@ -4356,7 +4479,7 @@ async def xp_command(update,context):
     uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
 
 def final_admin_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("⏰ زمان‌بندی چکاپ",callback_data="adm:health_schedule")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
 
 async def admin_user_detail_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -4391,11 +4514,11 @@ async def final_admin_panel_callback(update,context):
         s=admin_stats(); text="📊 داشبورد\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
     if a=="users":
         c=db(); rows=c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked,warnings FROM users ORDER BY created_at DESC LIMIT 50").fetchall(); c.close(); kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | ID: {r['user_id']} | ⭐{r['xp']}",callback_data=f"admu:{r['user_id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]); await q.message.edit_text("👥 <b>تمام کاربران</b>\n\nروی هر کاربر بزن تا پرونده کاملش باز شود.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
-    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
-    if a in ("tools","xpvip"): context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
+    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.edit_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
+    if a in ("tools","xpvip"): context.user_data["admin_tool_mode"]="tools"; await q.message.edit_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="features":
         await q.message.edit_text(feature_admin_text(),reply_markup=feature_admin_keyboard()); return
-    if a=="main": await finish_callback_with_menu(q, uid, "🏠 منوی اصلی"); return
+    if a=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
     if a=="channel": await q.message.edit_text("📡 مدیریت کانال و پست‌گذاری",reply_markup=channel_keyboard()); return
     if a=="customers":
         c=db()
@@ -4427,9 +4550,44 @@ async def final_admin_panel_callback(update,context):
         ); return
     if a=="tickets":
         c=db(); rows=c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close(); await q.message.edit_text("🎫 تیکت‌های باز\n\n"+"\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}" for r in rows) or "تیکت بازی نیست",reply_markup=final_admin_keyboard()); return
-    if a=="health": await run_health_checks(context.bot,uid); await q.message.edit_text(health_text(),reply_markup=final_admin_keyboard()); return
+    if a=="health":
+        await run_health_checks(context.bot,uid)
+        await q.message.edit_text(health_text(),reply_markup=final_admin_keyboard())
+        return
+    if a=="health_schedule":
+        enabled = get_system_setting("health_check_enabled", "1") != "0"
+        schedule = get_system_setting("health_check_time", "03:00")
+        status = "🟢 روشن" if enabled else "🔴 خاموش"
+        kb = [
+            [InlineKeyboardButton("⏰ تغییر ساعت", callback_data="adm:health_time")],
+            [InlineKeyboardButton("🔴 خاموش کردن" if enabled else "🟢 روشن کردن", callback_data="adm:health_toggle")],
+            [InlineKeyboardButton("🩺 اجرای همین الان", callback_data="adm:health_run")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ]
+        await q.message.edit_text(
+            f"⏰ <b>زمان‌بندی Health Check</b>\n\n"
+            f"وضعیت: {status}\n"
+            f"ساعت روزانه: <b>{html.escape(schedule)}</b>\n\n"
+            "ربات فقط یک‌بار در همان روز و در ساعت انتخاب‌شده چکاپ می‌گیرد.\n"
+            "ساعت را با قالب 24 ساعته مثل <code>14:30</code> وارد کن.",
+            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+        )
+        return
+    if a=="health_time":
+        context.user_data["admin_health_time"] = True
+        await q.message.edit_text("⏰ ساعت جدید چکاپ را بفرست. مثال: 14:30", reply_markup=nav_keyboard(uid))
+        return
+    if a=="health_toggle":
+        enabled = get_system_setting("health_check_enabled", "1") != "0"
+        set_system_setting("health_check_enabled", "0" if enabled else "1")
+        await q.message.edit_text("⏰ زمان‌بندی چکاپ تغییر کرد.", reply_markup=final_admin_keyboard())
+        return
+    if a=="health_run":
+        await run_health_checks(context.bot,uid)
+        await q.message.edit_text(health_text()+"\n\n🩺 چکاپ دستی انجام شد.", reply_markup=final_admin_keyboard())
+        return
     if a=="report": await build_daily_report(); await q.message.edit_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
-    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
+    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.edit_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
 
 
 FEATURE_LABELS_FA = {
@@ -4596,6 +4754,23 @@ async def final_feature_callback(update,context):
     title=FEATURE_CATEGORIES.get(category,("⚙️ همه قابلیت‌ها",[]))[0]
     await q.message.edit_text(f"⚙️ <b>{title}</b>\n\n🟢 رایگان | 💎 VIP / پولی | 🔴 غیرفعال",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
+async def admin_health_time_save(update, context):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS or not context.user_data.get("admin_health_time"):
+        return False
+    value = update.message.text.strip()
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+        await update.message.reply_text("❌ ساعت نامعتبر است. مثال صحیح: 14:30")
+        return True
+    set_system_setting("health_check_time", value)
+    set_system_setting("health_check_enabled", "1")
+    context.user_data.pop("admin_health_time", None)
+    await update.message.reply_text(
+        f"✅ زمان چکاپ روزانه روی <b>{html.escape(value)}</b> تنظیم شد.",
+        parse_mode="HTML", reply_markup=final_admin_keyboard()
+    )
+    return True
+
 async def final_admin_text(update,context):
     uid=update.effective_user.id
     if uid not in ADMIN_IDS or not context.user_data.get("admin_tool_mode"): return False
@@ -4759,7 +4934,7 @@ async def fetch_price(asset):
             last_trade = data.get("lastTradePrice")
             if last_trade is None:
                 raise ValueError("lastTradePrice missing")
-            return f"{float(last_trade)/10:,.0f} تومان"
+            return f"{float(last_trade):,.0f} ریال"
         except Exception as e:
             logger.warning("Nobitex v3 orderbook %s failed: %s", symbol, e)
         try:
@@ -4769,7 +4944,7 @@ async def fetch_price(asset):
             )
             trades = data.get("trades") or []
             if trades:
-                return f"{float(trades[0]['price'])/10:,.0f} تومان"
+                return f"{float(trades[0]['price']):,.0f} ریال"
             raise ValueError("no trades")
         except Exception as e:
             logger.warning("Nobitex trades %s failed: %s", symbol, e)
@@ -4782,7 +4957,7 @@ async def fetch_price(asset):
             latest = data.get("stats", {}).get(f"{asset}-rls", {}).get("latest")
             if latest is None:
                 raise ValueError("latest price missing")
-            return f"{float(latest)/10:,.0f} تومان"
+            return f"{float(latest):,.0f} ریال"
         except Exception as e:
             logger.warning("Nobitex stats %s failed: %s", symbol, e)
             raise
@@ -4792,7 +4967,12 @@ async def fetch_price(asset):
         meta=data["chart"]["result"][0]["meta"]
         return f"{meta.get('regularMarketPrice',0):,.2f} USD"
     urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
-    return await asyncio.to_thread(tgju_value,urls[asset]) + (" تومان" if asset in ("usd","eur","gold18","coin") else "")
+    # بدون تبدیل عددی؛ فقط واحد نمایش داده می‌شود.
+    raw = await asyncio.to_thread(tgju_value, urls[asset])
+    if asset in ("usd", "eur", "gold18", "coin"):
+        normalized = raw.replace(",", "").replace("٫", ".").replace("٬", "")
+        return f"{float(normalized):,.0f} ریال"
+    return raw
 
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
@@ -4803,7 +4983,10 @@ async def price_callback(update,context):
     for a in assets:
         try: lines.append(f"{names[a]}: {await fetch_price(a)}")
         except Exception as e: lines.append(f"{names[a]}: ❌ دریافت نشد") ; logger.warning("Price %s failed: %s",a,e)
-    await q.message.reply_text("\n".join(lines),reply_markup=prices_keyboard(uid))
+    try:
+        await q.message.edit_text("\n".join(lines),reply_markup=prices_keyboard(uid))
+    except Exception:
+        await q.message.reply_text("\n".join(lines),reply_markup=prices_keyboard(uid))
 
 async def prices(update,context):
     uid=update.effective_user.id
@@ -4819,7 +5002,7 @@ async def ai_chat_start(update,context):
         clear_flow(context)
         await update.message.reply_text(
             "⚠️ چت AI فعلاً آماده نیست چون OPENAI_API_KEY در Railway تنظیم نشده است.\n\n"
-            "بقیه امکانات ربات بدون AI باید درست کار کنند.",
+            "بقیه امکانات ربات بدون AI باید正常 کار کنند.",
             reply_markup=keyboard(uid),
         )
         return
@@ -4996,19 +5179,37 @@ def health_text():
             lines.append(f"   ↳ {html.escape(r['details'])}")
     return "\n".join(lines)
 async def scheduled_health_check_job(context):
+    """Run the automatic admin health check once per day at the configured time."""
     try:
-        last=get_system_setting("last_auto_health_check",""); due=True
-        if last:
-            try: due=(datetime.now(TZ)-datetime.fromisoformat(last)).total_seconds()>=3*86400
-            except Exception: due=True
-        if not due or not ADMIN_IDS:return
+        if not ADMIN_IDS:
+            return
+        enabled = get_system_setting("health_check_enabled", "1") != "0"
+        if not enabled:
+            return
+        schedule = get_system_setting("health_check_time", "03:00")
+        # JobQueue هر 60 ثانیه از زمان شروع ربات اجرا می‌شود و الزاماً روی ثانیه 00
+        # قرار نمی‌گیرد؛ بنابراین فقط منتظر برابری دقیق HH:MM نمی‌مانیم.
+        # اگر از ساعت تعیین‌شده عبور کرده باشیم و امروز هنوز چکاپ نشده باشد، اجرا می‌شود.
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule):
+            schedule = "03:00"
+            set_system_setting("health_check_time", schedule)
+        now = datetime.now(TZ)
+        if now.strftime("%H:%M") < schedule:
+            return
+        today = now.date().isoformat()
+        if get_system_setting("last_auto_health_check_date", "") == today:
+            return
         await run_health_checks(context.bot, next(iter(ADMIN_IDS)))
-        report=health_text()+"\n\n🩺 چکاپ دوره‌ای خودکار انجام شد."
+        report = health_text() + "\n\n🩺 چکاپ دوره‌ای خودکار انجام شد."
         for admin_id in ADMIN_IDS:
-            try: await context.bot.send_message(admin_id,report)
-            except Exception: pass
-        set_system_setting("last_auto_health_check",datetime.now(TZ).isoformat())
-    except Exception: logger.exception("Scheduled health check failed")
+            try:
+                await context.bot.send_message(admin_id, report)
+            except Exception:
+                pass
+        set_system_setting("last_auto_health_check_date", today)
+        set_system_setting("last_auto_health_check", now.isoformat())
+    except Exception:
+        logger.exception("Scheduled health check failed")
 
 async def daily_report_job(context):
     now=datetime.now(TZ)
@@ -5214,8 +5415,9 @@ def main():
         set_auto_setting("category", "random")
     if not get_auto_setting("subcategory", ""):
         set_auto_setting("subcategory", "random")
+    # Keep auto-post history permanently so duplicate prevention remains global.
     c=db()
-    c.execute("DELETE FROM auto_post_history WHERE created_at < ?",((datetime.now(TZ)-timedelta(days=45)).isoformat(),))
+    c.execute("DELETE FROM delivery_log WHERE created_at < ?",((datetime.now(TZ)-timedelta(days=180)).isoformat(),))
     c.commit()
     c.close()
 
@@ -5232,6 +5434,7 @@ def main():
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
+    app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
     app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
     app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
@@ -5252,6 +5455,7 @@ def main():
     app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
     app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
     app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
+    app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
     app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
@@ -5298,7 +5502,7 @@ def main():
         app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
         app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
         app.job_queue.run_repeating(final_daily_report_job, interval=60, first=25)
-        app.job_queue.run_repeating(scheduled_health_check_job, interval=3600, first=120)
+        app.job_queue.run_repeating(scheduled_health_check_job, interval=60, first=60)
         app.job_queue.run_repeating(customer_reminder_job, interval=60, first=30)
         app.job_queue.run_repeating(customer_morning_job, interval=60, first=35)
         app.job_queue.run_repeating(customer_daily_report_job, interval=60, first=40)
