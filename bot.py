@@ -34,6 +34,8 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
+# Persistent connection registry backup. This is intentionally separate from code updates.
+CONNECTION_BACKUP_PATH = os.environ.get("CONNECTION_BACKUP_PATH", "channel_connections.json")
 TZ = ZoneInfo("Asia/Tehran")
 
 # اجباری بودن عضویت در کانال برای استفاده از ربات.
@@ -400,6 +402,19 @@ def init_db():
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""")
+    # Migrate older managed_chats tables created by previous versions.
+    managed_cols = {r["name"] for r in c.execute("PRAGMA table_info(managed_chats)").fetchall()}
+    managed_migrations = {
+        "title": "ALTER TABLE managed_chats ADD COLUMN title TEXT NOT NULL DEFAULT ''",
+        "username": "ALTER TABLE managed_chats ADD COLUMN username TEXT NOT NULL DEFAULT ''",
+        "enabled": "ALTER TABLE managed_chats ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+        "created_by": "ALTER TABLE managed_chats ADD COLUMN created_by INTEGER NOT NULL DEFAULT 0",
+        "created_at": "ALTER TABLE managed_chats ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+        "updated_at": "ALTER TABLE managed_chats ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''",
+    }
+    for col, ddl in managed_migrations.items():
+        if col not in managed_cols:
+            c.execute(ddl)
     c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
         id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL,
         schedule_type TEXT NOT NULL DEFAULT 'once', schedule_time TEXT, weekday INTEGER,
@@ -1594,6 +1609,95 @@ async def stats(update, context):
 
 
 
+
+def _connection_backup_path():
+    """Return the persistent connection registry path next to the database by default."""
+    path = CONNECTION_BACKUP_PATH.strip() or "channel_connections.json"
+    # If a relative path is supplied, keep it in the same directory as DB_PATH so
+    # deployments that persist their database also persist the connection registry.
+    if not os.path.isabs(path):
+        base = os.path.dirname(os.path.abspath(DB_PATH))
+        path = os.path.join(base, path)
+    return path
+
+
+def backup_managed_chats():
+    """Persist channel/group connections so replacing bot.py never removes them.
+
+    This is a safety net in addition to SQLite. It never disables or deletes a
+    connection; it only mirrors the current registry. Explicit disconnects are
+    preserved as disabled records and therefore are not resurrected accidentally.
+    """
+    try:
+        rows = managed_chats()
+        payload = {
+            "version": 1,
+            "updated_at": datetime.now(TZ).isoformat(),
+            "chats": [dict(r) for r in rows],
+        }
+        path = _connection_backup_path()
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        return True
+    except Exception as exc:
+        logger.exception("Could not back up managed chat connections: %s", exc)
+        return False
+
+
+def restore_managed_chats_from_backup():
+    """Restore the connection registry only when SQLite has no records.
+
+    Existing records always win. This prevents a code update from overwriting
+    a deliberately changed connection list and prevents an explicit disconnect
+    from being undone.
+    """
+    try:
+        existing = managed_chats()
+        if existing:
+            return False
+        path = _connection_backup_path()
+        if not os.path.exists(path):
+            return False
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        rows = payload.get("chats", []) if isinstance(payload, dict) else []
+        if not rows:
+            return False
+        c = db()
+        restored = 0
+        for row in rows:
+            chat_id = str(row.get("chat_id", "")).strip()
+            chat_type = str(row.get("chat_type", "")).strip()
+            if not chat_id or chat_type not in {"channel", "group"}:
+                continue
+            now = datetime.now(TZ).isoformat()
+            c.execute("""INSERT OR IGNORE INTO managed_chats(
+                chat_id,chat_type,title,username,enabled,created_by,created_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?)""", (
+                chat_id, chat_type, str(row.get("title", "")),
+                str(row.get("username", "")), int(row.get("enabled", 1)),
+                int(row.get("created_by", 0)), str(row.get("created_at") or now),
+                str(row.get("updated_at") or now)
+            ))
+            if chat_type == "channel" and int(row.get("enabled", 1)):
+                c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at)
+                    VALUES(1,?,1,?)
+                    ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,
+                    enabled=1,updated_at=excluded.updated_at""", (chat_id, now))
+            restored += 1
+        c.commit()
+        c.close()
+        if restored:
+            logger.info("Restored %s managed chat connection(s) from persistent backup", restored)
+            return True
+        return False
+    except Exception as exc:
+        logger.exception("Could not restore managed chat connections: %s", exc)
+        return False
+
 def get_channel_config():
     c=db(); r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone(); c.close(); return r
 
@@ -1625,7 +1729,9 @@ def save_managed_chat(chat, chat_type, created_by):
     if chat_type=="channel":
         c.execute("""INSERT INTO channel_config(id,channel_id,enabled,updated_at) VALUES(1,?,1,?)
                      ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,enabled=1,updated_at=excluded.updated_at""",(chat_id,now))
-    c.commit(); c.close(); return chat_id
+    c.commit(); c.close()
+    backup_managed_chats()
+    return chat_id
 
 def disconnect_managed_chat(chat_id):
     chat_id=str(chat_id); now=datetime.now(TZ).isoformat(); c=db()
@@ -1635,6 +1741,7 @@ def disconnect_managed_chat(chat_id):
     if cfg and str(cfg["channel_id"])==chat_id:
         c.execute("UPDATE channel_config SET enabled=0,updated_at=? WHERE id=1",(now,))
     c.commit(); c.close()
+    backup_managed_chats()
 
 def managed_chat_keyboard(chat_type="channel", prefix="mchat"):
     rows=[]
@@ -1645,6 +1752,7 @@ def managed_chat_keyboard(chat_type="channel", prefix="mchat"):
     rows.append([InlineKeyboardButton("➕ اتصال جدید", callback_data=f"{prefix}:add:{chat_type}")])
     rows.append([InlineKeyboardButton("🧪 تست اتصال", callback_data=f"{prefix}:test:{chat_type}")])
     rows.append([InlineKeyboardButton("🧹 قطع اتصال", callback_data=f"{prefix}:disconnect:{chat_type}")])
+    rows.append([InlineKeyboardButton("💾 حفظ اتصال‌ها / پشتیبان", callback_data=f"{prefix}:backup:{chat_type}")])
     rows.append([InlineKeyboardButton("↩️ بازگشت", callback_data="ch:main")])
     return InlineKeyboardMarkup(rows)
 
@@ -2236,7 +2344,15 @@ async def managed_chat_callback(update, context):
     if action=="add":
         context.user_data["managed_chat_state"]="add:"+kind
         label="کانال" if kind=="channel" else "گروه"
-        await q.message.reply_text(f"{('📢' if kind=='channel' else '👥')} آیدی یا @username {label} را بفرست.\nمثال: @MyChat یا -1001234567890")
+        await q.message.reply_text(
+            f"{('📢' if kind=='channel' else '👥')} لینک یا شناسه {label} را بفرست.\n\n"
+            "مثال‌های قابل قبول:\n"
+            "• https://t.me/MyChannel\n"
+            "• @MyChannel\n"
+            "• -1001234567890\n\n"
+            "⚠️ لینک خصوصیِ t.me/+... برای اتصال مستقیم قابل استفاده نیست؛ "
+            f"ابتدا ربات را به {label} اضافه و مدیر کن."
+        )
         return
     if action=="select":
         row_id=int(parts[2]); c=db(); r=c.execute("SELECT * FROM managed_chats WHERE id=? AND enabled=1",(row_id,)).fetchone(); c.close()
@@ -2255,6 +2371,18 @@ async def managed_chat_callback(update, context):
             except Exception:
                 lines.append(f"🔴 {r['title'] or r['chat_id']} — دسترسی/اتصال مشکل دارد")
         await q.message.reply_text("\n".join(lines),reply_markup=managed_chat_keyboard(kind)); return
+    if action=="backup":
+        ok = backup_managed_chats()
+        chats = managed_chats(kind, True)
+        if ok:
+            await q.message.reply_text(
+                f"✅ پشتیبان اتصال‌ها ذخیره شد.\n\n📌 تعداد {"کانال" if kind=="channel" else "گروه"}‌های فعال: {len(chats)}\n\n"
+                "🔒 با آپدیت فایل کد، این اتصال‌ها از بین نمی‌روند؛ تا وقتی دیتابیس/فایل پشتیبان حذف نشود، ربات آن‌ها را نگه می‌دارد.",
+                reply_markup=managed_chat_keyboard(kind)
+            )
+        else:
+            await q.message.reply_text("❌ ذخیره پشتیبان انجام نشد. لاگ خطا ثبت شد.", reply_markup=managed_chat_keyboard(kind))
+        return
     if action=="disconnect":
         await q.message.reply_text("⚠️ قطع اتصال فقط با تأیید شما انجام می‌شود.\nیکی را انتخاب کن:",reply_markup=managed_disconnect_keyboard(kind)); return
     if action=="confirm_disconnect":
@@ -2553,34 +2681,137 @@ async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
     if not target: await message.reply_text("❌ ابتدا یک کانال را از 📢 کانال‌ها انتخاب کن.",reply_markup=channel_keyboard()); return
     pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid,target_chat_id=target); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
 
+def normalize_chat_input(value):
+    """Normalize pasted Telegram public links/usernames/IDs for Bot API get_chat().
+
+    Accepts links copied directly from a channel bio, including:
+      https://t.me/MyChannel
+      https://t.me/s/MyChannel
+      https://telegram.me/MyChannel
+      @MyChannel
+      -1001234567890
+
+    Private invite links are deliberately rejected because Bot API cannot resolve
+    them into a chat identifier with get_chat().
+    """
+    value = (value or "").strip()
+    if not value:
+        return value, "empty"
+    value = value.replace("\u200b", "").strip().rstrip(".,،؛;")
+    if value.startswith("@"): 
+        return value, "username"
+
+    # Public channel/group links copied from Telegram.
+    m = re.match(
+        r"^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:s/)?([A-Za-z0-9_]{5,})/?(?:[?#].*)?$",
+        value, re.I
+    )
+    if m:
+        return "@" + m.group(1), "public_link"
+
+    # Private invite links cannot be resolved through get_chat().
+    if re.match(
+        r"^(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:\+|joinchat/)",
+        value, re.I
+    ):
+        return value, "invite_link"
+
+    return value, "id_or_username"
+
+
 async def managed_chat_text_save(update, context):
-    uid=update.effective_user.id
-    state=context.user_data.get("managed_chat_state")
-    if not state or not admin_guard(uid): return False
-    text=update.message.text.strip()
+    uid = update.effective_user.id
+    state = context.user_data.get("managed_chat_state")
+    if not state or not admin_guard(uid):
+        return False
+
+    text = (update.message.text or "").strip()
+    kind = state.split(":", 1)[1] if ":" in state else "channel"
+    label = "کانال" if kind == "channel" else "گروه"
+    chat_input, input_kind = normalize_chat_input(text)
+
+    if input_kind == "invite_link":
+        await update.message.reply_text(
+            f"❌ این لینک دعوت خصوصی {label} است و Telegram Bot API نمی‌تواند آن را مستقیماً به شناسه تبدیل کند.\n\n"
+            f"برای اتصال، ربات را داخل {label} اضافه و Administrator/مدیر کن و سپس همان لینک عمومی Bio یا @username را بفرست.\n\n"
+            f"مثال: https://t.me/MyChannel"
+        )
+        return True
+
+    if not chat_input:
+        await update.message.reply_text(f"❌ لینک یا شناسه {label} خالی است.")
+        return True
+
     try:
-        kind=state.split(":",1)[1]
-        chat=await context.bot.get_chat(text)
-        actual_type="channel" if getattr(chat,"type","") == "channel" else "group" if getattr(chat,"type","") in ("group","supergroup") else ""
-        if actual_type != kind:
-            label="کانال" if kind=="channel" else "گروه"
-            await update.message.reply_text(f"❌ این شناسه مربوط به {label} نیست.")
+        # First resolve the pasted public link to the real Telegram chat.
+        chat = await context.bot.get_chat(chat_input)
+        actual_type = (getattr(chat, "type", "") or "").lower()
+        if actual_type == "channel":
+            actual_kind = "channel"
+        elif actual_type in ("group", "supergroup"):
+            actual_kind = "group"
+        else:
+            actual_kind = ""
+
+        if actual_kind != kind:
+            expected = "کانال" if kind == "channel" else "گروه"
+            got = "کانال" if actual_kind == "channel" else "گروه" if actual_kind == "group" else actual_type or "نامشخص"
+            await update.message.reply_text(
+                f"❌ این لینک مربوط به {got} است، نه {expected}.\n"
+                "لینک صحیح را بفرست."
+            )
             return True
-        if kind=="channel":
-            # The bot must be able to inspect/send in the channel.
-            me=await context.bot.get_me()
-            member=await context.bot.get_chat_member(chat.id, me.id)
-            if member.status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
-                await update.message.reply_text("❌ ربات باید در کانال Administrator باشد و اجازه ارسال پیام داشته باشد.")
+
+        # A connection that is meant for publishing must verify bot permissions.
+        me = await context.bot.get_me()
+        member = await context.bot.get_chat_member(chat.id, me.id)
+        status = getattr(member, "status", "")
+
+        if kind == "channel":
+            if status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+                await update.message.reply_text(
+                    "❌ کانال پیدا شد، اما اتصال انتشار کامل نیست.\n\n"
+                    f"📢 {getattr(chat, 'title', None) or chat_input}\n"
+                    f"🆔 <code>{chat.id}</code>\n"
+                    f"👤 وضعیت ربات: <code>{status}</code>\n\n"
+                    "ربات را داخل همین کانال Administrator کن و اجازه ارسال پیام بده؛ سپس همین لینک را دوباره بفرست.",
+                    parse_mode="HTML"
+                )
                 return True
-        chat_id=save_managed_chat(chat,kind,uid)
-        if kind=="channel": set_channel_config(chat_id)
-        context.user_data.pop("managed_chat_state",None)
-        await update.message.reply_text(f"✅ {('کانال' if kind=='channel' else 'گروه')} متصل شد: {chat.title or chat_id}",reply_markup=channel_keyboard())
+        else:
+            # For groups, member access is enough to register the chat; admins are
+            # required later for actions that Telegram restricts to administrators.
+            if status in {"left", "kicked"}:
+                await update.message.reply_text(
+                    "❌ گروه پیدا شد، اما ربات عضو گروه نیست. ابتدا ربات را به گروه اضافه کن و دوباره لینک را بفرست."
+                )
+                return True
+
+        chat_id = save_managed_chat(chat, kind, uid)
+        if kind == "channel":
+            set_channel_config(chat_id)
+        context.user_data.pop("managed_chat_state", None)
+
+        await update.message.reply_text(
+            f"✅ {label} با موفقیت متصل شد.\n\n"
+            f"📢 نام: {getattr(chat, 'title', None) or chat_id}\n"
+            f"🆔 شناسه: <code>{chat.id}</code>\n"
+            f"🔗 ورودی: <code>{html.escape(text)}</code>",
+            parse_mode="HTML",
+            reply_markup=channel_keyboard()
+        )
+        return True
+
     except Exception as e:
-        logger.exception("Managed chat connection failed: %s",e)
-        await update.message.reply_text("❌ اتصال انجام نشد. شناسه/دسترسی ربات را بررسی کن.")
-    return True
+        logger.exception("Managed chat connection failed for input=%r normalized=%r: %s", text, chat_input, e)
+        await update.message.reply_text(
+            "❌ اتصال انجام نشد.\n\n"
+            f"ورودی دریافت‌شده: <code>{html.escape(text)}</code>\n"
+            f"شناسه تبدیل‌شده: <code>{html.escape(str(chat_input))}</code>\n\n"
+            "اگر لینک عمومی است، ربات باید داخل همان کانال/گروه عضو باشد و برای کانال Administrator باشد.",
+            parse_mode="HTML"
+        )
+        return True
 
 
 async def channel_text_save(update,context):
@@ -2589,9 +2820,28 @@ async def channel_text_save(update,context):
     s=context.user_data.get("channel_state"); text=update.message.text.strip()
     if not s: return False
     if s=="set":
-        try: chat=await context.bot.get_chat(text); set_channel_config(text); context.user_data.pop("channel_state",None); await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or text}",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Set channel: %s",e); await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی ندارد.")
+        try:
+            chat_input, input_kind = normalize_chat_input(text)
+            if input_kind == "invite_link":
+                await update.message.reply_text("❌ لینک دعوت خصوصی قابل اتصال مستقیم نیست. لینک عمومی کانال مثل https://t.me/MyChannel را بفرست.")
+                return True
+            chat = await context.bot.get_chat(chat_input)
+            if getattr(chat, "type", "") != "channel":
+                await update.message.reply_text("❌ این لینک مربوط به کانال نیست.")
+                return True
+            me = await context.bot.get_me()
+            member = await context.bot.get_chat_member(chat.id, me.id)
+            if getattr(member, "status", "") not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+                await update.message.reply_text("❌ کانال پیدا شد، اما ربات Administrator نیست. ابتدا ربات را مدیر کانال کن و دوباره لینک را بفرست.")
+                return True
+            set_channel_config(str(chat.id))
+            context.user_data.pop("channel_state",None)
+            await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or chat_input}\n🆔 {chat.id}",reply_markup=channel_keyboard())
+        except Exception as e:
+            logger.exception("Set channel failed: %s", e)
+            await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی لازم ندارد. لینک عمومی مثل https://t.me/MyChannel را بفرست و مطمئن شو ربات Administrator است.")
         return True
+
     if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
         try:
@@ -3566,6 +3816,10 @@ def main():
 
     init_db()
     migrate_channel_posts_v12()
+    # Keep channel/group connections across code updates. SQLite is primary;
+    # the JSON registry is a recovery copy if the database is recreated.
+    restore_managed_chats_from_backup()
+    backup_managed_chats()
     # Safe defaults for automatic channel publishing.
     if not get_auto_setting("interval_minutes", ""):
         set_auto_setting("interval_minutes", "60")
