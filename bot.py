@@ -506,7 +506,6 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_xp_log_user_created ON xp_log(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_referrals_inviter ON referrals(inviter_id);
     CREATE INDEX IF NOT EXISTS idx_content_feedback_post ON content_feedback(post_key);
-    CREATE INDEX IF NOT EXISTS idx_price_alerts_enabled ON price_alerts(enabled);
     CREATE TABLE IF NOT EXISTS delivery_log(
         delivery_key TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -537,6 +536,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS tickets(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,subject TEXT,status TEXT NOT NULL DEFAULT 'open',created_at TEXT NOT NULL,updated_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS ticket_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,ticket_id INTEGER,sender_id INTEGER,message TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS price_alerts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,asset TEXT,target REAL,direction TEXT,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_price_alerts_enabled ON price_alerts(enabled)")
     c.execute("""CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,payload TEXT,currency TEXT,total_amount INTEGER,telegram_charge_id TEXT UNIQUE,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER,asset TEXT,created_at TEXT NOT NULL,PRIMARY KEY(user_id,asset))""")
     c.execute("""CREATE TABLE IF NOT EXISTS daily_reports(report_date TEXT PRIMARY KEY,data TEXT NOT NULL,created_at TEXT NOT NULL)""")
