@@ -423,13 +423,6 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, topic TEXT NOT NULL,
         content TEXT NOT NULL, publish_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
         created_at TEXT NOT NULL)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS vip_features(
-        feature_key TEXT PRIMARY KEY,
-        label_fa TEXT NOT NULL DEFAULT '',
-        label_en TEXT NOT NULL DEFAULT '',
-        enabled INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL
-    )""")
     now_iso=datetime.now(TZ).isoformat()
     for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
@@ -1738,7 +1731,6 @@ async def stats(update, context):
         (uid,),
     ).fetchone()["n"]
     c.close()
-    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     await update.message.reply_text(
         T[lang(uid)]["stats"].format(
             name=display_name(uid),
@@ -2050,60 +2042,39 @@ async def auto_channel_job(context):
     if not channel or get_auto_setting("enabled","0")!="1": return
     now=datetime.now(TZ); interval=int(get_auto_setting("interval_minutes","60") or 60)
     next_raw=get_auto_setting("next_run","")
-    try: next_run=datetime.fromisoformat(next_raw) if next_raw else now
-    except ValueError: next_run=now
+    try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
+    except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    # Not time yet
-    if now < next_run:
-        return
     approval=feature_enabled("approval") and bool(ADMIN_IDS)
-    # Always advance next_run first to prevent getting stuck
-    set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat())
     if approval:
-        # Check if there's already a pending post for this time slot
-        slot=next_run.isoformat()
-        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status='approved' ORDER BY id DESC LIMIT 1",(str(channel),slot)).fetchone(); c.close()
-        if pending:
-            # Approved → publish it
+        preview_at=next_run-timedelta(minutes=5)
+        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
+        if now>=preview_at and now<next_run and not pending:
+            category,topic=get_auto_topic(); content=ai_generate_post(topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
+            c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
+            kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
+            for admin_id in ADMIN_IDS:
+                try: await context.bot.send_message(admin_id,f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {category}\n🕐 انتشار در: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
+                except Exception as e: logger.error("Approval preview failed: %s",e)
+            return
+        if now<next_run: return
+        c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
+        if pending and pending["status"]=="approved":
             try:
-                image=await generate_topic_image(pending["topic"])
-                content=pending["content"]
-                if image is not None:
-                    await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
-                else:
-                    await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
-                if ADMIN_IDS: log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
-            except Exception as e:
-                logger.error("Approved auto post failed: %s",e)
-            c=db(); c.execute("UPDATE auto_pending SET status='published' WHERE id=?",(pending["id"],)); c.commit(); c.close()
-        else:
-            # No approval yet → check if we already sent a preview
-            c=db(); existing=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status='pending' ORDER BY id DESC LIMIT 1",(str(channel),slot)).fetchone(); c.close()
-            if not existing:
-                # Generate and send preview to admins
-                category,topic=get_auto_topic(); content=ai_generate_post(topic)
-                bot_username,channel_username=await get_identity_handles(context.bot,channel)
-                content=content[:950]+compact_channel_footer(bot_username,channel_username)
-                c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,slot,now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
-                kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
-                for admin_id in ADMIN_IDS:
-                    try: await context.bot.send_message(admin_id,f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {category}\n🕐 انتشار در: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
-                    except Exception as e: logger.error("Approval preview failed: %s",e)
-            # Expire old unapproved posts
-            c=db(); c.execute("UPDATE auto_pending SET status='expired' WHERE channel_id=? AND status='pending' AND publish_at<?",(str(channel),now.isoformat())); c.commit(); c.close()
-        set_auto_setting("last_run",now.isoformat())
-        return
-    # No approval needed → publish directly
+                image=await generate_topic_image(pending["topic"]); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
+                if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
+                else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
+                log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
+            except Exception as e: logger.error("Approved auto post failed: %s",e)
+        c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
+        set_auto_setting("last_run",now.isoformat()); set_auto_setting("next_run",(now+timedelta(minutes=interval)).isoformat()); return
+    if now<next_run: return
+    next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
     category,topic=get_auto_topic()
     try:
-        msg=await send_auto_channel_post(context,channel,topic)
-        set_auto_setting("last_run",now.isoformat())
-        set_auto_setting("last_message_id",str(msg.message_id))
-        set_auto_setting("last_category",category)
-        set_auto_setting("last_topic",topic)
-        if ADMIN_IDS: log_activity(ADMIN_IDS[0],"auto_channel_post")
+        msg=await send_auto_channel_post(context,channel,topic); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
     except Exception as e:
-        logger.error("Automatic channel post failed: %s",e)
+        set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
 
 
 async def approval_callback(update,context):
@@ -2134,8 +2105,6 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
-    rows.append([InlineKeyboardButton("✏️ زمان دلخواه",callback_data=f"{prefix}:custom")])
-    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -2473,28 +2442,6 @@ async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
     cfg=get_channel_config()
     if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
     pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
-
-def normalize_channel_input(text):
-    """Normalize channel input: accept @username, numeric ID, or t.me link."""
-    text = text.strip()
-    # Handle t.me links
-    m = re.match(r'https?://t\.me/(\w+)', text)
-    if m:
-        return f"@{m.group(1)}"
-    # Already a @username or numeric ID
-    return text
-
-async def bot_can_manage_channel(bot, channel):
-    """Check if the bot is an administrator in the channel with post permission."""
-    try:
-        me = await bot.get_me()
-        member = await bot.get_chat_member(chat_id=channel, user_id=me.id)
-        if member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):
-            return True, "✅ ربات مدیر کانال است."
-        return False, "❌ ربات باید Administrator کانال باشد. لطفاً ربات را به عنوان مدیر اضافه کن."
-    except Exception as e:
-        logger.error("bot_can_manage_channel check failed: %s", e)
-        return False, "❌ بررسی دسترسی ربات به کانال ناموفق بود."
 
 async def channel_text_save(update,context):
     uid=update.effective_user.id
@@ -2932,51 +2879,36 @@ async def text_router(update, context):
         return
 
     menu = T[lang(uid)]["menu"]
-    # Map menu text → (feature_key, handler)
-    FEATURE_MAP = [
-        (("🎯 اهداف امروز", "🎯 Today's Goals"),       None,            today),
-        (("✏️ هدف خودم می‌نویسم", "✏️ Write my own goal"), "custom_goal", custom_goal_start),
-        (("🏆 اهداف آماده", "🏆 Ready Goals"),          "ready_goals",   ready_menu),
-        (("✏️ ویرایش اهداف", "✏️ Edit Goals"),          "edit_goals",    edit_menu),
-        (("📅 جدول هفتگی", "📅 Weekly Table"),          "weekly_table",  weekly),
-        (("📊 آمار من", "📊 My Stats"),                 "my_stats",      stats),
-        (("👤 پروفایل", "👤 Profile"),                   "profile",       profile),
-        (("🏆 دستاوردها", "🏆 Achievements"),            "achievements",  achievements),
-        (("⭐ XP",),                                     None,            xp_command),
-        (("🤝 دعوت دوستان", "🤝 Referrals"),            "referrals",     referral),
-        (("📈 قیمت آنلاین", "📈 Online Prices"),         "online_prices", prices),
-        (("💎 VIP",),                                    None,            vip_center),
-        (("🤖 چت با AI", "🤖 AI Chat"),                 "ai_chat",       ai_chat_start),
-        (("🎫 پشتیبانی", "🎫 Support"),                 "support",       support_start),
-        (("⚙️ تنظیمات", "⚙️ Settings"),                None,            settings),
-    ]
-    handled = False
-    for labels, feat_key, handler in FEATURE_MAP:
-        if text in labels:
-            if feat_key and not vip_gate(uid, feat_key):
-                fa = lang(uid) == "fa"
-                await update.message.reply_text(
-                    "💎 این بخش فقط برای کاربران VIP فعال است.\n\nاز بخش «💎 VIP» می‌توانید اشتراک تهیه کنید."
-                    if fa else
-                    "💎 This feature is VIP-only.\n\nGo to «💎 VIP» to subscribe.",
-                    reply_markup=vip_keyboard(uid),
-                )
-            else:
-                await handler(update, context)
-            handled = True
-            break
-    if not handled:
-        if text in ("📢 مدیریت کانال", "📢 Channel Management"):
-            if admin_guard(uid):
-                await update.message.reply_text(
-                    "📢 <b>مدیریت کانال و پست‌گذاری</b>",
-                    parse_mode="HTML",
-                    reply_markup=channel_keyboard(),
-                )
-            else:
-                await update.message.reply_text("⛔ دسترسی ندارید.")
-        elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
-            await admin_command(update, context)
+    if text in ("🎯 اهداف امروز", "🎯 Today's Goals"):
+        await today(update, context)
+    elif text in ("✏️ هدف خودم می‌نویسم", "✏️ Write my own goal"):
+        await custom_goal_start(update, context)
+    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals"):
+        await ready_menu(update, context)
+    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals"):
+        await edit_menu(update, context)
+    elif text in ("📅 جدول هفتگی", "📅 Weekly Table"):
+        await weekly(update, context)
+    elif text in ("📊 آمار من", "📊 My Stats"):
+        await stats(update, context)
+    elif text in ("👤 پروفایل", "👤 Profile"):
+        await profile(update, context)
+    elif text in ("🏆 دستاوردها", "🏆 Achievements"):
+        await achievements(update, context)
+    elif text in ("⭐ XP",):
+        await xp_command(update, context)
+    elif text in ("🤝 دعوت دوستان", "🤝 Referrals"):
+        await referral(update, context)
+    elif text in ("📈 قیمت آنلاین", "📈 Online Prices"):
+        await prices(update, context)
+    elif text in ("💎 VIP",):
+        await vip_center(update, context)
+    elif text in ("🤖 چت با AI", "🤖 AI Chat"):
+        await ai_chat_start(update, context)
+    elif text in ("🎫 پشتیبانی", "🎫 Support"):
+        await support_start(update, context)
+    elif text in ("⚙️ تنظیمات", "⚙️ Settings"):
+        await settings(update, context)
     elif text in ("📢 مدیریت کانال", "📢 Channel Management"):
         if admin_guard(uid):
             await update.message.reply_text(
@@ -3020,51 +2952,6 @@ def is_vip(uid):
     try:return datetime.fromisoformat(r["vip_until"])>datetime.now(TZ)
     except:return False
 
-# ─── VIP Feature Gating ───────────────────────────────────────────
-# All gateable features with their Persian/English labels
-VIP_FEATURE_CATALOG = {
-    "ai_chat":          ("🤖 چت با AI",        "🤖 AI Chat"),
-    "online_prices":    ("📈 قیمت آنلاین",      "📈 Online Prices"),
-    "weekly_table":     ("📅 جدول هفتگی",       "📅 Weekly Table"),
-    "my_stats":         ("📊 آمار من",          "📊 My Stats"),
-    "achievements":     ("🏆 دستاوردها",        "🏆 Achievements"),
-    "referrals":        ("🤝 دعوت دوستان",      "🤝 Referrals"),
-    "vip_center":       ("💎 VIP",              "💎 VIP"),
-    "support":          ("🎫 پشتیبانی",         "🎫 Support"),
-    "custom_goal":      ("✏️ هدف خودم می‌نویسم", "✏️ Write my own goal"),
-    "ready_goals":      ("🏆 اهداف آماده",       "🏆 Ready Goals"),
-    "edit_goals":       ("✏️ ویرایش اهداف",      "✏️ Edit Goals"),
-    "profile":          ("👤 پروفایل",           "👤 Profile"),
-}
-
-def init_vip_features():
-    """Seed the vip_features table with all catalog entries (disabled by default)."""
-    now = datetime.now(TZ).isoformat()
-    c = db()
-    for key, (fa, en) in VIP_FEATURE_CATALOG.items():
-        c.execute("INSERT OR IGNORE INTO vip_features(feature_key,label_fa,label_en,enabled,updated_at) VALUES(?,?,?,?,?)",(key,fa,en,0,now))
-    c.commit(); c.close()
-
-def is_vip_feature(key):
-    """Check if a feature is marked as VIP-only in the database."""
-    c=db(); r=c.execute("SELECT enabled FROM vip_features WHERE feature_key=?",(key,)).fetchone(); c.close()
-    return bool(r and r["enabled"])
-
-def vip_gate(uid, feature_key):
-    """Returns True if user can access the feature. Admins always pass."""
-    if uid in ADMIN_IDS:
-        return True
-    if not is_vip_feature(feature_key):
-        return True
-    return is_vip(uid)
-
-def vip_features_list():
-    """Return all vip_features rows."""
-    c=db(); rows=c.execute("SELECT * FROM vip_features ORDER BY feature_key").fetchall(); c.close(); return rows
-
-def toggle_vip_feature(key):
-    c=db(); c.execute("UPDATE vip_features SET enabled=1-enabled, updated_at=? WHERE feature_key=?",(datetime.now(TZ).isoformat(),key)); c.commit(); c.close()
-
 def user_blocked(uid):
     c=db(); r=c.execute("SELECT blocked FROM users WHERE user_id=?",(uid,)).fetchone(); c.close(); return bool(r and r["blocked"])
 
@@ -3080,7 +2967,7 @@ async def xp_command(update,context):
     uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
 
 def final_admin_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features")],[InlineKeyboardButton("💎 امکانات VIP",callback_data="adm:vipfeatures"),InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets")],[InlineKeyboardButton("🩺 Health Check",callback_data="adm:health"),InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report")],[InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features")],[InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip"),InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets")],[InlineKeyboardButton("🩺 Health Check",callback_data="adm:health"),InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report")],[InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
 
 async def final_admin_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -3103,29 +2990,11 @@ async def final_admin_panel_callback(update,context):
     if a=="health": await run_health_checks(context.bot,uid); await q.message.reply_text(health_text(),reply_markup=final_admin_keyboard()); return
     if a=="report": await build_daily_report(); await q.message.reply_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
     if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
-    if a=="vipfeatures":
-        rows=vip_features_list()
-        kb=[]
-        for r in rows:
-            icon="🟢" if r["enabled"] else "⚪"
-            label=r["label_fa"] if lang(uid)=="fa" else r["label_en"]
-            kb.append([InlineKeyboardButton(f"{icon} {label}",callback_data=f"vf:{r['feature_key']}")])
-        kb.append([InlineKeyboardButton("⬅️ مدیریت",callback_data="adm:stats")])
-        text="💎 <b>مدیریت امکانات VIP</b>\n\n🟢 = فقط VIP | ⚪ = برای همه\nروی هر آپشن بزن تا تغییر وضعیت بده."
-        await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
-        return
 
 async def final_feature_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     key=q.data.split(":",1)[1]; set_feature(key,not feature_enabled(key),uid); await q.answer("تغییر کرد"); await final_admin_panel_callback(update,context)
-
-async def vip_feature_toggle_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    key=q.data.split(":",1)[1]; toggle_vip_feature(key); await q.answer("تغییر کرد")
-    # Re-render the VIP features list
-    q.data="adm:vipfeatures"; await final_admin_panel_callback(update,context)
 
 async def final_admin_text(update,context):
     uid=update.effective_user.id
@@ -3186,15 +3055,7 @@ async def vip_center(update,context):
     uid=update.effective_user.id; xp,level,vip_until=xp_info(uid)
     fa=lang(uid)=="fa"
     status="🟢 فعال" if is_vip(uid) else "⚪ رایگان"
-    # Build VIP features list
-    vip_feats = []
-    for key, (lbl_fa, lbl_en) in VIP_FEATURE_CATALOG.items():
-        if is_vip_feature(key):
-            vip_feats.append(lbl_fa if fa else lbl_en)
-    feat_text = ""
-    if vip_feats:
-        feat_text = "\n\n🔒 امکانات VIP:\n" + "\n".join(f"  • {f}" for f in vip_feats) if fa else "\n\n🔒 VIP Features:\n" + "\n".join(f"  • {f}" for f in vip_feats)
-    text=(f"💎 VIP\n\nوضعیت: {status}\n⭐ سطح: {level}\n🕐 پایان VIP: {vip_until[:16] if vip_until else '—'}\n\n👥 دعوت دوستان و فعالیت‌ها XP می‌دهد.\n💎 هر ۱۰ دعوت موفق = ۳۰ روز VIP رایگان.{feat_text}" if fa else f"💎 VIP\n\nStatus: {status}\n⭐ Level: {level}\n🕐 VIP until: {vip_until[:16] if vip_until else '—'}\n\n👥 Referrals and activity earn XP.\n💎 Every 10 referrals = 30 days free VIP.{feat_text}")
+    text=(f"💎 VIP\n\nوضعیت: {status}\n⭐ سطح: {level}\n🕐 پایان VIP: {vip_until[:16] if vip_until else '—'}\n\nامکانات VIP: سهمیه بیشتر AI و قابلیت‌های پولی فعال‌شده توسط مدیر." if fa else f"💎 VIP\n\nStatus: {status}\n⭐ Level: {level}\n🕐 VIP until: {vip_until[:16] if vip_until else '—'}\n\nVIP includes higher AI quota and paid features enabled by the admin.")
     await update.message.reply_text(text,reply_markup=vip_keyboard(uid))
 
 async def vip_callback(update,context):
@@ -3273,13 +3134,7 @@ def tgju_value(url):
     vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,٫٬]+)',html,re.I)
     if not vals: vals=re.findall(r'([0-9]{1,3}(?:,[0-9]{3})+)',html)
     if not vals: raise ValueError("price not found")
-    # TGJU values are in Toman; convert to Rial (×10)
-    raw = vals[0].replace(",", "")
-    try:
-        rial = int(raw) * 10
-        return f"{rial:,.0f}"
-    except ValueError:
-        return vals[0]
+    return vals[0]
 
 async def fetch_price(asset):
     # BTC/ETH: use the direct Iranian IRT market from Nobitex.
@@ -3295,7 +3150,7 @@ async def fetch_price(asset):
             last_trade = data.get("lastTradePrice")
             if last_trade is None:
                 raise ValueError("lastTradePrice missing")
-            return f"{float(last_trade):,.0f} ریال"
+            return f"{float(last_trade)/10:,.0f} تومان"
         except Exception as e:
             logger.warning("Nobitex v3 orderbook %s failed: %s", symbol, e)
         try:
@@ -3305,7 +3160,7 @@ async def fetch_price(asset):
             )
             trades = data.get("trades") or []
             if trades:
-                return f"{float(trades[0]['price']):,.0f} ریال"
+                return f"{float(trades[0]['price'])/10:,.0f} تومان"
             raise ValueError("no trades")
         except Exception as e:
             logger.warning("Nobitex trades %s failed: %s", symbol, e)
@@ -3318,7 +3173,7 @@ async def fetch_price(asset):
             latest = data.get("stats", {}).get(f"{asset}-rls", {}).get("latest")
             if latest is None:
                 raise ValueError("latest price missing")
-            return f"{float(latest):,.0f} ریال"
+            return f"{float(latest)/10:,.0f} تومان"
         except Exception as e:
             logger.warning("Nobitex stats %s failed: %s", symbol, e)
             raise
@@ -3328,7 +3183,7 @@ async def fetch_price(asset):
         meta=data["chart"]["result"][0]["meta"]
         return f"{meta.get('regularMarketPrice',0):,.2f} USD"
     urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
-    return await asyncio.to_thread(tgju_value,urls[asset]) + (" ریال" if asset in ("usd","eur","gold18","coin") else "")
+    return await asyncio.to_thread(tgju_value,urls[asset]) + (" تومان" if asset in ("usd","eur","gold18","coin") else "")
 
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
@@ -3467,7 +3322,6 @@ def main():
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
 
     init_db()
-    init_vip_features()
     # Safe defaults for automatic channel publishing.
     if not get_auto_setting("interval_minutes", ""):
         set_auto_setting("interval_minutes", "60")
@@ -3533,7 +3387,6 @@ def main():
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
-    app.add_handler(CallbackQueryHandler(vip_feature_toggle_callback, pattern=r"^vf:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_error_handler(error_handler)
 
