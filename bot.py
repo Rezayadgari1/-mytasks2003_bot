@@ -15,7 +15,14 @@ import random
 import hashlib
 import html
 import difflib
-from PIL import Image, ImageDraw, ImageFont
+# Pillow is optional: image generation is disabled by default and must never
+# prevent the main bot from starting if Pillow is not installed.
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError:
+    Image = ImageDraw = ImageFont = None
+    PIL_AVAILABLE = False
 
 from telegram import (
     Update,
@@ -42,8 +49,9 @@ except ImportError:
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-DB_PATH = os.environ.get("DB_PATH", "goals.db")
-DB_SCHEMA_VERSION = 20
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "goals.db")
+DB_SCHEMA_VERSION = 21
 
 # DATA PERSISTENCE CONTRACT
 # -------------------------
@@ -340,6 +348,29 @@ TIME_BUTTONS = ["07:00", "08:00", "10:00", "12:00", "15:00", "18:00", "20:00", "
 
 
 
+def restore_database_if_missing():
+    """Restore the live SQLite database from the last backup if it disappeared."""
+    if os.path.exists(DB_PATH) or not os.path.exists(DB_BACKUP_PATH):
+        return False
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
+        src_conn = sqlite3.connect(DB_BACKUP_PATH, timeout=30)
+        dst_conn = sqlite3.connect(DB_PATH, timeout=30)
+        with dst_conn:
+            src_conn.backup(dst_conn)
+        dst_conn.close(); src_conn.close()
+        logger.warning("Restored missing live database from %s", DB_BACKUP_PATH)
+        return True
+    except Exception:
+        logger.exception("Database restore failed")
+        try:
+            if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) == 0:
+                os.remove(DB_PATH)
+        except Exception:
+            pass
+        return False
+
+
 def backup_database():
     """Create a safe SQLite backup without deleting or replacing live data."""
     if not os.path.exists(DB_PATH):
@@ -413,6 +444,7 @@ def db():
 
 
 def init_db():
+    restore_database_if_missing()
     backup_database()
     c = db()
     c.execute(
@@ -536,6 +568,14 @@ def init_db():
         amount INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS bot_usage_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        event_type TEXT NOT NULL,
+        details TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_bot_usage_events_day ON bot_usage_events(created_at, event_type);
     CREATE TABLE IF NOT EXISTS broadcast_jobs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         admin_id INTEGER NOT NULL,
@@ -1885,6 +1925,11 @@ async def weekly(update, context):
 async def stats(update, context):
     uid = update.effective_user.id
     goals = get_goals(uid)
+    # Calculate the user's current streak here.  The previous V22 version
+    # referenced `streak` without defining it, which caused the whole
+    # "📊 آمار من" handler to fail and the global error handler to show
+    # "بقیه امکانات همچنان در دسترس‌اند".
+    streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     d = datetime.now(TZ).date().isoformat()
     c = db()
     done = c.execute(
@@ -2265,7 +2310,14 @@ def compact_channel_footer(bot_username, channel_username):
 
 
 async def generate_topic_image(topic):
-    """Generate a related local PNG image at zero API cost."""
+    """Generate a related local PNG image at zero API cost.
+
+    Pillow is optional. If it is unavailable, image generation is simply
+    skipped and the text-only post flow continues normally.
+    """
+    if not PIL_AVAILABLE:
+        logger.info("Pillow is not installed; image generation skipped.")
+        return None
     try:
         bg=(17,24,39); accent=(124,58,237)
         img=Image.new("RGB",(1024,1024),bg); d=ImageDraw.Draw(img)
@@ -3358,6 +3410,7 @@ async def text_router(update, context):
 
     else:
         log_activity(uid, "text_message")
+    log_usage_event(uid, "text_message")
 
 
 
@@ -3371,6 +3424,29 @@ def set_feature(key,enabled,admin_id=0):
 
 def admin_log(admin_id,action,target_user=None,details=""):
     c=db(); c.execute("INSERT INTO admin_logs(admin_id,action,target_user,details,created_at) VALUES(?,?,?,?,?)",(admin_id,action,target_user,details,datetime.now(TZ).isoformat())); c.commit(); c.close()
+
+def is_registered_user(uid):
+    c=db(); r=c.execute("SELECT 1 FROM users WHERE user_id=?",(int(uid),)).fetchone(); c.close(); return bool(r)
+
+def log_usage_event(uid, event_type, details=""):
+    try:
+        c=db(); c.execute("INSERT INTO bot_usage_events(user_id,event_type,details,created_at) VALUES(?,?,?,?)",(uid,event_type,details,datetime.now(TZ).isoformat())); c.commit(); c.close()
+    except Exception:
+        logger.exception("Usage event logging failed: %s", event_type)
+
+def award_engagement_xp_once(uid, amount, reason, reward_key, event_type="engagement"):
+    try:
+        if not is_registered_user(uid):
+            return False
+        c=db(); cur=c.execute("INSERT OR IGNORE INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",(reward_key,int(uid),reason,int(amount),datetime.now(TZ).isoformat())); inserted=(cur.rowcount==1); c.commit(); c.close()
+        if inserted:
+            add_xp(int(uid), int(amount), reason)
+            log_activity(int(uid), event_type)
+            log_usage_event(int(uid), event_type, reason)
+        return inserted
+    except Exception:
+        logger.exception("Engagement XP award failed: %s", reason)
+        return False
 
 def add_xp(uid,amount,reason="interaction"):
     if amount<=0:return
@@ -3800,9 +3876,49 @@ async def ai_chat_text(update,context):
 
 
 async def build_daily_report():
-    d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"],"likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],"dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],"auto_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
+    d=datetime.now(TZ).date().isoformat()
+    c=db()
+    data={
+        "posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],
+        "active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"],
+        "likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "auto_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "total_users":c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"],
+        "usage_events":c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "usage_users":c.execute("SELECT COUNT(DISTINCT user_id) n FROM bot_usage_events WHERE substr(created_at,1,10)=? AND user_id IS NOT NULL",(d,)).fetchone()["n"],
+        "goals_created":c.execute("SELECT COUNT(*) n FROM goals WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "poll_participation":c.execute("SELECT COUNT(DISTINCT user_id) n FROM channel_poll_votes WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "reaction_users":c.execute("SELECT COUNT(DISTINCT user_id) n FROM channel_reactions WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+    }
+    top_usage=c.execute("SELECT event_type,COUNT(*) n FROM bot_usage_events WHERE substr(created_at,1,10)=? GROUP BY event_type ORDER BY n DESC LIMIT 6",(d,)).fetchall()
+    data["top_usage"]=[{"event":r["event_type"],"count":r["n"]} for r in top_usage]
+    c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat()))
+    c.commit(); c.close()
+
 def get_daily_report_text():
-    d=datetime.now(TZ).date().isoformat(); c=db(); r=c.execute("SELECT data FROM daily_reports WHERE report_date=?",(d,)).fetchone(); c.close(); x=json.loads(r["data"]) if r else {}; return "📋 گزارش پایان روز\n\n"+f"📢 پست‌ها: {x.get('posts',0)}\n🟢 فعال: {x.get('active',0)}\n🆕 جدید: {x.get('new',0)}\n⭐ XP: {x.get('xp',0)}\n✅ اهداف انجام‌شده: {x.get('done',0)}\n👍 مفید: {x.get('likes',0)}\n👎 نامناسب: {x.get('dislikes',0)}"
+    d=datetime.now(TZ).date().isoformat(); c=db(); r=c.execute("SELECT data FROM daily_reports WHERE report_date=?",(d,)).fetchone(); c.close(); x=json.loads(r["data"]) if r else {}
+    top=x.get("top_usage") or []
+    top_text=" | ".join(f"{row.get('event')}: {row.get('count')}" for row in top[:6]) or "ثبت نشده"
+    return ("📋 گزارش پایان روز\n\n"
+            f"📢 پست‌ها: {x.get('posts',0)}\n"
+            f"👥 کاربران ثبت‌شده: {x.get('total_users',0)}\n"
+            f"🟢 کاربران فعال امروز: {x.get('active',0)}\n"
+            f"🆕 کاربران جدید: {x.get('new',0)}\n"
+            f"📈 رویدادهای استفاده از ربات: {x.get('usage_events',0)}\n"
+            f"👤 کاربران استفاده‌کننده: {x.get('usage_users',0)}\n"
+            f"🎯 اهداف ساخته‌شده: {x.get('goals_created',0)}\n"
+            f"✅ اهداف انجام‌شده: {x.get('done',0)}\n"
+            f"⭐ XP کسب‌شده: {x.get('xp',0)}\n"
+            f"🗳 مشارکت در نظرسنجی: {x.get('poll_participation',0)} نفر\n"
+            f"❤️ کاربران دارای واکنش کانال: {x.get('reaction_users',0)} نفر\n"
+            f"👍 مفید: {x.get('likes',0)}\n"
+            f"👎 نامناسب: {x.get('dislikes',0)}\n"
+            f"🔥 فعالیت‌های پرتکرار: {top_text}")
+
 async def run_health_checks(bot,admin_id=0):
     checks=[("Bot","OK" if BOT_TOKEN else "ERROR","token")]
     try: c=db(); c.execute("SELECT 1"); c.close(); checks.append(("Database","OK","SQLite"))
@@ -3858,12 +3974,16 @@ async def channel_reaction_handler(update, context):
         # Replace this user's reaction set for this message atomically.
         c.execute("DELETE FROM channel_reactions WHERE channel_id=? AND message_id=? AND user_id=?", (channel_id, message_id, int(user.id)))
         now = datetime.now(TZ).isoformat()
+        new_emojis=[]
         for reaction in new:
             emoji = getattr(reaction, "emoji", None) or getattr(reaction, "custom_emoji_id", None) or str(reaction)
             is_paid = 1 if getattr(reaction, "type", "") == "paid" else 0
+            emoji=str(emoji); new_emojis.append(emoji)
             c.execute("INSERT OR IGNORE INTO channel_reactions(channel_id,message_id,user_id,reaction,is_paid,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                      (channel_id, message_id, int(user.id), str(emoji), is_paid, now, now))
+                      (channel_id, message_id, int(user.id), emoji, is_paid, now, now))
         c.commit(); c.close()
+        for emoji in new_emojis:
+            award_engagement_xp_once(int(user.id), 2, "channel_reaction", f"reaction:{channel_id}:{message_id}:{int(user.id)}:{datetime.now(TZ).date().isoformat()}", "channel_reaction")
     except Exception:
         logger.exception("Channel reaction handler failed")
 
@@ -3879,12 +3999,15 @@ async def channel_poll_answer_handler(update, context):
             return
         options = list(getattr(pa, "option_ids", []) or [])
         c = db()
+        poll_row = c.execute("SELECT poll_type,channel_id FROM channel_polls WHERE poll_id=?", (poll_id,)).fetchone()
         c.execute("DELETE FROM channel_poll_votes WHERE poll_id=? AND user_id=?", (poll_id, int(user.id)))
         now = datetime.now(TZ).isoformat()
         for option_id in options:
             c.execute("INSERT OR REPLACE INTO channel_poll_votes(poll_id,user_id,option_id,created_at) VALUES(?,?,?,?)",
                       (poll_id, int(user.id), int(option_id), now))
         c.commit(); c.close()
+        if options and poll_row:
+            award_engagement_xp_once(int(user.id), 3, "channel_poll", f"poll:{poll_id}:{int(user.id)}", "channel_poll_vote")
     except Exception:
         logger.exception("Channel poll answer handler failed")
 
