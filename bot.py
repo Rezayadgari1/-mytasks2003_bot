@@ -389,6 +389,33 @@ def backup_database():
         return False
 
 
+
+def backup_database_snapshot(keep=10):
+    """Keep timestamped SQLite snapshots so a code update can be rolled back safely."""
+    if not os.path.exists(DB_PATH):
+        return False
+    try:
+        folder=os.path.join(os.path.dirname(os.path.abspath(DB_PATH)),"backups")
+        os.makedirs(folder,exist_ok=True)
+        stamp=datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
+        target=os.path.join(folder,f"goals_{stamp}.db")
+        src_conn=sqlite3.connect(DB_PATH,timeout=30)
+        dst_conn=sqlite3.connect(target,timeout=30)
+        with dst_conn:
+            src_conn.backup(dst_conn)
+        dst_conn.close(); src_conn.close()
+        files=sorted(
+            [os.path.join(folder,x) for x in os.listdir(folder) if x.endswith(".db")],
+            key=lambda x: os.path.getmtime(x), reverse=True
+        )
+        for old in files[keep:]:
+            try: os.remove(old)
+            except OSError: pass
+        return True
+    except Exception as e:
+        logger.error("Timestamped database backup failed: %s",e)
+        return False
+
 def ensure_column(c, table, column, ddl):
     """Add a column only when the old database does not have it."""
     columns = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -459,6 +486,7 @@ def db():
 def init_db():
     restore_database_if_missing()
     backup_database()
+    backup_database_snapshot()
     c = db()
     c.execute(
         """CREATE TABLE IF NOT EXISTS users(
@@ -777,6 +805,7 @@ def keyboard(uid):
         if user_feature_allowed(uid,"customers"):
             rows.append(["👥 مدیریت مشتری و نوبت‌دهی" if lang(uid)=="fa" else "👥 Customer & Appointments"])
     except Exception: pass
+    rows.append(["📅 رزروهای من" if lang(uid)=="fa" else "📅 My Bookings"])
     if admin_is_allowed(uid):
         rows.append(["📢 مدیریت کانال","🛡 پنل مدیریت"] if lang(uid)=="fa" else ["📢 Channel Management","🛡 Admin Panel"])
     return ReplyKeyboardMarkup(rows,resize_keyboard=True)
@@ -1261,7 +1290,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         arg=context.args[0]
         if arg.startswith("book_"):
-            if await customer_booking_start(update, context, arg[5:].strip()):
+            # Public booking links are a complete flow. Do not continue into
+            # the normal /start language-selection flow after opening them.
+            handled = await customer_booking_start(update, context, arg[5:].strip())
+            if handled:
                 return
         if arg.startswith("ref_"):
             code=arg[4:].strip()
@@ -3360,6 +3392,7 @@ def is_menu_button(uid, text):
         "📈 قیمت آنلاین", "📈 Online Prices",
         "🤝 دعوت دوستان", "🤝 Invite Friends",
         "🎫 پشتیبانی", "🎫 Support",
+        "📅 رزروهای من", "📅 My Bookings",
     }
     if text in known:
         return True
@@ -3402,6 +3435,26 @@ def jalali_date_str(value):
     try:
         d=value if hasattr(value,'year') else datetime.fromisoformat(str(value)[:10]).date(); y,m,day=gregorian_to_jalali(d.year,d.month,d.day); return f"{y:04d}/{m:02d}/{day:02d}"
     except Exception: return str(value)
+
+def fa_digits(value):
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+JALALI_MONTHS_FA = [
+    "فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور",
+    "مهر","آبان","آذر","دی","بهمن","اسفند"
+]
+WEEKDAYS_FA = [
+    "دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه","شنبه","یکشنبه"
+]
+
+def jalali_pretty_date(value):
+    try:
+        d=value if hasattr(value,'year') else datetime.fromisoformat(str(value)[:10]).date()
+        y,m,day=gregorian_to_jalali(d.year,d.month,d.day)
+        return f"{WEEKDAYS_FA[d.weekday()]} {fa_digits(day)} {JALALI_MONTHS_FA[m-1]} {fa_digits(y)}"
+    except Exception:
+        return jalali_date_str(value)
+
 
 # ================= CUSTOMER / APPOINTMENT MODULE =================
 CUSTOMER_REMINDER_OPTIONS=[1,5,10,30,60,120,1440]
@@ -3533,9 +3586,15 @@ async def customer_panel(update,context):
     await hide_main_reply_keyboard(update)
 
 async def customer_panel_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer()
-    if not customer_feature_allowed(uid): await q.message.edit_text(customer_feature_message(uid)); return
-    ensure_business_profile(uid); p=q.data.split(":"); a=p[1] if len(p)>1 else "main"
+    q=update.callback_query; uid=q.from_user.id
+    p=q.data.split(":"); a=p[1] if len(p)>1 else "main"
+    # Public booking callbacks are independent of the owner's customer-panel
+    # access mode, so a normal customer can book without a VIP account.
+    public_actions={"bookdate","booklink","slot","mybookings","mybook","cancelbook","reschedulebook"}
+    await q.answer()
+    if a not in public_actions and not customer_feature_allowed(uid):
+        await q.message.edit_text(customer_feature_message(uid)); return
+    ensure_business_profile(uid)
     customer_action_keys={
         "today":"customer_today", "new":"customer_new_appointment", "list":"customer_customers",
         "calendar":"customer_calendar", "hours":"customer_hours", "reminders":"customer_reminders",
@@ -3576,6 +3635,14 @@ async def customer_panel_callback(update,context):
         context.user_data.update(customer_id=int(p[2]),customer_mode="appt_date")
         await q.message.edit_text("📅 تاریخ نوبت را بفرست: 2026-08-20")
         return
+    if a=="mybookings":
+        await customer_my_bookings_callback(update,context); return
+    if a=="mybook":
+        await customer_booking_detail(update,context,int(p[2])); return
+    if a=="cancelbook":
+        await customer_cancel_booking(update,context,int(p[2])); return
+    if a=="reschedulebook":
+        await customer_reschedule_booking(update,context,int(p[2])); return
     if a=="bookdate": await booking_date_menu(update,context,p[2]); return
     if a=="booklink": await booking_date_menu_list(update,context); return
     if a=="slot": await booking_slot_select(update,context,p[2]); return
@@ -3723,6 +3790,155 @@ async def customer_contact_save(update,context):
     if context.user_data.get("customer_mode")!="contact":return False
     uid=update.effective_user.id; ct=update.message.contact; name=((ct.first_name or "")+" "+(ct.last_name or "")).strip() or "مشتری"; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,name,ct.phone_number,ct.user_id,now,now)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text(f"✅ {name} به مشتریان اضافه شد.",reply_markup=customer_keyboard(uid)); return True
 
+
+async def customer_my_bookings(update,context):
+    """Show active online bookings belonging to the current Telegram user."""
+    uid=update.effective_user.id
+    c=db()
+    rows=c.execute("""
+        SELECT a.id,a.owner_user_id,a.appointment_date,a.appointment_time,
+               a.status,a.source,c.name,c.phone
+        FROM appointments a
+        JOIN customers c ON c.id=a.customer_id
+        WHERE c.telegram_user_id=? AND a.status='booked'
+          AND a.appointment_date>=?
+        ORDER BY a.appointment_date,a.appointment_time
+        LIMIT 30
+    """,(uid,datetime.now(TZ).date().isoformat())).fetchall()
+    c.close()
+    if not rows:
+        await update.message.reply_text(
+            "📅 <b>رزروهای من</b>\n\nرزرو فعال و آینده‌ای برای شما ثبت نشده است.",
+            parse_mode="HTML", reply_markup=keyboard(uid)
+        )
+        return
+    kb=[]
+    lines=[]
+    for r in rows:
+        date_text=jalali_pretty_date(r["appointment_date"])
+        lines.append(f"• {date_text} — ⏰ {r['appointment_time']}")
+        kb.append([InlineKeyboardButton(
+            f"📅 {date_text} | ⏰ {r['appointment_time']}",
+            callback_data=f"cust:mybook:{r['id']}"
+        )])
+    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
+    await update.message.reply_text(
+        "📅 <b>رزروهای من</b>\n\n"+"\n".join(lines),
+        parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+async def customer_my_bookings_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    c=db()
+    rows=c.execute("""
+        SELECT a.id,a.appointment_date,a.appointment_time
+        FROM appointments a JOIN customers c ON c.id=a.customer_id
+        WHERE c.telegram_user_id=? AND a.status='booked' AND a.appointment_date>=?
+        ORDER BY a.appointment_date,a.appointment_time LIMIT 30
+    """,(uid,datetime.now(TZ).date().isoformat())).fetchall()
+    c.close()
+    if not rows:
+        await q.message.edit_text(
+            "📅 <b>رزروهای من</b>\n\nرزرو فعال و آینده‌ای ندارید.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]])
+        ); return
+    kb=[[InlineKeyboardButton(
+        f"📅 {jalali_pretty_date(r['appointment_date'])} | ⏰ {r['appointment_time']}",
+        callback_data=f"cust:mybook:{r['id']}"
+    )] for r in rows]
+    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
+    await q.message.edit_text("📅 <b>رزروهای من</b>\n\nیک رزرو را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+
+async def customer_booking_detail(update,context,aid):
+    q=update.callback_query; uid=q.from_user.id
+    c=db()
+    r=c.execute("""
+        SELECT a.*,c.name,c.phone,c.telegram_user_id
+        FROM appointments a JOIN customers c ON c.id=a.customer_id
+        WHERE a.id=? AND c.telegram_user_id=? AND a.status='booked'
+    """,(aid,uid)).fetchone()
+    c.close()
+    if not r:
+        await q.answer("این رزرو فعال پیدا نشد.",show_alert=True); return
+    p=ensure_business_profile(r["owner_user_id"])
+    bname=p["business_name"] or p["business_type"] or "کسب‌وکار"
+    kb=[
+        [InlineKeyboardButton("🔄 تغییر زمان",callback_data=f"cust:reschedulebook:{aid}"),
+         InlineKeyboardButton("❌ لغو رزرو",callback_data=f"cust:cancelbook:{aid}")],
+        [InlineKeyboardButton("⬅️ رزروهای من",callback_data="cust:mybookings"),
+         InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+    ]
+    await q.message.edit_text(
+        f"📅 <b>جزئیات رزرو</b>\n\n"
+        f"🏪 {html.escape(bname)}\n"
+        f"👤 {html.escape(r['name'] or 'مشتری')}\n"
+        f"📅 {jalali_pretty_date(r['appointment_date'])}\n"
+        f"⏰ {r['appointment_time']}\n"
+        f"📞 {html.escape(r['phone']) if r['phone'] else '—'}\n\n"
+        "از اینجا می‌توانید زمان را تغییر دهید یا رزرو را لغو کنید.",
+        parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+async def customer_cancel_booking(update,context,aid):
+    q=update.callback_query; uid=q.from_user.id
+    c=db()
+    r=c.execute("""
+        SELECT a.*,c.name,c.phone,c.telegram_user_id
+        FROM appointments a JOIN customers c ON c.id=a.customer_id
+        WHERE a.id=? AND c.telegram_user_id=? AND a.status='booked'
+    """,(aid,uid)).fetchone()
+    if not r:
+        c.close(); await q.answer("این رزرو دیگر فعال نیست.",show_alert=True); return
+    now=datetime.now(TZ).isoformat()
+    c.execute("UPDATE appointments SET status='cancelled',updated_at=? WHERE id=? AND status='booked'",(now,aid))
+    c.execute(
+        "INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",
+        (r["owner_user_id"],r["customer_id"],aid,"customer_cancelled","customer cancelled online",now)
+    )
+    c.commit(); c.close()
+    try:
+        await context.bot.send_message(
+            r["owner_user_id"],
+            f"❌ <b>مشتری رزرو آنلاین را لغو کرد</b>\n\n"
+            f"👤 {html.escape(r['name'] or 'مشتری')}\n"
+            f"📅 {jalali_pretty_date(r['appointment_date'])}\n"
+            f"⏰ {r['appointment_time']}\n"
+            f"📞 {html.escape(r['phone']) if r['phone'] else '—'}",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.warning("Owner cancellation notification failed: %s",e)
+    await q.answer("✅ رزرو لغو شد.")
+    await q.message.edit_text(
+        "✅ <b>رزرو شما لغو شد.</b>\n\nصاحب کسب‌وکار نیز از لغو رزرو مطلع شد.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],
+            [InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+        ])
+    )
+
+async def customer_reschedule_booking(update,context,aid):
+    q=update.callback_query; uid=q.from_user.id
+    c=db()
+    r=c.execute("""
+        SELECT a.*,c.telegram_user_id
+        FROM appointments a JOIN customers c ON c.id=a.customer_id
+        WHERE a.id=? AND c.telegram_user_id=? AND a.status='booked'
+    """,(aid,uid)).fetchone()
+    c.close()
+    if not r:
+        await q.answer("این رزرو دیگر فعال نیست.",show_alert=True); return
+    context.user_data.clear()
+    context.user_data.update(
+        booking_owner=r["owner_user_id"],
+        reschedule_appointment_id=aid,
+        customer_mode="public_reschedule"
+    )
+    await q.answer()
+    await booking_date_menu_list(update,context,reschedule=True)
+
 async def customer_booking_start(update,context,token):
     uid=update.effective_user.id
     owner_row=None
@@ -3730,29 +3946,115 @@ async def customer_booking_start(update,context,token):
     if p:
         owner_row=p["user_id"]
     if not p:
-        await update.message.reply_text("❌ لینک رزرو معتبر نیست یا غیرفعال شده."); return
+        await update.message.reply_text("❌ لینک رزرو معتبر نیست یا غیرفعال شده."); return True
     if not feature_enabled("customer_online_booking") or feature_access_mode("customer_online_booking", owner_row)=="off":
-        await update.message.reply_text("❌ رزرو آنلاین این کسب‌وکار فعلاً غیرفعال است."); return
-    context.user_data["booking_owner"]=p["user_id"]; await booking_date_menu_list(update,context)
+        await update.message.reply_text("❌ رزرو آنلاین این کسب‌وکار فعلاً غیرفعال است."); return True
+    context.user_data["booking_owner"]=p["user_id"]
+    await booking_date_menu_list(update,context)
+    return True
 
-async def booking_date_menu_list(update,context):
-    owner=context.user_data.get("booking_owner"); today=datetime.now(TZ).date(); kb=[]
-    for i in range(7):
-        d=today+timedelta(days=i); slots=available_slots(owner,d.isoformat()) if owner else []; kb.append([InlineKeyboardButton(f"📅 {d.isoformat()} — {'🟢 '+str(len(slots))+' آزاد' if slots else '🔴'}",callback_data=f"cust:bookdate:{d.isoformat()}")])
-    if update.callback_query: await update.callback_query.message.reply_text("📅 تاریخ را انتخاب کن:",reply_markup=InlineKeyboardMarkup(kb))
-    else: await update.message.reply_text("📅 تاریخ را انتخاب کن:",reply_markup=InlineKeyboardMarkup(kb))
+async def booking_date_menu_list(update,context,reschedule=False):
+    owner=context.user_data.get("booking_owner")
+    today=datetime.now(TZ).date()
+    kb=[]
+    for i in range(14):
+        d=today+timedelta(days=i)
+        slots=available_slots(owner,d.isoformat()) if owner else []
+        count=len(slots)
+        status=f"🟢 {fa_digits(count)} زمان آزاد" if count else "🔴 تکمیل"
+        kb.append([InlineKeyboardButton(
+            f"📅 {jalali_pretty_date(d)} — {status}",
+            callback_data=f"cust:bookdate:{d.isoformat()}"
+        )])
+    kb.append([InlineKeyboardButton(
+        "⬅️ برگشت" if not reschedule else "⬅️ رزرو من",
+        callback_data="cust:mybookings" if reschedule else "nav:main"
+    )])
+    if update.callback_query:
+        await update.callback_query.message.edit_text(
+            "🔄 <b>تغییر زمان رزرو</b>\n\nتاریخ جدید را انتخاب کن:" if reschedule
+            else "📅 <b>تقویم رزرو آنلاین</b>\n\nتاریخ را انتخاب کن:",
+            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+        )
+    else:
+        await update.message.reply_text(
+            "📅 <b>تقویم رزرو آنلاین</b>\n\nتاریخ را انتخاب کن:",
+            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+        )
 
-async def booking_date_menu(update,context,d): context.user_data["booking_date"]=d; await booking_slots_for_owner(update,context,context.user_data.get("booking_owner"),d)
+async def booking_date_menu(update,context,d):
+    context.user_data["booking_date"]=d
+    await booking_slots_for_owner(update,context,context.user_data.get("booking_owner"),d)
 
 async def booking_slots_for_owner(update,context,owner,d):
-    q=update.callback_query; slots=available_slots(owner,d) if owner else []; kb=[[InlineKeyboardButton(x,callback_data=f"cust:slot:{x}") for x in slots[i:i+4]] for i in range(0,len(slots),4)]; kb.append([InlineKeyboardButton("↩️ تاریخ دیگر",callback_data="cust:booklink")]); await q.message.edit_text(f"📅 {d}\n\n{'⏰ زمان آزاد را انتخاب کن:' if slots else '❌ زمان آزادی نیست.'}",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query
+    slots=available_slots(owner,d) if owner else []
+    kb=[[InlineKeyboardButton(x,callback_data=f"cust:slot:{x}") for x in slots[i:i+4]] for i in range(0,len(slots),4)]
+    kb.append([InlineKeyboardButton("↩️ تاریخ دیگر",callback_data="cust:booklink")])
+    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
+    title="🔄 ساعت جدید را انتخاب کن:" if context.user_data.get("reschedule_appointment_id") else "⏰ زمان آزاد را انتخاب کن:"
+    await q.message.edit_text(
+        f"📅 {jalali_pretty_date(d)}\n\n{title if slots else '❌ این روز زمان آزادی ندارد.'}",
+        parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
+    )
 
 async def booking_slot_select(update,context,tm):
-    q=update.callback_query; owner=context.user_data.get("booking_owner"); d=context.user_data.get("booking_date")
-    if not owner or tm not in available_slots(owner,d): await q.answer("این زمان دیگر آزاد نیست.",show_alert=True); return
-    context.user_data.update(booking_time=tm,customer_mode="public_booking_name"); await q.message.edit_text("👤 نام شما را بفرست:")
+    q=update.callback_query
+    owner=context.user_data.get("booking_owner")
+    d=context.user_data.get("booking_date")
+    if not owner or tm not in available_slots(owner,d):
+        await q.answer("این زمان دیگر آزاد نیست.",show_alert=True); return
+    aid=context.user_data.get("reschedule_appointment_id")
+    if aid:
+        if has_conflict(owner,d,tm,30,aid):
+            await q.answer("این زمان دیگر آزاد نیست.",show_alert=True); return
+        now=datetime.now(TZ).isoformat()
+        c=db()
+        r=c.execute("""
+            SELECT a.*,c.name,c.phone,c.telegram_user_id
+            FROM appointments a JOIN customers c ON c.id=a.customer_id
+            WHERE a.id=? AND a.status='booked' AND c.telegram_user_id=?
+        """,(aid,q.from_user.id)).fetchone()
+        if not r:
+            c.close(); await q.answer("رزرو پیدا نشد.",show_alert=True); return
+        c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=?",(d,tm,now,aid))
+        c.execute(
+            "INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",
+            (owner,r["customer_id"],aid,"customer_rescheduled",f"{r['appointment_date']} {r['appointment_time']} -> {d} {tm}",now)
+        )
+        c.commit(); c.close()
+        try:
+            await context.bot.send_message(
+                owner,
+                f"🔄 <b>مشتری زمان رزرو را تغییر داد</b>\n\n"
+                f"👤 {html.escape(r['name'] or 'مشتری')}\n"
+                f"📅 قبلی: {jalali_pretty_date(r['appointment_date'])}\n"
+                f"⏰ قبلی: {r['appointment_time']}\n"
+                f"📅 جدید: {jalali_pretty_date(d)}\n"
+                f"⏰ جدید: {tm}",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning("Owner reschedule notification failed: %s",e)
+        context.user_data.clear()
+        await q.answer("✅ زمان رزرو تغییر کرد.")
+        await q.message.edit_text(
+            f"✅ <b>زمان رزرو با موفقیت تغییر کرد.</b>\n\n"
+            f"📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\n"
+            "صاحب کسب‌وکار از تغییر زمان مطلع شد.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],
+                [InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+            ])
+        )
+        return
+    context.user_data.update(booking_time=tm,customer_mode="public_booking_name")
+    await q.answer()
+    await q.message.edit_text("👤 <b>نام شما را بفرست:</b>",parse_mode="HTML")
 
 async def public_booking_save(update,context):
+
     mode=context.user_data.get("customer_mode");
     if mode not in ("public_booking_name","public_booking_phone"):return False
     text=update.message.text.strip(); uid=update.effective_user.id
@@ -3763,9 +4065,9 @@ async def public_booking_save(update,context):
     if has_conflict(owner,d,tm,30):c.close(); context.user_data.clear(); await update.message.reply_text("❌ این زمان همین الان پر شد. لطفاً دوباره لینک را باز کن."); return True
     aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(owner,cid,d,tm,30,'','رزرو آنلاین','30','booked','online',now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(owner,cid,aid,'online_booking','',now)); c.commit(); c.close()
     p=ensure_business_profile(owner); business_name=p["business_name"] or p["business_type"] or "کسب‌وکار"
-    try: await context.bot.send_message(owner,f"🔔 نوبت آنلاین جدید\n🏪 {business_name}\n👤 {name}\n📅 {jalali_date_str(d)}\n⏰ {tm}\n📞 {phone or '—'}")
+    try: await context.bot.send_message(owner,f"🔔 <b>مشتری یک رزرو آنلاین ثبت کرد</b>\n\n🏪 {html.escape(business_name)}\n👤 {html.escape(name)}\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n📞 {html.escape(phone) if phone else '—'}")
     except Exception:pass
-    context.user_data.clear(); await update.message.reply_text(f"✅ رزرو با موفقیت ثبت شد.\n\n🏪 {business_name}\n📅 {jalali_date_str(d)}\n⏰ {tm}\n\n🔔 یادآوری نوبت برای شما ارسال خواهد شد."); return True
+    context.user_data.clear(); await update.message.reply_text(f"✅ <b>رزرو شما با موفقیت ثبت شد.</b>\n\n🏪 {html.escape(business_name)}\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\n📅 از بخش «رزروهای من» می‌توانید رزرو را مدیریت، لغو یا جابه‌جا کنید."); return True
 
 async def customer_reminder_job(context):
     now=datetime.now(TZ).replace(second=0,microsecond=0); c=db(); rows=c.execute("SELECT a.*,c.name,c.phone,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.status='booked' AND a.appointment_date>=?",(now.date().isoformat(),)).fetchall(); c.close()
@@ -3884,6 +4186,9 @@ async def text_router(update, context):
         return
 
     if not await final_guard(update, context):
+        return
+    if text in ("📅 رزروهای من","📅 My Bookings"):
+        await customer_my_bookings(update,context)
         return
     if await support_text(update, context):
         return
@@ -4078,11 +4383,33 @@ async def final_admin_panel_callback(update,context):
     if a=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
     if a=="channel": await q.message.edit_text("📡 مدیریت کانال و پست‌گذاری",reply_markup=channel_keyboard()); return
     if a=="customers":
-        c=db(); total=c.execute("SELECT COUNT(*) n FROM customers").fetchone()["n"]; appts=c.execute("SELECT COUNT(*) n FROM appointments").fetchone()["n"]; today=datetime.now(TZ).date().isoformat(); today_n=c.execute("SELECT COUNT(*) n FROM appointments WHERE appointment_date=?",(today,)).fetchone()["n"]; c.close()
-        mode=feature_access_mode("customers")
-        label={"free":"🟢 رایگان","vip":"💎 VIP","off":"🔴 غیرفعال"}.get(mode,mode)
-        kb=InlineKeyboardMarkup([[InlineKeyboardButton(f"وضعیت فعلی: {label} — تغییر",callback_data="feat:customers")],[InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]])
-        await q.message.edit_text(f"👥 <b>مدیریت سیستم مشتری</b>\n\n👤 مشتریان: {total}\n📅 کل نوبت‌ها: {appts}\n🌅 نوبت امروز: {today_n}\n\n💎 دسترسی قابلیت: {label}",parse_mode="HTML",reply_markup=kb); return
+        c=db()
+        total=c.execute("SELECT COUNT(*) n FROM customers").fetchone()["n"]
+        appts=c.execute("SELECT COUNT(*) n FROM appointments").fetchone()["n"]
+        today=datetime.now(TZ).date().isoformat()
+        today_n=c.execute("SELECT COUNT(*) n FROM appointments WHERE appointment_date=?",(today,)).fetchone()["n"]
+        c.close()
+        keys=FEATURE_CATEGORIES["customers"][1]
+        kb=[]
+        for i in range(0,len(keys),2):
+            row=[]
+            for key in keys[i:i+2]:
+                mode=feature_access_mode(key)
+                row.append(InlineKeyboardButton(
+                    f"{feature_mode_label(mode)} {FEATURE_LABELS_FA.get(key,key)}",
+                    callback_data=f"feat:{key}"
+                ))
+            kb.append(row)
+        kb.append([InlineKeyboardButton("🔄 بازخوانی وضعیت",callback_data="adm:customers")])
+        kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+        await q.message.edit_text(
+            f"👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\n"
+            f"👤 مشتریان ثبت‌شده: {total}\n"
+            f"📅 کل نوبت‌ها: {appts}\n"
+            f"🌅 نوبت امروز: {today_n}\n\n"
+            "هر گزینه مستقل است. با زدن هر گزینه وضعیتش بین 🟢 رایگان، 💎 VIP / پولی و 🔴 غیرفعال تغییر می‌کند.",
+            parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)
+        ); return
     if a=="tickets":
         c=db(); rows=c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close(); await q.message.edit_text("🎫 تیکت‌های باز\n\n"+"\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}" for r in rows) or "تیکت بازی نیست",reply_markup=final_admin_keyboard()); return
     if a=="health": await run_health_checks(context.bot,uid); await q.message.edit_text(health_text(),reply_markup=final_admin_keyboard()); return
@@ -4568,19 +4895,91 @@ def get_daily_report_text():
             f"🔥 فعالیت‌های پرتکرار: {top_text}")
 
 async def run_health_checks(bot,admin_id=0):
-    checks=[("Bot","OK" if BOT_TOKEN else "ERROR","token")]
-    try: c=db(); c.execute("SELECT 1"); c.close(); checks.append(("Database","OK","SQLite"))
-    except Exception as e: checks.append(("Database","ERROR",str(e)))
+    checks=[]
+    checks.append(("Bot","OK" if BOT_TOKEN else "ERROR","توکن BOT_TOKEN تنظیم شده است." if BOT_TOKEN else "BOT_TOKEN تنظیم نشده است."))
+
+    try:
+        c=db()
+        c.execute("SELECT 1")
+        integrity=c.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity=="ok":
+            checks.append(("Database","OK","SQLite و integrity_check سالم است."))
+        else:
+            checks.append(("Database","ERROR",f"integrity_check: {integrity}"))
+        required_tables={"users","goals","channel_config","customers","appointments","business_profiles","feature_access"}
+        existing={r["name"] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        missing=sorted(required_tables-existing)
+        checks.append(("Customer/Booking","ERROR",f"جدول‌های ناقص: {', '.join(missing)}") if missing
+                      else ("Customer/Booking","OK","جداول کاربران، مشتری، نوبت و رزرو آنلاین موجود هستند."))
+        c.close()
+    except Exception as e:
+        checks.append(("Database","ERROR",f"اتصال یا integrity_check خطا دارد: {e}"))
+        checks.append(("Customer/Booking","ERROR","به دیتابیس دسترسی نشد."))
+
     cfg=get_channel_config()
     if cfg and cfg["channel_id"]:
-        try: await bot.get_chat(cfg["channel_id"]); checks.append(("Channel","OK","reachable"))
-        except Exception as e: checks.append(("Channel","ERROR",str(e)))
-    else: checks.append(("Channel","WARN","not configured"))
+        try:
+            chat=await bot.get_chat(cfg["channel_id"])
+            me=await bot.get_me()
+            member=await bot.get_chat_member(cfg["channel_id"],me.id)
+            allowed = member.status in {ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER}
+            if allowed:
+                checks.append(("Channel","OK",f"کانال {getattr(chat,'title',cfg['channel_id'])} قابل دسترسی و ربات ادمین است."))
+            else:
+                checks.append(("Channel","ERROR","ربات به کانال دسترسی مدیریتی ندارد؛ ارسال/مدیریت پست ممکن است متوقف شود."))
+        except Exception as e:
+            checks.append(("Channel","ERROR",f"اتصال یا دسترسی کانال مشکل دارد: {e}"))
+    else:
+        checks.append(("Channel","WARN","کانال هنوز در تنظیمات مدیریت کانال متصل نشده است."))
+
     scheduler_ok=bool(getattr(bot,"job_queue",None))
-    checks += [("Scheduler","OK" if scheduler_ok else "ERROR","job queue available" if scheduler_ok else "job queue unavailable"),("AI","OK" if (feature_enabled("ai") and os.environ.get("OPENAI_API_KEY","").strip()) else ("OFF" if not feature_enabled("ai") else "WARN"),"key configured" if os.environ.get("OPENAI_API_KEY","").strip() else "OPENAI_API_KEY missing")]
-    c=db(); now=datetime.now(TZ).isoformat(); c.executemany("INSERT INTO health_checks(service,status,details,created_at) VALUES(?,?,?,?)",[(a,b,d,now) for a,b,d in checks]); c.commit(); c.close()
+    checks.append(("Scheduler","OK" if scheduler_ok else "ERROR",
+                   "JobQueue فعال است؛ یادآوری‌ها و کارهای زمان‌بندی‌شده اجرا می‌شوند."
+                   if scheduler_ok else
+                   "JobQueue در دسترس نیست؛ یادآوری‌ها و کارهای زمان‌بندی‌شده اجرا نمی‌شوند."))
+
+    ai_enabled=feature_enabled("ai")
+    ai_key=bool(os.environ.get("OPENAI_API_KEY","").strip())
+    if not ai_enabled:
+        checks.append(("AI","OFF","هوش مصنوعی توسط مدیر غیرفعال شده است."))
+    elif ai_key:
+        checks.append(("AI","OK","AI فعال است و OPENAI_API_KEY تنظیم شده است."))
+    else:
+        checks.append(("AI","WARN","AI فعال است ولی OPENAI_API_KEY تنظیم نشده است."))
+
+    try:
+        c=db()
+        feature_count=c.execute("SELECT COUNT(*) n FROM feature_access").fetchone()["n"]
+        c.close()
+        checks.append(("Feature Access","OK" if feature_count else "ERROR",
+                       f"{feature_count} قابلیت در ماتریس دسترسی ثبت شده است."
+                       if feature_count else "ماتریس دسترسی قابلیت‌ها خالی است."))
+    except Exception as e:
+        checks.append(("Feature Access","ERROR",f"خواندن تنظیمات قابلیت‌ها خطا دارد: {e}"))
+
+    c=db()
+    now=datetime.now(TZ).isoformat()
+    c.executemany(
+        "INSERT INTO health_checks(service,status,details,created_at) VALUES(?,?,?,?)",
+        [(a,b,d,now) for a,b,d in checks]
+    )
+    c.commit(); c.close()
+
 def health_text():
-    c=db(); rows=c.execute("SELECT service,status FROM health_checks ORDER BY id DESC LIMIT 8").fetchall(); c.close(); return "🩺 Health Check\n\n"+"\n".join(f"{'🟢' if r['status']=='OK' else '🔴' if r['status']=='ERROR' else '🟡'} {r['service']}: {r['status']}" for r in rows)
+    c=db()
+    rows=c.execute("""
+        SELECT service,status,details
+        FROM health_checks
+        ORDER BY id DESC LIMIT 7
+    """).fetchall()
+    c.close()
+    lines=["🩺 <b>Health Check / چکاپ ربات</b>",""]
+    for r in rows:
+        icon={"OK":"🟢","ERROR":"🔴","WARN":"🟡","OFF":"⚪"}.get(r["status"],"⚪")
+        lines.append(f"{icon} <b>{html.escape(r['service'])}</b>: {html.escape(r['status'])}")
+        if r["details"]:
+            lines.append(f"   ↳ {html.escape(r['details'])}")
+    return "\n".join(lines)
 async def scheduled_health_check_job(context):
     try:
         last=get_system_setting("last_auto_health_check",""); due=True
