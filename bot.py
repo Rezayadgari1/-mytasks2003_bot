@@ -14,6 +14,7 @@ import urllib.request
 import random
 import hashlib
 import html
+import difflib
 from PIL import Image, ImageDraw, ImageFont
 
 from telegram import (
@@ -36,7 +37,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 DB_PATH = os.environ.get("DB_PATH", "goals.db")
-DB_SCHEMA_VERSION = 18
+DB_SCHEMA_VERSION = 20
 
 # DATA PERSISTENCE CONTRACT
 # -------------------------
@@ -81,6 +82,14 @@ logger = logging.getLogger(__name__)
 def subscription_required(func):
     @wraps(func)
     async def wrapper(update, context, *args, **kwargs):
+        uid = update.effective_user.id if update.effective_user else 0
+        if feature_enabled("maintenance") and uid not in ADMIN_IDS:
+            msg = "🛠 ربات در حال بروزرسانی است. لطفاً بعداً دوباره تلاش کن."
+            if update.callback_query:
+                await update.callback_query.answer(msg, show_alert=True)
+            elif update.message:
+                await update.message.reply_text(msg)
+            return
         if not await require_subscription(update, context):
             return
         return await func(update, context, *args, **kwargs)
@@ -545,10 +554,25 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, topic TEXT NOT NULL,
         content TEXT NOT NULL, publish_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
         created_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS system_settings(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS auto_post_history(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        category TEXT,
+        content TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(channel_id, content_hash))""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_auto_history_channel_created ON auto_post_history(channel_id, created_at)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_auto_history_topic_created ON auto_post_history(topic, created_at)")
     now_iso=datetime.now(TZ).isoformat()
     for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
     c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES('payments',0,?)",(now_iso,))
+    c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES('maintenance',0,?)",(now_iso,))
+    c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES('test_mode',1,?)",(now_iso,))
     migrate_database(c)
     c.commit()
     c.close()
@@ -2050,10 +2074,72 @@ def _is_topic_relevant(text, topic):
     hits = sum(1 for term in terms if term.lower() in body)
     # Generic topics can have fewer lexical matches, but must still mention
     # the topic itself or a meaningful keyword from it.
-    return hits >= max(1, min(2, len(terms)))
+    exact = t in body
+    needed = 1 if len(terms) == 1 else 2
+    return exact or hits >= min(needed, len(terms))
 
 
-def ai_generate_post(topic):
+
+def _normalize_post_text(value):
+    value=str(value or "").lower()
+    value=re.sub(r"https?://\S+", " ", value)
+    value=re.sub(r"[^\w؀-ۿ]+", " ", value, flags=re.UNICODE)
+    return " ".join(value.split())
+
+def _post_similarity(a,b):
+    na=_normalize_post_text(a); nb=_normalize_post_text(b)
+    if not na or not nb: return 0.0
+    if hashlib.sha256(na.encode("utf-8")).hexdigest()==hashlib.sha256(nb.encode("utf-8")).hexdigest():
+        return 1.0
+    return difflib.SequenceMatcher(None,na,nb).ratio()
+
+def recent_auto_posts(channel_id, limit=12):
+    c=db()
+    try:
+        return c.execute("SELECT topic,content,created_at FROM auto_post_history WHERE channel_id=? ORDER BY id DESC LIMIT ?",(str(channel_id),limit)).fetchall()
+    finally: c.close()
+
+def post_is_duplicate(channel_id, topic, content, threshold=0.78):
+    for row in recent_auto_posts(channel_id,12):
+        sim=_post_similarity(content,row["content"])
+        if sim>=threshold or (row["topic"]==topic and sim>=0.62):
+            return True,sim
+    return False,0.0
+
+def save_auto_post_history(channel_id, topic, category, content):
+    normalized=_normalize_post_text(content)
+    digest=hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    c=db()
+    try:
+        c.execute("""INSERT OR IGNORE INTO auto_post_history
+                     (channel_id,topic,category,content,content_hash,created_at)
+                     VALUES(?,?,?,?,?,?)""",
+                  (str(channel_id),topic,category,content,digest,datetime.now(TZ).isoformat()))
+        c.commit()
+    finally: c.close()
+
+def topic_specific_fallback(topic, attempt=1):
+    focus=_topic_focus(topic)
+    variants=[
+        f"🎯 {topic}\\n\\n{focus}\\n\\n• امروز یک اقدام مشخص درباره همین موضوع انتخاب کن.\\n• نتیجه را کوتاه ثبت کن.\\n💡 تمرین: ۱۰ دقیقه فقط روی «{topic}» کار کن.",
+        f"📌 {topic}\\n\\n{focus}\\n\\n• یک مانع مرتبط با این موضوع را حذف کن.\\n• یک قدم کوچک و قابل اندازه‌گیری بردار.\\n💡 تمرین امروز: یک اقدام مستقیم درباره «{topic}» انجام بده.",
+        f"🧠 {topic}\\n\\n{focus}\\n\\n• موضوع را به یک کار کوچک تبدیل کن.\\n• زمان شروع را مشخص کن.\\n💡 اقدام امروز: یک قدم مرتبط با «{topic}» انجام بده.",
+    ]
+    return variants[(attempt-1)%len(variants)]
+
+def generate_unique_auto_post(channel_id, category, topic):
+    recent=recent_auto_posts(channel_id,8)
+    avoid="\\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
+    for attempt in range(1,4):
+        content=ai_generate_post(topic, avoid_text=avoid, variation_seed=attempt)
+        duplicate,score=post_is_duplicate(channel_id,topic,content)
+        if not duplicate and _is_topic_relevant(content,topic):
+            return content
+        logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
+        avoid += f"\\n- نسخه ردشده: {str(content)[:220]}"
+    return topic_specific_fallback(topic,4)
+
+def ai_generate_post(topic, avoid_text='', variation_seed=1):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     model = os.environ.get("OPENAI_MODEL", "gpt-5-mini").strip()
     focus = _topic_focus(topic)
@@ -2064,7 +2150,9 @@ def ai_generate_post(topic):
                 "تو نویسنده محتوای تخصصی کانال MyTasks هستی.\n"
                 f"موضوع انتخاب‌شده و غیرقابل‌تغییر: «{topic}»\n"
                 f"راهنمای محتوایی: {focus}\n"
-                f"واژه‌های مرتبط پیشنهادی: {topic_terms}\n\n"
+                f"واژه‌های مرتبط پیشنهادی: {topic_terms}\n"
+                f"تنوع تولید: نسخه {variation_seed}.\n"
+                f"پست‌های اخیر که نباید از نظر جمله‌بندی، تیتر یا ساختار تکرار شوند:\n{avoid_text[:1800]}\n\n"
                 "قانون بسیار مهم: حداقل ۸۰ درصد متن باید مستقیماً درباره همین موضوع انتخاب‌شده باشد. "
                 "موضوع را با موضوعات عمومی مدیریت هدف، انگیزشی یا بهره‌وری جایگزین نکن. "
                 "اگر موضوع درباره ورزش است، درباره خود ورزش و اثرات و اجرای آن بنویس؛ اگر درباره خواب است، درباره خواب بنویس؛ "
@@ -2098,27 +2186,29 @@ def ai_generate_post(topic):
 
     # Topic-specific fallback. Never use one generic goal-management text for
     # every automatic topic.
-    return (
-        f"🎯 {topic}\n\n"
-        f"{focus}\n"
-        f"• موضوع را مشخص و در همان چارچوب اجرا کن.\n"
-        f"• یک اقدام کوچک و مستقیم درباره «{topic}» انجام بده.\n"
-        f"💡 تمرین امروز: ۱۰ دقیقه مشخصاً روی «{topic}» وقت بگذار."
-    )
+    return topic_specific_fallback(topic, variation_seed)
 
 
 def get_auto_topic():
     category = get_auto_setting("category", "random")
     subcategory = get_auto_setting("subcategory", "random")
+    last_topic = get_auto_setting("last_topic", "")
     if category in AUTO_TOPIC_TREE_FA:
         items = AUTO_TOPIC_TREE_FA[category]
-        if subcategory in items:
+        if subcategory in items and subcategory != last_topic:
             return category, subcategory
-        return category, items[datetime.now(TZ).toordinal() % len(items)]
-    categories = list(AUTO_TOPIC_TREE_FA.keys())
-    cat = categories[datetime.now(TZ).toordinal() % len(categories)]
-    items = AUTO_TOPIC_TREE_FA[cat]
-    return cat, items[datetime.now(TZ).toordinal() % len(items)]
+        choices=[x for x in items if x != last_topic] or items
+        return category, random.choice(choices)
+    categories=list(AUTO_TOPIC_TREE_FA)
+    history=[]
+    cfg=get_channel_config()
+    if cfg and cfg["channel_id"]:
+        history=[r["topic"] for r in recent_auto_posts(cfg["channel_id"],6)]
+    cat_choices=[c for c in categories if c not in history] or categories
+    cat=random.choice(cat_choices)
+    items=AUTO_TOPIC_TREE_FA[cat]
+    choices=[x for x in items if x != last_topic and x not in history] or items
+    return cat, random.choice(choices)
 
 
 def compact_channel_footer(bot_username, channel_username):
@@ -2173,42 +2263,30 @@ async def feedback_callback(update,context):
     _,rating,topic=q.data.split(":",2); score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
 
 
-async def send_auto_channel_post(context, channel, topic):
-    content = ai_generate_post(topic)
-    bot_username, channel_username = await get_identity_handles(context.bot, channel)
-    content = content[:950] + compact_channel_footer(bot_username, channel_username)
-
-    image = await generate_topic_image(topic)
+async def send_auto_channel_post(context, channel, topic, category=None):
+    if not feature_enabled("auto_publish"):
+        raise RuntimeError("auto_publish feature is disabled")
+    category=category or get_auto_setting("category","random")
+    content=generate_unique_auto_post(channel,category,topic)
+    bot_username,channel_username=await get_identity_handles(context.bot,channel)
+    content=content[:950]+compact_channel_footer(bot_username,channel_username)
+    image=await generate_topic_image(topic)
     try:
-        feedback_markup = content_feedback_keyboard(topic)
+        feedback_markup=content_feedback_keyboard(topic)
         if image is not None:
-            msg = await context.bot.send_photo(
-                chat_id=channel,
-                photo=image,
-                caption=content,
-                reply_markup=feedback_markup,
-            )
+            msg=await context.bot.send_photo(chat_id=channel,photo=image,caption=content,reply_markup=feedback_markup)
         else:
-            msg = await context.bot.send_message(
-                chat_id=channel,
-                text=content,
-                reply_markup=feedback_markup,
-            )
-        # ورزش‌های کوتاه یک نظرسنجی جداگانه دارند تا انجام‌شدن تمرین قابل سنجش باشد.
-        if any(k in topic for k in ("ورزش", "حرکات", "تمرین")):
+            msg=await context.bot.send_message(chat_id=channel,text=content,reply_markup=feedback_markup)
+        save_auto_post_history(channel,topic,category,content)
+        if any(k in topic for k in ("ورزش","حرکات","تمرین")):
             try:
-                await context.bot.send_poll(
-                    chat_id=channel,
-                    question="🏃 تمرین امروز را انجام دادی؟",
-                    options=["✅ انجام دادم", "⏳ هنوز نه", "❌ انجام ندادم"],
-                    is_anonymous=False,
-                )
+                await context.bot.send_poll(chat_id=channel,question="🏃 تمرین امروز را انجام دادی؟",options=["✅ انجام دادم","⏳ هنوز نه","❌ انجام ندادم"],is_anonymous=False)
             except Exception as e:
-                logger.warning("Exercise poll failed: %s", e)
+                logger.warning("Exercise poll failed: %s",e)
         return msg
     except Exception:
-        # If image generation/upload fails, never lose the scheduled post.
-        msg = await context.bot.send_message(chat_id=channel, text=content)
+        msg=await context.bot.send_message(chat_id=channel,text=content)
+        save_auto_post_history(channel,topic,category,content)
         return msg
 
 
@@ -2236,18 +2314,18 @@ def set_auto_setting(key, value):
 
 async def auto_channel_job(context):
     cfg=get_channel_config(); channel=cfg["channel_id"] if cfg else ""
-    if not channel or get_auto_setting("enabled","0")!="1": return
+    if not channel or get_auto_setting("enabled","0")!="1" or not feature_enabled("auto_publish"): return
     now=datetime.now(TZ); interval=int(get_auto_setting("interval_minutes","60") or 60)
     next_raw=get_auto_setting("next_run","")
     try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
     except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=feature_enabled("approval") and bool(ADMIN_IDS)
+    approval=(feature_enabled("approval") or test_mode_active()) and bool(ADMIN_IDS)
     if approval:
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
         if now>=preview_at and now<next_run and not pending:
-            category,topic=get_auto_topic(); content=ai_generate_post(topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
+            category,topic=get_auto_topic(); content=generate_unique_auto_post(channel,category,topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
             c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
             kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
             for admin_id in ADMIN_IDS:
@@ -2261,6 +2339,7 @@ async def auto_channel_job(context):
                 image=await generate_topic_image(pending["topic"]); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
                 if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
                 else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
+                save_auto_post_history(channel,pending["topic"],get_auto_setting("category","random"),content)
                 log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
             except Exception as e: logger.error("Approved auto post failed: %s",e)
         c=db(); c.execute("UPDATE auto_pending SET status=CASE WHEN status='approved' THEN 'published' ELSE 'expired' END WHERE channel_id=? AND publish_at=?",(str(channel),next_run.isoformat())); c.commit(); c.close()
@@ -2269,7 +2348,7 @@ async def auto_channel_job(context):
     next_run=now+timedelta(minutes=interval); set_auto_setting("next_run",next_run.isoformat())
     category,topic=get_auto_topic()
     try:
-        msg=await send_auto_channel_post(context,channel,topic); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
+        msg=await send_auto_channel_post(context,channel,topic,category); set_auto_setting("last_run",now.isoformat()); set_auto_setting("last_message_id",str(msg.message_id)); set_auto_setting("last_category",category); set_auto_setting("last_topic",topic); log_activity(ADMIN_IDS[0] if ADMIN_IDS else 0,"auto_channel_post")
     except Exception as e:
         set_auto_setting("next_run",now.isoformat()); logger.error("Automatic channel post failed: %s",e)
 
@@ -2344,6 +2423,7 @@ def auto_channel_keyboard():
         ],
         [InlineKeyboardButton(topic_text[:60], callback_data="auto:category")],
         [InlineKeyboardButton("📋 وضعیت و زمان بعدی", callback_data="auto:info")],
+        [InlineKeyboardButton("🧪 تست ۷ روزه", callback_data="auto:test")],
         [InlineKeyboardButton("📚 راهنمای استفاده", callback_data="auto:guide")],
         [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")],
     ]
@@ -2436,6 +2516,13 @@ async def auto_channel_callback(update, context):
             reply_markup=auto_channel_keyboard(),
         )
 
+    elif action == "test":
+        await q.message.reply_text(
+            "🧪 تست ۷ روزه\n\n"
+            f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 خاموش/پایان یافته'}\n"
+            f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
+            "در زمان تست، پست خودکار قبل از انتشار برای Admin پیش‌نمایش می‌شود."
+        )
     elif action == "info":
         interval = get_auto_setting("interval_minutes", "60")
         next_run = get_auto_setting("next_run", "تنظیم نشده").replace("T", " ")[:16]
@@ -2656,7 +2743,16 @@ async def channel_text_save(update,context):
             set_channel_config(normalized)
             context.user_data.pop("channel_state",None)
             await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or normalized}",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Set channel: %s",e); await update.message.reply_text("❌ کانال پیدا نشد یا ربات دسترسی ندارد.")
+        except Exception as e:
+            logger.error("Set channel: %s", e)
+            context.user_data.pop("channel_state", None)
+            context.user_data.pop("channel_content", None)
+            context.user_data.pop("channel_weekday", None)
+            await update.message.reply_text(
+                "❌ کانال پیدا نشد یا ربات دسترسی ندارد.\n\n"
+                "حالت تنظیم کانال بسته شد. دوباره «تنظیم کانال» را بزن.",
+                reply_markup=channel_keyboard(),
+            )
         return True
     if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
@@ -3052,16 +3148,69 @@ async def reminder_job(context):
             logger.error("Reminder error: %s", e)
 
 
+
+def is_menu_button(uid, text):
+    """Return True when text is a normal UI button, not input for a flow."""
+    known = {
+        "⬅️ برگشت", "⬅️ Back", "🏠 منوی اصلی", "🏠 Main Menu",
+        "📢 مدیریت کانال", "📢 Channel Management",
+        "🛡 پنل مدیریت", "🛡 Admin Panel",
+        "📊 آمار من", "📊 My Stats",
+        "🎯 اهداف من", "🎯 My Goals",
+        "➕ افزودن هدف", "➕ Add Goal",
+        "📅 برنامه امروز", "📅 Today's Plan",
+        "⏰ یادآوری‌ها", "⏰ Reminders",
+        "🏆 دستاوردها", "🏆 Achievements",
+        "🤖 چت با AI", "🤖 AI Chat",
+        "💎 VIP و امکانات پولی", "💎 VIP & Paid Features",
+        "⚙️ تنظیمات", "⚙️ Settings",
+        "📈 قیمت آنلاین", "📈 Online Prices",
+        "🤝 دعوت دوستان", "🤝 Invite Friends",
+        "🎫 پشتیبانی", "🎫 Support",
+    }
+    if text in known:
+        return True
+    try:
+        menu = T[lang(uid)]["menu"]
+        return any(text == item for row in menu for item in row)
+    except Exception:
+        return False
+
+
 async def text_router(update, context):
     uid = update.effective_user.id
     register_user(uid, update.effective_user.first_name or "")
+
+    # Safety timeout: a stale text-input flow expires after 15 minutes.
+    flow_started = context.user_data.get("_flow_started_at")
+    if flow_started:
+        try:
+            if (datetime.now(TZ) - datetime.fromisoformat(flow_started)).total_seconds() > 900:
+                clear_flow(context)
+        except Exception:
+            clear_flow(context)
+
     if not await require_subscription(update, context):
         return
     text = update.message.text.strip()
+    if any(k in context.user_data for k in (
+        "channel_state", "admin_broadcast", "ai_chat", "auto_wait_interval",
+        "auto_wait_time", "awaiting_custom_duration", "awaiting_custom_edit_time",
+        "awaiting_custom_goal", "awaiting_custom_time", "awaiting_edit_time",
+        "awaiting_rename", "awaiting_step", "support_new"
+    )):
+        context.user_data.setdefault("_flow_started_at", datetime.now(TZ).isoformat())
+
     if text in ("⬅️ برگشت","⬅️ Back","🏠 منوی اصلی","🏠 Main Menu"):
         clear_flow(context)
         await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
         return
+
+    # A failed input flow must never trap the user inside that flow.
+    # Normal menu buttons always have priority over transient input states.
+    if is_menu_button(uid, text) and context.user_data:
+        clear_flow(context)
+
     if context.user_data.get("auto_wait_interval"):
         try:
             minutes = int(text)
@@ -3222,9 +3371,7 @@ async def final_admin_panel_callback(update,context):
     if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
     if a in ("tools","xpvip"): context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="features":
-        c=db(); rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall(); c.close(); kb=[]
-        for i in range(0,len(rows),2): kb.append([InlineKeyboardButton(("🟢 " if rows[j]["enabled"] else "🔴 " )+rows[j]["key"],callback_data=f"feat:{rows[j]['key']}") for j in range(i,min(i+2,len(rows)))])
-        kb.append([InlineKeyboardButton("⬅️ مدیریت",callback_data="adm:stats")]); await q.message.reply_text("⚙️ قابلیت‌ها",reply_markup=InlineKeyboardMarkup(kb)); return
+        await q.message.reply_text(feature_admin_text(),reply_markup=feature_admin_keyboard()); return
     if a=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
     if a=="channel": await q.message.reply_text("📡 مدیریت کانال و پست‌گذاری",reply_markup=channel_keyboard()); return
     if a=="tickets":
@@ -3233,10 +3380,121 @@ async def final_admin_panel_callback(update,context):
     if a=="report": await build_daily_report(); await q.message.reply_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
     if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
 
+
+FEATURE_LABELS_FA = {
+    "ai": "🤖 هوش مصنوعی", "vip": "💎 VIP", "reminders": "⏰ یادآوری",
+    "sports": "⚽ ورزش", "nutrition": "🥗 تغذیه", "investing": "💰 سرمایه‌گذاری",
+    "self_growth": "🌱 رشد شخصی", "morning": "☀️ پیام صبح", "night": "🌙 پیام شب",
+    "auto_publish": "🤖 انتشار خودکار", "images": "🖼 تصاویر", "feedback": "👍 بازخورد",
+    "referrals": "🤝 دعوت دوستان", "mini_app": "📱 Mini App", "support": "🎫 پشتیبانی",
+    "price_data": "📈 قیمت آنلاین", "approval": "👁 تأیید قبل از انتشار",
+    "maintenance": "🛠 حالت تعمیرات", "test_mode": "🧪 تست ۷ روزه", "payments": "💳 پرداخت",
+}
+
+def get_system_setting(key, default=""):
+    c=db()
+    try:
+        r=c.execute("SELECT value FROM system_settings WHERE key=?", (key,)).fetchone()
+        return r["value"] if r else default
+    finally:
+        c.close()
+
+def set_system_setting(key, value):
+    c=db()
+    try:
+        c.execute("""INSERT INTO system_settings(key,value,updated_at) VALUES(?,?,?)
+                     ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at""",
+                  (key, str(value), datetime.now(TZ).isoformat()))
+        c.commit()
+    finally:
+        c.close()
+
+def test_mode_active():
+    if not feature_enabled("test_mode"):
+        return False
+    raw=get_system_setting("test_mode_started_at","")
+    if not raw:
+        set_system_setting("test_mode_started_at", datetime.now(TZ).isoformat())
+        return True
+    try:
+        started=datetime.fromisoformat(raw)
+        if started.tzinfo is None: started=started.replace(tzinfo=TZ)
+        if datetime.now(TZ)-started >= timedelta(days=7):
+            return False
+        return True
+    except Exception:
+        set_system_setting("test_mode_started_at", datetime.now(TZ).isoformat())
+        return True
+
+def test_mode_remaining():
+    raw=get_system_setting("test_mode_started_at","")
+    if not raw: return "شروع نشده"
+    try:
+        started=datetime.fromisoformat(raw)
+        if started.tzinfo is None: started=started.replace(tzinfo=TZ)
+        left=started+timedelta(days=7)-datetime.now(TZ)
+        if left.total_seconds() <= 0: return "پایان یافته"
+        return f"{left.days} روز و {left.seconds//3600} ساعت"
+    except Exception:
+        return "نامشخص"
+
+def feature_admin_keyboard():
+    c=db()
+    rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall()
+    c.close()
+    buttons=[]
+    for i in range(0,len(rows),2):
+        row=[]
+        for r in rows[i:i+2]:
+            label=FEATURE_LABELS_FA.get(r["key"], r["key"])
+            row.append(InlineKeyboardButton(("🟢 " if r["enabled"] else "🔴 ")+label, callback_data=f"feat:{r['key']}"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("🧪 وضعیت تست ۷ روزه",callback_data="featinfo:test")])
+    buttons.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+    return InlineKeyboardMarkup(buttons)
+
+def feature_admin_text():
+    c=db()
+    rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall()
+    c.close()
+    active=sum(1 for r in rows if r["enabled"])
+    return ("⚙️ مدیریت قابلیت‌ها\n\n"
+            f"🟢 فعال: {active}\n🔴 خاموش: {len(rows)-active}\n\n"
+            "خاموش کردن قابلیت، اطلاعات قبلی کاربران را حذف نمی‌کند.")
+
+async def feature_info_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔",show_alert=True); return
+    await q.answer()
+    await q.message.reply_text(
+        "🧪 تست ۷ روزه\n\n"
+        f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n"
+        f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
+        "در زمان تست، انتشار خودکار قبل از انتشار نهایی برای Admin پیش‌نمایش می‌شود.",
+        reply_markup=feature_admin_keyboard()
+    )
+
 async def final_feature_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    key=q.data.split(":",1)[1]; set_feature(key,not feature_enabled(key),uid); await q.answer("تغییر کرد"); await final_admin_panel_callback(update,context)
+    key=q.data.split(":",1)[1]
+    if key == "test":
+        await q.answer()
+        await q.message.reply_text(
+            "🧪 تست ۷ روزه\n\n"
+            f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n"
+            f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
+            "در زمان تست، انتشار خودکار قبل از انتشار نهایی برای Admin پیش‌نمایش می‌شود."
+        )
+        return
+    current=feature_enabled(key)
+    new_value=not current
+    set_feature(key,new_value,uid)
+    if key=="test_mode" and new_value:
+        set_system_setting("test_mode_started_at", datetime.now(TZ).isoformat())
+    await q.answer("🟢 روشن شد" if new_value else "🔴 خاموش شد")
+    await q.message.reply_text(feature_admin_text(),reply_markup=feature_admin_keyboard())
 
 async def final_admin_text(update,context):
     uid=update.effective_user.id
@@ -3498,7 +3756,7 @@ async def ai_chat_text(update,context):
 
 
 async def build_daily_report():
-    d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"],"likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],"dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
+    d=datetime.now(TZ).date().isoformat(); c=db(); data={"posts":c.execute("SELECT COUNT(*) n FROM channel_posts WHERE substr(COALESCE(last_sent_at,created_at),1,10)=?",(d,)).fetchone()["n"],"active":c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],"done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"],"likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],"dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],"auto_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"]}; c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(d,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
 def get_daily_report_text():
     d=datetime.now(TZ).date().isoformat(); c=db(); r=c.execute("SELECT data FROM daily_reports WHERE report_date=?",(d,)).fetchone(); c.close(); x=json.loads(r["data"]) if r else {}; return "📋 گزارش پایان روز\n\n"+f"📢 پست‌ها: {x.get('posts',0)}\n🟢 فعال: {x.get('active',0)}\n🆕 جدید: {x.get('new',0)}\n⭐ XP: {x.get('xp',0)}\n✅ اهداف انجام‌شده: {x.get('done',0)}\n👍 مفید: {x.get('likes',0)}\n👎 نامناسب: {x.get('dislikes',0)}"
 async def run_health_checks(bot,admin_id=0):
@@ -3510,7 +3768,8 @@ async def run_health_checks(bot,admin_id=0):
         try: await bot.get_chat(cfg["channel_id"]); checks.append(("Channel","OK","reachable"))
         except Exception as e: checks.append(("Channel","ERROR",str(e)))
     else: checks.append(("Channel","WARN","not configured"))
-    checks += [("Scheduler","OK","configured"),("AI","OK" if (feature_enabled("ai") and os.environ.get("OPENAI_API_KEY","").strip()) else ("OFF" if not feature_enabled("ai") else "WARN"),"key configured" if os.environ.get("OPENAI_API_KEY","").strip() else "OPENAI_API_KEY missing")]
+    scheduler_ok=bool(getattr(bot,"job_queue",None))
+    checks += [("Scheduler","OK" if scheduler_ok else "ERROR","job queue available" if scheduler_ok else "job queue unavailable"),("AI","OK" if (feature_enabled("ai") and os.environ.get("OPENAI_API_KEY","").strip()) else ("OFF" if not feature_enabled("ai") else "WARN"),"key configured" if os.environ.get("OPENAI_API_KEY","").strip() else "OPENAI_API_KEY missing")]
     c=db(); now=datetime.now(TZ).isoformat(); c.executemany("INSERT INTO health_checks(service,status,details,created_at) VALUES(?,?,?,?)",[(a,b,d,now) for a,b,d in checks]); c.commit(); c.close()
 def health_text():
     c=db(); rows=c.execute("SELECT service,status FROM health_checks ORDER BY id DESC LIMIT 8").fetchall(); c.close(); return "🩺 Health Check\n\n"+"\n".join(f"{'🟢' if r['status']=='OK' else '🔴' if r['status']=='ERROR' else '🟡'} {r['service']}: {r['status']}" for r in rows)
@@ -3571,6 +3830,10 @@ def main():
         set_auto_setting("category", "random")
     if not get_auto_setting("subcategory", ""):
         set_auto_setting("subcategory", "random")
+    c=db()
+    c.execute("DELETE FROM auto_post_history WHERE created_at < ?",((datetime.now(TZ)-timedelta(days=45)).isoformat(),))
+    c.commit()
+    c.close()
 
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -3629,6 +3892,7 @@ def main():
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
+    app.add_handler(CallbackQueryHandler(feature_info_callback, pattern=r"^featinfo:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_error_handler(error_handler)
 
