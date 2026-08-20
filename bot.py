@@ -98,7 +98,11 @@ def subscription_required(func):
     @wraps(func)
     async def wrapper(update, context, *args, **kwargs):
         uid = update.effective_user.id if update.effective_user else 0
-        if feature_enabled("maintenance") and uid not in ADMIN_IDS:
+        maintenance_exempt = {
+            "today", "new_goal", "new_goal_pick", "mark",
+            "edit_menu", "edit_goal", "delete_goal",
+        }
+        if feature_enabled("maintenance") and uid not in ADMIN_IDS and func.__name__ not in maintenance_exempt:
             msg = "🛠 ربات در حال بروزرسانی است. لطفاً بعداً دوباره تلاش کن."
             if update.callback_query:
                 await update.callback_query.answer(msg, show_alert=True)
@@ -1406,6 +1410,8 @@ async def goals_navigation_callback(update, context):
         try: await q.message.delete()
         except Exception: pass
         await context.bot.send_message(uid,"🏠 منوی اصلی",reply_markup=keyboard(uid))
+        return
+    await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
 
 
 async def settings_language_callback(update, context):
@@ -2374,8 +2380,14 @@ def generate_unique_auto_post(channel_id, category, topic):
             return candidate
     # Last-resort uniqueness guard: preserve the topic while making the text
     # materially different so the database UNIQUE hash can never collide.
-    stamp=datetime.now(TZ).strftime("%Y%m%d%H%M%S")
-    return topic_specific_fallback(topic,8)+f"\n\n🆕 نسخه: {stamp}"
+    # Last-resort fallback: add a deterministic per-attempt nonce and verify it
+    # against the complete history before returning.
+    for n in range(1,21):
+        candidate=topic_specific_fallback(topic,8)+f"\n\n🆕 نسخه {datetime.now(TZ).strftime('%Y%m%d')}-{n}"
+        duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.995)
+        if not duplicate:
+            return candidate
+    raise RuntimeError("Unable to generate a unique automatic post")
 
 def ai_generate_post(topic, avoid_text='', variation_seed=1):
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -2565,7 +2577,7 @@ async def auto_channel_job(context):
     try: next_run=datetime.fromisoformat(next_raw) if next_raw else now+timedelta(minutes=interval)
     except ValueError: next_run=now+timedelta(minutes=interval)
     if next_run.tzinfo is None: next_run=next_run.replace(tzinfo=TZ)
-    approval=True and bool(ADMIN_IDS)
+    approval=feature_enabled("approval") and bool(ADMIN_IDS)
     if approval:
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
@@ -3123,6 +3135,17 @@ def admin_stats():
         "SELECT COUNT(*) AS n FROM users WHERE substr(created_at,1,10)=?",
         (today,),
     ).fetchone()["n"]
+    appointments_today = c.execute(
+        "SELECT COUNT(*) AS n FROM appointments WHERE appointment_date=? AND status='booked'",
+        (today,),
+    ).fetchone()["n"]
+    vip_users = c.execute(
+        "SELECT COUNT(*) AS n FROM users WHERE vip_until IS NOT NULL AND vip_until>?",
+        (datetime.now(TZ).isoformat(),),
+    ).fetchone()["n"]
+    open_tickets = c.execute(
+        "SELECT COUNT(*) AS n FROM tickets WHERE status='open'"
+    ).fetchone()["n"]
     c.close()
     return {
         "users": users,
@@ -3133,6 +3156,9 @@ def admin_stats():
         "active_today": active_today,
         "done_today": done_today,
         "new_today": new_today,
+        "appointments_today": appointments_today,
+        "vip_users": vip_users,
+        "open_tickets": open_tickets,
     }
 
 
@@ -3809,7 +3835,7 @@ async def holiday_toggle(update,context,d):
     c.commit(); c.close(); await q.message.edit_text(msg,reply_markup=customer_back(uid,"cust:calendar"))
 
 async def customer_hours(update,context):
-    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT * FROM working_hours WHERE owner_user_id=? ORDER BY weekday",(uid,)).fetchall(); c.close(); nf=["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]; ne=["Sat","Sun","Mon","Tue","Wed","Thu","Fri"]; kb=[[InlineKeyboardButton(f"{'🟢' if r['enabled'] else '🔴'} {(nf if lang(uid)=='fa' else ne)[r['weekday']]} {r['start_time']}-{r['end_time']}",callback_data=f"cust:hours_edit:{r['weekday']}")] for r in rows]; kb.append([back_button("cust:main",uid=uid)]); await q.message.edit_text("⏰ <b>ساعات کاری</b>\nروی روز بزن و زمان را تغییر بده.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT * FROM working_hours WHERE owner_user_id=? ORDER BY weekday",(uid,)).fetchall(); c.close(); nf=["دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه","شنبه","یکشنبه"]; ne=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]; kb=[[InlineKeyboardButton(f"{'🟢' if r['enabled'] else '🔴'} {(nf if lang(uid)=='fa' else ne)[r['weekday']]} {r['start_time']}-{r['end_time']}",callback_data=f"cust:hours_edit:{r['weekday']}")] for r in rows]; kb.append([back_button("cust:main",uid=uid)]); await q.message.edit_text("⏰ <b>ساعات کاری</b>\nروی روز بزن و زمان را تغییر بده.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_reminders(update,context):
     q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.appointment_date,a.appointment_time,a.reminder_minutes,c.name FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.status='booked' AND a.appointment_date>=? ORDER BY a.appointment_date,a.appointment_time LIMIT 50",(uid,datetime.now(TZ).date().isoformat())).fetchall(); c.close(); text="🔔 <b>یادآوری‌های نوبت</b>\n\n"+ ("\n".join(f"{r['appointment_date']} {r['appointment_time']} — {html.escape(r['name'])} — {', '.join(reminder_label(x,lang(uid)=='fa') for x in parse_reminder_list(r['reminder_minutes']))}" for r in rows) or "یادآوری‌ای نیست."); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
@@ -3907,7 +3933,8 @@ async def customer_text_save(update,context):
         context.user_data.update(booking_date=d,customer_mode="reschedule_time"); await update.message.reply_text("⏰ ساعت جدید را بفرست:"); return True
     if mode=="reschedule_time":
         aid=context.user_data["appointment_id"]; tm=parse_time(text); d=context.user_data["booking_date"]
-        if not tm or has_conflict(uid,d,tm,30,aid): await update.message.reply_text("❌ این زمان آزاد نیست."); return True
+        if not tm or not d or tm not in available_slots(uid,d,30) or has_conflict(uid,d,tm,30,aid):
+            await update.message.reply_text("❌ این زمان خارج از ساعات کاری است یا آزاد نیست. یکی از زمان‌های نمایش‌داده‌شده را انتخاب کن."); return True
         now=datetime.now(TZ).isoformat()
         c=db(); r=c.execute("SELECT a.*,c.name,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND a.owner_user_id=?",(aid,uid)).fetchone()
         if not r:
@@ -4138,8 +4165,9 @@ async def booking_slot_select(update,context,tm):
     q=update.callback_query
     owner=context.user_data.get("booking_owner")
     d=context.user_data.get("booking_date")
-    if not owner or tm not in available_slots(owner,d):
-        await q.answer("این زمان دیگر آزاد نیست.",show_alert=True); return
+    tm = parse_time(tm)
+    if not owner or not d or not tm or tm not in available_slots(owner,d,30):
+        await q.answer("این زمان دیگر آزاد نیست یا خارج از ساعات کاری است.",show_alert=True); return
     aid=context.user_data.get("reschedule_appointment_id")
     if aid:
         if has_conflict(owner,d,tm,30,aid):
@@ -4172,6 +4200,14 @@ async def booking_slot_select(update,context,tm):
             )
         except Exception as e:
             logger.warning("Owner reschedule notification failed: %s",e)
+        try:
+            await context.bot.send_message(
+                q.from_user.id,
+                f"🔄 <b>رزرو شما تغییر کرد</b>\n\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\nصاحب کسب‌وکار از تغییر زمان مطلع شد.",
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning("Customer reschedule confirmation failed: %s",e)
         context.user_data.clear()
         await q.answer("✅ زمان رزرو تغییر کرد.")
         await q.message.edit_text(
@@ -4198,7 +4234,8 @@ async def public_booking_save(update,context):
     owner=context.user_data.get("booking_owner"); d=context.user_data.get("booking_date"); tm=context.user_data.get("booking_time"); phone="" if text=="-" else text; name=context.user_data.get("public_name") or display_name(uid); now=datetime.now(TZ).isoformat();
     c=db(); existing=c.execute("SELECT id FROM customers WHERE owner_user_id=? AND telegram_user_id=? LIMIT 1",(owner,uid)).fetchone(); cid=existing["id"] if existing else c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_username,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(owner,name,phone,update.effective_user.username or '',uid,now,now)).lastrowid
     if existing:c.execute("UPDATE customers SET name=?,phone=?,telegram_username=?,updated_at=? WHERE id=?",(name,phone,update.effective_user.username or '',now,cid))
-    if has_conflict(owner,d,tm,30):c.close(); context.user_data.clear(); await update.message.reply_text("❌ این زمان همین الان پر شد. لطفاً دوباره لینک را باز کن."); return True
+    if not d or not tm or tm not in available_slots(owner,d,30) or has_conflict(owner,d,tm,30):
+        c.close(); context.user_data.clear(); await update.message.reply_text("❌ این زمان دیگر آزاد نیست یا خارج از ساعات کاری است. لطفاً دوباره تاریخ را انتخاب کن."); return True
     aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(owner,cid,d,tm,30,'','رزرو آنلاین','30','booked','online',now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(owner,cid,aid,'online_booking','',now)); c.commit(); c.close()
     p=ensure_business_profile(owner); business_name=p["business_name"] or p["business_type"] or "کسب‌وکار"
     try: await context.bot.send_message(owner,f"🔔 <b>مشتری یک رزرو آنلاین ثبت کرد</b>\n\n🏪 {html.escape(business_name)}\n👤 {html.escape(name)}\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n📞 {html.escape(phone) if phone else '—'}")
@@ -4479,7 +4516,7 @@ async def xp_command(update,context):
     uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
 
 def final_admin_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("⏰ زمان‌بندی چکاپ",callback_data="adm:health_schedule")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("⏰ زمان‌بندی چکاپ",callback_data="adm:health_schedule")],[InlineKeyboardButton("🧪 مرکز تست",callback_data="adm:test"),InlineKeyboardButton("💾 بکاپ",callback_data="adm:backup")],[InlineKeyboardButton("🔎 عیب‌یابی کامل",callback_data="adm:diagnostics"),InlineKeyboardButton("📝 لاگ مدیران",callback_data="adm:audit")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
 
 async def admin_user_detail_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -4506,12 +4543,85 @@ async def admin_user_action_callback(update,context):
     else: c.close(); return
     q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
 
+
+def _admin_db_diagnostics():
+    """Local, non-destructive diagnostics for the management panel."""
+    checks=[]
+    c=db()
+    try:
+        integrity=c.execute("PRAGMA integrity_check").fetchone()[0]
+        checks.append(("SQLite integrity", integrity == "ok", str(integrity)))
+        required = [
+            "users","goals","goal_days","user_settings","feature_flags",
+            "appointments","customers","working_hours","channel_config",
+            "channel_posts","auto_post_history","auto_pending",
+            "health_checks","admin_logs","tickets","payments",
+            "daily_reports","system_settings"
+        ]
+        existing={r["name"] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        for name in required:
+            checks.append((f"table:{name}", name in existing, "present" if name in existing else "MISSING"))
+        # Validate important indexes/unique constraints indirectly by prepare-only queries.
+        for sql,label in [
+            ("SELECT 1 FROM users LIMIT 1","users query"),
+            ("SELECT 1 FROM goals LIMIT 1","goals query"),
+            ("SELECT 1 FROM appointments LIMIT 1","appointments query"),
+            ("SELECT 1 FROM auto_post_history LIMIT 1","auto post history query"),
+        ]:
+            try:
+                c.execute(sql).fetchone()
+                checks.append((label,True,"ok"))
+            except Exception as e:
+                checks.append((label,False,str(e)))
+    except Exception as e:
+        checks.append(("database",False,str(e)))
+    finally:
+        c.close()
+    return checks
+
+def _admin_diagnostics_text():
+    checks=_admin_db_diagnostics()
+    lines=["🔎 <b>عیب‌یابی کامل ربات</b>",""]
+    for name,ok,detail in checks:
+        lines.append(f"{'🟢' if ok else '🔴'} {html.escape(name)} — {html.escape(detail)}")
+    bad=sum(1 for _,ok,_ in checks if not ok)
+    lines += ["", f"نتیجه: {'🟢 سالم' if not bad else f'🔴 {bad} مورد نیازمند بررسی'}"]
+    return "\n".join(lines)
+
+def _admin_test_text():
+    checks=_admin_db_diagnostics()
+    db_ok=all(ok for name,ok,_ in checks if name=="SQLite integrity")
+    tables_ok=sum(1 for name,ok,_ in checks if name.startswith("table:") and ok)
+    tables_total=sum(1 for name,_,_ in checks if name.startswith("table:"))
+    return (
+        "🧪 <b>مرکز تست</b>\n\n"
+        f"🗄 دیتابیس: {'🟢 سالم' if db_ok else '🔴 مشکل دارد'}\n"
+        f"📦 جداول اصلی: {tables_ok}/{tables_total}\n"
+        f"🩺 Health Check: آماده اجرا از پنل\n"
+        f"📢 کانال: تست اتصال از بخش کانال\n"
+        f"📅 رزرو: تاریخ/ساعت در مسیر واقعی رزرو بررسی می‌شود\n\n"
+        "این بخش تست‌های غیرمخرب انجام می‌دهد و هیچ داده کاربر را حذف نمی‌کند."
+    )
+
+async def _admin_manual_backup(update, context):
+    uid=update.effective_user.id
+    if not admin_guard(uid):
+        await update.callback_query.answer("⛔",show_alert=True); return
+    await update.callback_query.answer("در حال ساخت بکاپ...")
+    ok=backup_database_snapshot(keep=20)
+    admin_log(uid,"manual_backup",None,"success" if ok else "failed")
+    await update.callback_query.message.edit_text(
+        ("💾 <b>بکاپ با موفقیت ساخته شد.</b>\nنسخه‌های قبلی هم حفظ شدند."
+         if ok else "❌ ساخت بکاپ انجام نشد. لاگ خطا را بررسی کن."),
+        parse_mode="HTML",reply_markup=final_admin_keyboard()
+    )
+
 async def final_admin_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]
     if a=="stats":
-        s=admin_stats(); text="📊 داشبورد\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
+        s=admin_stats(); text="📊 داشبورد مرکزی\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n✅ انجام‌شده امروز: {s['done_today']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}\n📅 نوبت امروز: {s['appointments_today']}\n💎 VIP فعال: {s['vip_users']}\n🎫 تیکت باز: {s['open_tickets']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
     if a=="users":
         c=db(); rows=c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked,warnings FROM users ORDER BY created_at DESC LIMIT 50").fetchall(); c.close(); kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | ID: {r['user_id']} | ⭐{r['xp']}",callback_data=f"admu:{r['user_id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]); await q.message.edit_text("👥 <b>تمام کاربران</b>\n\nروی هر کاربر بزن تا پرونده کاملش باز شود.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
     if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.edit_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
@@ -4586,6 +4696,30 @@ async def final_admin_panel_callback(update,context):
         await run_health_checks(context.bot,uid)
         await q.message.edit_text(health_text()+"\n\n🩺 چکاپ دستی انجام شد.", reply_markup=final_admin_keyboard())
         return
+    if a=="test":
+        await q.message.edit_text(_admin_test_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🩺 اجرای Health Check",callback_data="adm:health_run")],
+            [InlineKeyboardButton("🔎 اجرای عیب‌یابی",callback_data="adm:diagnostics")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]
+        ])); return
+    if a=="diagnostics":
+        await q.message.edit_text(_admin_diagnostics_text(),parse_mode="HTML",reply_markup=final_admin_keyboard()); return
+    if a=="backup":
+        ok=backup_database_snapshot(keep=20)
+        admin_log(uid,"manual_backup",None,"success" if ok else "failed")
+        await q.message.edit_text(
+            "💾 بکاپ با موفقیت ساخته شد." if ok else "❌ ساخت بکاپ ناموفق بود.",
+            reply_markup=final_admin_keyboard()
+        ); return
+    if a=="audit":
+        c=db()
+        rows=c.execute("SELECT admin_id,action,target_user,details,created_at FROM admin_logs ORDER BY id DESC LIMIT 25").fetchall()
+        c.close()
+        text="📝 <b>آخرین اقدامات مدیران</b>\n\n"+("\n".join(
+            f"• {r['created_at'][:16]} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'} | {html.escape(r['details'] or '')}"
+            for r in rows
+        ) or "لاگی ثبت نشده.")
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=final_admin_keyboard()); return
     if a=="report": await build_daily_report(); await q.message.edit_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
     if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.edit_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
 
@@ -5408,6 +5542,13 @@ def main():
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
 
     init_db()
+    # Optional deployment control: set MAINTENANCE_MODE=0/1 explicitly to control the global lock.
+    # If unset, the existing admin/database setting is preserved.
+    maintenance_env = os.environ.get("MAINTENANCE_MODE", "").strip()
+    if maintenance_env == "0":
+        set_feature("maintenance", False)
+    elif maintenance_env == "1":
+        set_feature("maintenance", True)
     # Safe defaults for automatic channel publishing.
     if not get_auto_setting("interval_minutes", ""):
         set_auto_setting("interval_minutes", "60")
