@@ -29,6 +29,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     LabeledPrice,
 )
 from telegram.constants import ChatMemberStatus
@@ -652,11 +653,26 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS user_feature_overrides(user_id INTEGER NOT NULL,feature_key TEXT NOT NULL,mode TEXT NOT NULL DEFAULT 'inherit',updated_at TEXT NOT NULL,PRIMARY KEY(user_id,feature_key))""")
     c.execute("""CREATE TABLE IF NOT EXISTS feature_access(key TEXT PRIMARY KEY,mode TEXT NOT NULL DEFAULT 'free',updated_at TEXT NOT NULL)""")
     now_iso=datetime.now(TZ).isoformat()
-    for key in ["customers"]:
-        c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
-        c.execute("INSERT OR IGNORE INTO feature_access(key,mode,updated_at) VALUES(?,?,?)",(key,"vip",now_iso))
+    # Central access matrix: every module has its own independent mode.
+    # Modes: free / vip / off. Existing databases are migrated additively.
+    access_defaults = {
+        "customers":"vip",
+        "ai":"free", "vip":"free", "reminders":"free", "sports":"free",
+        "nutrition":"free", "investing":"free", "self_growth":"free", "morning":"free", "night":"free",
+        "auto_publish":"free", "images":"free", "feedback":"free", "referrals":"free",
+        "mini_app":"free", "support":"free", "price_data":"free", "approval":"free",
+        "goals":"free", "weekly":"free", "stats":"free", "profile":"free", "achievements":"free",
+        "settings":"free", "xp":"free", "payments":"free", "maintenance":"free", "test_mode":"free",
+        # Customer sub-options
+        "customer_today":"free", "customer_new_appointment":"free", "customer_customers":"free",
+        "customer_calendar":"free", "customer_hours":"free", "customer_reminders":"free",
+        "customer_analytics":"free", "customer_loyal":"free", "customer_period":"free",
+        "customer_booking_link":"free", "customer_online_booking":"free", "customer_business_settings":"free",
+    }
+    for key, mode in access_defaults.items():
+        c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1 if mode != "off" else 0,now_iso))
+        c.execute("INSERT OR IGNORE INTO feature_access(key,mode,updated_at) VALUES(?,?,?)",(key,mode,now_iso))
 
-    now_iso=datetime.now(TZ).isoformat()
     for key in ["ai","vip","reminders","sports","nutrition","investing","self_growth","morning","night","auto_publish","images","feedback","referrals","mini_app","support","price_data","approval","goals","weekly","stats","profile","achievements","settings"]:
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1,now_iso))
     c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES('payments',0,?)",(now_iso,))
@@ -1329,6 +1345,7 @@ def settings_keyboard(uid):
 
 async def settings(update, context):
     uid=update.effective_user.id; log_activity(uid,"settings")
+    await hide_main_reply_keyboard(update)
     await update.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 async def goals_navigation_callback(update, context):
@@ -1336,24 +1353,26 @@ async def goals_navigation_callback(update, context):
     action=q.data.split(":",1)[1]
     if action=="main":
         context.user_data.clear()
-        await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+        try: await q.message.delete()
+        except Exception: pass
+        await context.bot.send_message(uid,"🏠 منوی اصلی",reply_markup=keyboard(uid))
 
 
 async def settings_language_callback(update, context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(":",1)[1]
     set_lang(uid,value); log_activity(uid,"language_change")
-    await q.message.reply_text(T[value]["language_saved"],reply_markup=settings_keyboard(uid))
+    await q.message.edit_text(T[value]["language_saved"],reply_markup=settings_keyboard(uid))
 
 
 async def settings_callback(update, context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; action=q.data.split(":",1)[1]; fa=lang(uid)=="fa"
     if action=="language":
-        await q.message.reply_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+        await q.message.edit_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
     if action=="channel":
         if not admin_is_allowed(uid):
-            await q.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+            await q.message.edit_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
             return
-        await q.message.reply_text(
+        await q.message.edit_text(
             "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
             "از اینجا می‌توانی اتصال کانال، ساخت پست، لیست پست‌ها و انتشار خودکار را مدیریت کنی."
             if fa else
@@ -1366,21 +1385,21 @@ async def settings_callback(update, context):
     if action=="notifications":
         c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); c.close()
         state=bool(r["reminders_enabled"])
-        await q.message.reply_text(("🔔 یادآوری‌ها: " + ("روشن" if state else "خاموش")) if fa else ("🔔 Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تغییر وضعیت",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+        await q.message.edit_text(("🔔 یادآوری‌ها: " + ("روشن" if state else "خاموش")) if fa else ("🔔 Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تغییر وضعیت",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
     if action=="toggle_reminders":
-        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.reply_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
+        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.edit_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
     if action=="goals":
-        await q.message.reply_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
+        await q.message.edit_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
     if action=="ai":
         configured=bool(os.environ.get("OPENAI_API_KEY","").strip())
-        await q.message.reply_text(("🤖 چت با AI\n\nوضعیت کلید: " + ("🟢 تنظیم شده" if configured else "🔴 تنظیم نشده") + "\nسهمیه رایگان روزانه: ۱۰ پیام" if fa else "🤖 AI Chat\n\nKey status: " + ("🟢 configured" if configured else "🔴 missing") + "\nFree daily quota: 10 messages"),reply_markup=settings_keyboard(uid)); return
+        await q.message.edit_text(("🤖 چت با AI\n\nوضعیت کلید: " + ("🟢 تنظیم شده" if configured else "🔴 تنظیم نشده") + "\nسهمیه رایگان روزانه: ۱۰ پیام" if fa else "🤖 AI Chat\n\nKey status: " + ("🟢 configured" if configured else "🔴 missing") + "\nFree daily quota: 10 messages"),reply_markup=settings_keyboard(uid)); return
     if action=="vip":
         xp,level,vip_until=xp_info(uid)
         text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
-        await q.message.reply_text(text,reply_markup=settings_keyboard(uid)); return
+        await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
-        if action=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
-        else: await q.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
+        if action=="main": await q.message.edit_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+        else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
 def edit_time_keyboard(uid):
@@ -1435,7 +1454,7 @@ async def new_category(update, context):
         for i, x in enumerate(goals)
     ]
     buttons.append([InlineKeyboardButton(T[lang(uid)]["back"], callback_data="newback")])
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["choose_goal"],
         reply_markup=InlineKeyboardMarkup(buttons),
     )
@@ -1447,7 +1466,7 @@ async def new_back(update, context):
     await q.answer()
     uid = q.from_user.id
     context.user_data.pop("category", None)
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["new_goal"].format(name=display_name(uid)),
         reply_markup=categories_keyboard(uid),
     )
@@ -1464,7 +1483,7 @@ async def new_goal_pick(update, context):
     goals = goals_by_category(uid, category)
     name = goals[int(q.data.split(":")[1])]
     context.user_data["name"] = name
-    await q.message.reply_text(
+    await q.message.edit_text(
         "⭐ اولویت هدف را انتخاب کن:" if lang(uid) == "fa" else "⭐ Choose goal priority:",
         reply_markup=priority_keyboard(uid),
     )
@@ -1489,7 +1508,7 @@ async def priority_callback(update, context):
     await q.answer()
     uid = q.from_user.id
     context.user_data["priority"] = int(q.data.split(":")[1])
-    await q.message.reply_text(
+    await q.message.edit_text(
         "⏱ مدت انجام هدف را انتخاب کن:" if lang(uid)=="fa" else "⏱ How long should this goal take?",
         reply_markup=duration_keyboard(uid),
     )
@@ -1501,10 +1520,10 @@ async def duration_callback(update, context):
     value=q.data.split(":",1)[1]
     if value=="custom":
         context.user_data["awaiting_custom_duration"]=True
-        await q.message.reply_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).")
+        await q.message.edit_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).")
         return
     context.user_data["duration_minutes"] = None if value=="0" else int(value)
-    await q.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
+    await q.message.edit_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
 
 
 @subscription_required
@@ -1516,7 +1535,7 @@ async def time_callback(update, context):
 
     if value == "custom":
         context.user_data["awaiting_custom_time"] = True
-        await q.message.reply_text(T[lang(uid)]["custom_time"])
+        await q.message.edit_text(T[lang(uid)]["custom_time"])
         return
 
     if value == "none":
@@ -1534,7 +1553,7 @@ async def time_callback(update, context):
     add_goal(uid, name, category, reminder, priority, duration)
     context.user_data.clear()
     log_activity(uid, "goal_created")
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["goal_added"].format(name=display_name(uid)),
         reply_markup=keyboard(uid),
     )
@@ -1638,7 +1657,7 @@ async def detail(update, context):
     g = get_goal(uid, gid)
     if not g:
         return
-    await q.message.reply_text(
+    await q.message.edit_text(
         f"🎯 {g['name']}\n📁 {g['category']}\n⭐ اولویت: {g['priority']}\n⏰ {g['reminder_time'] or 'Off'}",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton(
@@ -1671,12 +1690,12 @@ async def mark(update, context):
         add_xp(uid, 10, "goal_completed")
         new_achievements = achievement_check(uid)
         if new_achievements:
-            await q.message.reply_text(
+            await q.message.edit_text(
                 ("🏆 دستاورد جدید!\n" + "\n".join(new_achievements))
                 if lang(uid) == "fa"
                 else ("🏆 New achievement!\n" + "\n".join(new_achievements))
             )
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["done"].format(name=display_name(uid))
         if is_done
         else T[lang(uid)]["missed"].format(name=display_name(uid)),
@@ -1726,7 +1745,7 @@ async def edit_goal(update, context):
         )],
         [InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")],
     ]
-    await q.message.reply_text(
+    await q.message.edit_text(
         f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
@@ -1738,7 +1757,7 @@ async def rename_start(update, context):
     await q.answer()
     context.user_data["edit_id"] = int(q.data.split(":")[1])
     context.user_data["awaiting_rename"] = True
-    await q.message.reply_text(T[lang(q.from_user.id)]["name"])
+    await q.message.edit_text(T[lang(q.from_user.id)]["name"])
 
 
 async def rename_save(update, context):
@@ -1774,7 +1793,7 @@ async def change_reminder(update, context):
     if not get_goal(uid, gid):
         return
     context.user_data["edit_reminder_id"] = gid
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["choose_time"],
         reply_markup=time_keyboard(uid),
     )
@@ -1792,7 +1811,7 @@ async def edit_time_callback(update, context):
     value = q.data.split(":", 1)[1]
     if value == "custom":
         context.user_data["awaiting_custom_edit_time"] = True
-        await q.message.reply_text(T[lang(uid)]["custom_time"])
+        await q.message.edit_text(T[lang(uid)]["custom_time"])
         return
     reminder = None if value == "none" else parse_time(value)
     c = db()
@@ -1804,7 +1823,7 @@ async def edit_time_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await q.message.reply_text(
+    await q.message.edit_text(
         "✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.",
         reply_markup=keyboard(uid),
     )
@@ -1822,7 +1841,7 @@ async def time_change_callback(update, context):
     value = q.data.split(":", 1)[1]
     if value == "custom":
         context.user_data["awaiting_edit_time"] = True
-        await q.message.reply_text(T[lang(uid)]["custom_time"])
+        await q.message.edit_text(T[lang(uid)]["custom_time"])
         return
 
     reminder = None if value == "none" else parse_time(value)
@@ -1835,7 +1854,7 @@ async def time_change_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await q.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+    await q.message.edit_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
 
 
 async def custom_edit_time_save(update, context):
@@ -1873,7 +1892,7 @@ async def delete_start(update, context):
     text = "Delete this goal?" if lang(uid) == "en" else "این هدف حذف شود؟"
     yes = "Yes, delete" if lang(uid) == "en" else "بله، حذف کن"
     no = "Cancel" if lang(uid) == "en" else "لغو"
-    await q.message.reply_text(
+    await q.message.edit_text(
         text,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton(yes, callback_data=f"delete_yes:{gid}")],
@@ -1894,7 +1913,7 @@ async def delete_confirm(update, context):
     c.commit()
     c.close()
     log_activity(uid, "goal_deleted")
-    await q.message.reply_text(
+    await q.message.edit_text(
         T[lang(uid)]["deleted"],
         reply_markup=keyboard(uid),
     )
@@ -1904,7 +1923,7 @@ async def delete_confirm(update, context):
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
-    await q.message.reply_text(
+    await q.message.edit_text(
         "❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.",
         reply_markup=keyboard(q.from_user.id),
     )
@@ -2511,13 +2530,13 @@ async def approval_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); r=c.execute("SELECT * FROM auto_pending WHERE id=?",(pid,)).fetchone();
-    if not r: c.close(); await q.message.reply_text("❌ پیش‌نمایش پیدا نشد."); return
-    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.reply_text("✅ تأیید شد. پست در زمان تعیین‌شده منتشر می‌شود.")
+    if not r: c.close(); await q.message.edit_text("❌ پیش‌نمایش پیدا نشد."); return
+    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.edit_text("✅ تأیید شد. پست در زمان تعیین‌شده منتشر می‌شود.")
 
 async def approval_reject_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.reply_text("❌ پست رد شد و منتشر نمی‌شود.")
+    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.edit_text("❌ پست رد شد و منتشر نمی‌شود.")
 
 
 def channel_keyboard():
@@ -2638,25 +2657,25 @@ async def auto_channel_callback(update, context):
         if new_value == "1":
             interval = int(get_auto_setting("interval_minutes", "60") or 60)
             set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=interval)).isoformat())
-        await q.message.reply_text(
+        await q.message.edit_text(
             "🟢 انتشار خودکار روشن شد." if new_value == "1" else "⚪ انتشار خودکار خاموش شد.",
             reply_markup=auto_channel_keyboard()
         )
 
     elif action == "interval":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "⏱ فاصله انتشار را انتخاب کن.\nاز ۵ دقیقه تا ۲۴ ساعت، یا زمان دلخواه:",
             reply_markup=auto_interval_keyboard()
         )
 
     elif action == "category":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "🧠 دسته‌بندی کامل را انتخاب کن:",
             reply_markup=auto_category_keyboard()
         )
 
     elif action == "guide":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "📚 <b>راهنمای انتشار خودکار MyTasks</b>\n\n"
             "1️⃣ اول از بخش «🧠 موضوع» دسته موردنظر را انتخاب کن.\n"
             "2️⃣ سپس زیرشاخه را انتخاب کن؛ مثلاً سرمایه‌گذاری ← ارز و دلار.\n"
@@ -2671,7 +2690,7 @@ async def auto_channel_callback(update, context):
         )
 
     elif action == "test":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "🧪 تست ۷ روزه\n\n"
             f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 خاموش/پایان یافته'}\n"
             f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
@@ -2682,7 +2701,7 @@ async def auto_channel_callback(update, context):
         next_run = get_auto_setting("next_run", "تنظیم نشده").replace("T", " ")[:16]
         category = get_auto_setting("category", "random")
         sub = get_auto_setting("subcategory", "random")
-        await q.message.reply_text(
+        await q.message.edit_text(
             f"🤖 وضعیت انتشار خودکار\n\n"
             f"وضعیت: {'🟢 روشن' if get_auto_setting('enabled','0')=='1' else '⚪ خاموش'}\n"
             f"⏱ فاصله: هر {interval} دقیقه\n"
@@ -2693,7 +2712,7 @@ async def auto_channel_callback(update, context):
         )
 
     elif action == "back":
-        await q.message.reply_text("🤖 انتشار خودکار", reply_markup=auto_channel_keyboard())
+        await q.message.edit_text("🤖 انتشار خودکار", reply_markup=auto_channel_keyboard())
 
 
 @subscription_required
@@ -2707,14 +2726,14 @@ async def auto_category_callback(update, context):
     if value == "random":
         set_auto_setting("category", "random")
         set_auto_setting("subcategory", "random")
-        await q.message.reply_text(
+        await q.message.edit_text(
             "🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
             reply_markup=auto_interval_keyboard(),
         )
         return
     idx = int(value)
     category = list(AUTO_TOPIC_TREE_FA.keys())[idx]
-    await q.message.reply_text(
+    await q.message.edit_text(
         f"📂 {category}\n\nحالا شاخه موردنظر را انتخاب کن:",
         reply_markup=auto_subcategory_keyboard(idx)
     )
@@ -2736,7 +2755,7 @@ async def auto_subcategory_callback(update, context):
         sub = AUTO_TOPIC_TREE_FA[category][int(sub_idx)]
     set_auto_setting("category", category)
     set_auto_setting("subcategory", sub)
-    await q.message.reply_text(
+    await q.message.edit_text(
         f"✅ موضوع انتخاب شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
         reply_markup=auto_interval_keyboard()
     )
@@ -2752,7 +2771,7 @@ async def auto_interval_callback(update, context):
     raw_minutes = q.data.split(":", 1)[1]
     if raw_minutes == "custom":
         context.user_data["auto_wait_interval"] = True
-        await q.message.reply_text(
+        await q.message.edit_text(
             "✏️ فاصله دلخواه را به دقیقه وارد کن.\nمثال: 45\nحداقل ۵ و حداکثر ۱۴۴۰ دقیقه (۲۴ ساعت)."
         )
         return
@@ -2760,7 +2779,7 @@ async def auto_interval_callback(update, context):
     set_auto_setting("interval_minutes", str(minutes))
     set_auto_setting("enabled", "1")
     set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
-    await q.message.reply_text(
+    await q.message.edit_text(
         f"✅ انتشار خودکار روی هر {minutes} دقیقه تنظیم شد و روشن است.",
         reply_markup=auto_channel_keyboard()
     )
@@ -2779,14 +2798,14 @@ async def channel_panel_callback(update, context):
     channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
 
     if action == "main":
-        await q.message.reply_text(
+        await q.message.edit_text(
             f"📡 <b>مدیریت کانال</b>\n\n📢 کانال: <code>{channel}</code>",
             parse_mode="HTML",
             reply_markup=channel_keyboard(),
         )
     elif action == "set":
         context.user_data["channel_state"] = "set"
-        await q.message.reply_text(
+        await q.message.edit_text(
             "📡 یوزرنیم کانال را بفرست.\n"
             "مثال: <code>@MyTasks</code>\n"
             "لینک t.me هم پذیرفته می‌شود.",
@@ -2794,7 +2813,7 @@ async def channel_panel_callback(update, context):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]),
         )
     elif action == "auto":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "🤖 <b>انتشار خودکار</b>\n\n"
             "پست کوتاه + تصویر مرتبط + دسته‌بندی و زمان‌بندی قابل تنظیم.",
             parse_mode="HTML",
@@ -2802,24 +2821,25 @@ async def channel_panel_callback(update, context):
         )
     elif action == "test":
         if channel == "تنظیم نشده":
-            await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
+            await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
             return
         try:
             chat = await context.bot.get_chat(channel)
-            await q.message.reply_text(
+            await q.message.edit_text(
                 f"✅ اتصال فعال است.\n📢 {chat.title or channel}\n🆔 <code>{chat.id}</code>",
                 parse_mode="HTML",
                 reply_markup=channel_keyboard(),
             )
+            await hide_main_reply_keyboard(update)
         except Exception as e:
             logger.error("Channel test: %s", e)
-            await q.message.reply_text(
+            await q.message.edit_text(
                 "❌ اتصال ناموفق.\nربات باید Administrator کانال باشد و اجازه ارسال پیام داشته باشد.",
                 reply_markup=channel_keyboard(),
             )
     elif action == "new":
         context.user_data["channel_state"] = "content"
-        await q.message.reply_text("📝 متن پست را بفرست:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]))
+        await q.message.edit_text("📝 متن پست را بفرست:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]))
     elif action == "list":
         c = db()
         rows = c.execute(
@@ -2834,7 +2854,7 @@ async def channel_panel_callback(update, context):
             )
         else:
             text_out += "موردی نیست."
-        await q.message.reply_text(
+        await q.message.edit_text(
             text_out, parse_mode="HTML", reply_markup=channel_keyboard()
         )
 
@@ -2844,36 +2864,36 @@ async def channel_schedule_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]
-    if a=="cancel": context.user_data.clear(); await q.message.reply_text("❌ لغو شد.",reply_markup=channel_keyboard()); return
+    if a=="cancel": context.user_data.clear(); await q.message.edit_text("❌ لغو شد.",reply_markup=channel_keyboard()); return
     if a=="now":
         cfg=get_channel_config()
-        if not cfg or not cfg["channel_id"]: await q.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.reply_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.reply_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
-    elif a=="once": context.user_data["channel_state"]="once"; await q.message.reply_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30")
-    elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.reply_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
-    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.reply_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
+        if not cfg or not cfg["channel_id"]: await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.edit_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
+    elif a=="once": context.user_data["channel_state"]="once"; await q.message.edit_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30")
+    elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.edit_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
+    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.edit_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
 
 @subscription_required
 async def channel_daily_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); v=q.data.split(":",1)[1]
-    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.edit_text("🕐 ساعت را بفرست، مثال 18:30"); return
     await save_channel_post(context,uid,"daily",v,None,None,q.message)
 
 @subscription_required
 async def channel_weekday_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.reply_text("⏰ ساعت هفتگی:",reply_markup=channel_time_keyboard("chwtime"))
+    await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.edit_text("⏰ ساعت هفتگی:",reply_markup=channel_time_keyboard("chwtime"))
 
 @subscription_required
 async def channel_weektime_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
     await q.answer(); v=q.data.split(":",1)[1]
-    if v=="custom": context.user_data["channel_state"]="wtime_custom"; await q.message.reply_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    if v=="custom": context.user_data["channel_state"]="wtime_custom"; await q.message.edit_text("🕐 ساعت را بفرست، مثال 18:30"); return
     await save_channel_post(context,uid,"weekly",v,context.user_data["channel_weekday"],None,q.message)
 
 async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
@@ -3013,7 +3033,7 @@ async def admin_panel_callback(update, context):
             f"👀 کل فعالیت‌ها: <b>{s['activities']}</b>\n"
             f"🏆 دستاوردها: <b>{s['achievements']}</b>"
         )
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "users":
         c = db()
@@ -3030,7 +3050,7 @@ async def admin_panel_callback(update, context):
             for r in rows:
                 name = r["first_name"] or "بدون نام"
                 text += f"👤 {name} | ID: <code>{r['user_id']}</code> | 🎯 {r['goals']}\n"
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "goals":
         c = db()
@@ -3041,7 +3061,7 @@ async def admin_panel_callback(update, context):
         c.close()
         text = "🎯 <b>اهداف بر اساس دسته</b>\n\n"
         text += "\n".join(f"• {r['category']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "activity":
         c = db()
@@ -3052,7 +3072,7 @@ async def admin_panel_callback(update, context):
         c.close()
         text = "📈 <b>فعالیت‌ها</b>\n\n"
         text += "\n".join(f"• {r['activity']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "reminders":
         c = db()
@@ -3065,7 +3085,7 @@ async def admin_panel_callback(update, context):
         c.close()
         text = "⏰ <b>یادآوری‌ها</b>\n\n"
         text += "\n".join(f"🕐 {r['reminder_time']}: <b>{r['n']}</b>" for r in rows) or "یادآوری فعالی نیست."
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "achievements":
         c = db()
@@ -3076,10 +3096,10 @@ async def admin_panel_callback(update, context):
         c.close()
         text = "🏆 <b>دستاوردها</b>\n\n"
         text += "\n".join(f"• {r['code']}: <b>{r['n']}</b>" for r in rows) or "دستاوردی ثبت نشده."
-        await q.message.reply_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "channel":
-        await q.message.reply_text(
+        await q.message.edit_text(
             "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
             "اتصال کانال، تست اتصال، ساخت پست، مشاهده پست‌ها و انتشار خودکار.",
             parse_mode="HTML",
@@ -3088,7 +3108,7 @@ async def admin_panel_callback(update, context):
 
     elif action == "broadcast":
         context.user_data["admin_broadcast"] = True
-        await q.message.reply_text(
+        await q.message.edit_text(
             "📢 متن پیام همگانی را ارسال کن.\n\n"
             "⚠️ بعد از ارسال، قبل از فرستادن برای همه تأیید می‌گیریم."
         )
@@ -3104,10 +3124,11 @@ async def admin_command(update, context):
         return
     log_activity(uid, "admin_open")
     await update.message.reply_text(
-        "🛡 <b>پنل مدیریت حرفه‌ای</b>\n\nیکی از بخش‌ها را انتخاب کن:",
+        "🛡 <b>پنل مدیریت مرکزی</b>\n\nابتدا بخش موردنظر را انتخاب کن. هر بخش تنظیمات مستقل خودش را دارد:",
         parse_mode="HTML",
         reply_markup=admin_keyboard(),
     )
+    await hide_main_reply_keyboard(update)
 
 
 async def admin(update, context):
@@ -3152,10 +3173,10 @@ async def admin_broadcast_start(update, context):
     await q.answer()
     uid = q.from_user.id
     if uid not in ADMIN_IDS:
-        await q.message.reply_text(T[lang(uid)]["admin_denied"])
+        await q.message.edit_text(T[lang(uid)]["admin_denied"])
         return
     context.user_data["admin_broadcast"] = True
-    await q.message.reply_text(T[lang(uid)]["broadcast_prompt"])
+    await q.message.edit_text(T[lang(uid)]["broadcast_prompt"])
 
 
 async def admin_broadcast_save(update, context):
@@ -3397,16 +3418,57 @@ def ensure_business_profile(uid):
     for wd in range(7): c.execute("INSERT OR IGNORE INTO working_hours(owner_user_id,weekday,start_time,end_time,enabled) VALUES(?,?,?,?,?)",(uid,wd,"09:00","20:00",1))
     c.commit(); r=c.execute("SELECT * FROM business_profiles WHERE user_id=?",(uid,)).fetchone(); c.close(); return r
 
+def customer_option_allowed(uid, key):
+    if admin_is_allowed(uid):
+        return True
+    try:
+        if not feature_enabled(key):
+            return False
+        mode = feature_access_mode(key, uid)
+        return mode != "off" and (mode != "vip" or is_vip(uid))
+    except Exception:
+        return True
+
+
 def customer_keyboard(uid):
     fa=lang(uid)=="fa"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 نوبت‌های امروز" if fa else "📅 Today's Appointments",callback_data="cust:today"),InlineKeyboardButton("➕ نوبت جدید" if fa else "➕ New Appointment",callback_data="cust:new")],
-        [InlineKeyboardButton("👥 مشتریان" if fa else "👥 Customers",callback_data="cust:list"),InlineKeyboardButton("🗓️ تقویم کاری" if fa else "🗓️ Calendar",callback_data="cust:calendar")],
-        [InlineKeyboardButton("⏰ ساعات کاری" if fa else "⏰ Working Hours",callback_data="cust:hours"),InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders",callback_data="cust:reminders")],
-        [InlineKeyboardButton("📊 آمار مشتریان" if fa else "📊 Customer Analytics",callback_data="cust:analytics"),InlineKeyboardButton("🏆 مشتریان وفادار" if fa else "🏆 Loyal Customers",callback_data="cust:loyal")],
-        [InlineKeyboardButton("📆 هفتگی/ماهانه/سالانه" if fa else "📆 Weekly/Monthly/Yearly",callback_data="cust:period")],
-        [InlineKeyboardButton("🔗 لینک رزرو آنلاین" if fa else "🔗 Online Booking Link",callback_data="cust:link"),InlineKeyboardButton("⚙️ تنظیمات کسب‌وکار" if fa else "⚙️ Business Settings",callback_data="cust:settings")],
-        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="nav:main")]] )
+    rows=[]
+    if customer_option_allowed(uid,"customer_today") or customer_option_allowed(uid,"customer_new_appointment"):
+        row=[]
+        if customer_option_allowed(uid,"customer_today"):
+            row.append(InlineKeyboardButton("📅 نوبت‌های امروز" if fa else "📅 Today's Appointments",callback_data="cust:today"))
+        if customer_option_allowed(uid,"customer_new_appointment"):
+            row.append(InlineKeyboardButton("➕ نوبت جدید" if fa else "➕ New Appointment",callback_data="cust:new"))
+        if row: rows.append(row)
+    if customer_option_allowed(uid,"customer_customers") or customer_option_allowed(uid,"customer_calendar"):
+        row=[]
+        if customer_option_allowed(uid,"customer_customers"):
+            row.append(InlineKeyboardButton("👥 مشتریان" if fa else "👥 Customers",callback_data="cust:list"))
+        if customer_option_allowed(uid,"customer_calendar"):
+            row.append(InlineKeyboardButton("🗓️ تقویم کاری" if fa else "🗓️ Calendar",callback_data="cust:calendar"))
+        if row: rows.append(row)
+    if customer_option_allowed(uid,"customer_hours") or customer_option_allowed(uid,"customer_reminders"):
+        row=[]
+        if customer_option_allowed(uid,"customer_hours"):
+            row.append(InlineKeyboardButton("⏰ ساعات کاری" if fa else "⏰ Working Hours",callback_data="cust:hours"))
+        if customer_option_allowed(uid,"customer_reminders"):
+            row.append(InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders",callback_data="cust:reminders"))
+        if row: rows.append(row)
+    if customer_option_allowed(uid,"customer_analytics") or customer_option_allowed(uid,"customer_loyal"):
+        row=[]
+        if customer_option_allowed(uid,"customer_analytics"):
+            row.append(InlineKeyboardButton("📊 آمار مشتریان" if fa else "📊 Customer Analytics",callback_data="cust:analytics"))
+        if customer_option_allowed(uid,"customer_loyal"):
+            row.append(InlineKeyboardButton("🏆 مشتریان وفادار" if fa else "🏆 Loyal Customers",callback_data="cust:loyal"))
+        if row: rows.append(row)
+    if customer_option_allowed(uid,"customer_period"):
+        rows.append([InlineKeyboardButton("📆 هفتگی/ماهانه/سالانه" if fa else "📆 Weekly/Monthly/Yearly",callback_data="cust:period")])
+    if customer_option_allowed(uid,"customer_booking_link"):
+        rows.append([InlineKeyboardButton("🔗 لینک رزرو آنلاین" if fa else "🔗 Online Booking Link",callback_data="cust:link")])
+    if customer_option_allowed(uid,"customer_business_settings"):
+        rows.append([InlineKeyboardButton("⚙️ تنظیمات کسب‌وکار" if fa else "⚙️ Business Settings",callback_data="cust:settings")])
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="nav:main")])
+    return InlineKeyboardMarkup(rows)
 
 def customer_back(uid,cb="cust:main"): return InlineKeyboardMarkup([[back_button(cb,uid=uid),main_menu_button(uid)]])
 
@@ -3467,12 +3529,23 @@ def customer_feature_message(uid):
 async def customer_panel(update,context):
     uid=update.effective_user.id
     if not customer_feature_allowed(uid): await update.message.reply_text(customer_feature_message(uid)); return
-    ensure_business_profile(uid); await update.message.reply_text("👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\nپنل مستقل مشتریان، نوبت‌ها، تقویم و یادآوری‌ها.",parse_mode="HTML",reply_markup=customer_keyboard(uid))
+    ensure_business_profile(uid); await update.message.reply_text("👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\nپنل مستقل مشتریان، نوبت‌ها، تقویم و یادآوری‌ها.",parse_mode="HTML",reply_markup=customer_keyboard(uid));
+    await hide_main_reply_keyboard(update)
 
 async def customer_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer()
     if not customer_feature_allowed(uid): await q.message.edit_text(customer_feature_message(uid)); return
     ensure_business_profile(uid); p=q.data.split(":"); a=p[1] if len(p)>1 else "main"
+    customer_action_keys={
+        "today":"customer_today", "new":"customer_new_appointment", "list":"customer_customers",
+        "calendar":"customer_calendar", "hours":"customer_hours", "reminders":"customer_reminders",
+        "analytics":"customer_analytics", "loyal":"customer_loyal", "period":"customer_period",
+        "link":"customer_booking_link", "settings":"customer_business_settings"
+    }
+    required_key=customer_action_keys.get(a)
+    if required_key and not customer_option_allowed(uid,required_key):
+        await q.message.edit_text("⛔ این گزینه توسط مدیر غیرفعال شده یا برای پلن شما فعال نیست.",reply_markup=customer_back(uid))
+        return
     if a=="main": await q.message.edit_text("👥 مدیریت مشتری و نوبت‌دهی",reply_markup=customer_keyboard(uid)); return
     if a=="today": await customer_today(update,context); return
     if a=="new": context.user_data["customer_mode"]="new_name"; await q.message.edit_text("➕ نام مشتری را بفرست:"); return
@@ -3651,8 +3724,15 @@ async def customer_contact_save(update,context):
     uid=update.effective_user.id; ct=update.message.contact; name=((ct.first_name or "")+" "+(ct.last_name or "")).strip() or "مشتری"; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,name,ct.phone_number,ct.user_id,now,now)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text(f"✅ {name} به مشتریان اضافه شد.",reply_markup=customer_keyboard(uid)); return True
 
 async def customer_booking_start(update,context,token):
-    uid=update.effective_user.id; c=db(); p=c.execute("SELECT * FROM business_profiles WHERE booking_token=? AND booking_enabled=1",(token,)).fetchone(); c.close()
-    if not p: await update.message.reply_text("❌ لینک رزرو معتبر نیست یا غیرفعال شده."); return
+    uid=update.effective_user.id
+    owner_row=None
+    c=db(); p=c.execute("SELECT * FROM business_profiles WHERE booking_token=? AND booking_enabled=1",(token,)).fetchone(); c.close()
+    if p:
+        owner_row=p["user_id"]
+    if not p:
+        await update.message.reply_text("❌ لینک رزرو معتبر نیست یا غیرفعال شده."); return
+    if not feature_enabled("customer_online_booking") or feature_access_mode("customer_online_booking", owner_row)=="off":
+        await update.message.reply_text("❌ رزرو آنلاین این کسب‌وکار فعلاً غیرفعال است."); return
     context.user_data["booking_owner"]=p["user_id"]; await booking_date_menu_list(update,context)
 
 async def booking_date_menu_list(update,context):
@@ -3723,6 +3803,18 @@ async def customer_morning_job(context):
         lines=["🌅 <b>برنامه مشتری‌های امروز</b>",""]+[f"🕐 <b>{r['appointment_time']}</b> — 👤 {html.escape(r['name'])}"+(f" — 📞 {html.escape(r['phone'])}" if r['phone'] else '') for r in items]+[f"\n👥 مجموع: {len(items)} مشتری"]
         try:await context.bot.send_message(owner,"\n".join(lines),parse_mode="HTML",reply_markup=customer_keyboard(owner))
         except Exception as e:logger.warning("Customer morning failed: %s",e)
+
+async def hide_main_reply_keyboard(update):
+    """Remove the persistent main ReplyKeyboard without adding a visible UI message."""
+    try:
+        m = await update.effective_chat.send_message("⁣", reply_markup=ReplyKeyboardRemove())
+        try:
+            await m.delete()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 
 async def text_router(update, context):
     uid = update.effective_user.id
@@ -3861,14 +3953,17 @@ async def text_router(update, context):
         await customer_panel(update, context)
     elif text in ("📢 مدیریت کانال", "📢 Channel Management"):
         if admin_guard(uid):
+            clear_flow(context)
             await update.message.reply_text(
-                "📢 <b>مدیریت کانال و پست‌گذاری</b>",
+                "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\nاتصال کانال، ساخت پست، زمان‌بندی و انتشار خودکار.",
                 parse_mode="HTML",
                 reply_markup=channel_keyboard(),
             )
+            await hide_main_reply_keyboard(update)
         else:
             await update.message.reply_text("⛔ دسترسی ندارید.")
     elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+        clear_flow(context)
         await admin_command(update, context)
 
     else:
@@ -4002,7 +4097,14 @@ FEATURE_LABELS_FA = {
     "auto_publish": "🤖 انتشار خودکار", "images": "🖼 تصاویر", "feedback": "👍 بازخورد",
     "referrals": "🤝 دعوت دوستان", "mini_app": "📱 Mini App", "support": "🎫 پشتیبانی",
     "price_data": "📈 قیمت آنلاین", "approval": "👁 تأیید قبل از انتشار",
-    "maintenance": "🛠 حالت تعمیرات", "test_mode": "🧪 تست ۷ روزه", "payments": "💳 پرداخت", "goals": "🎯 اهداف", "weekly": "📅 جدول هفتگی", "stats": "📊 آمار من", "profile": "👤 پروفایل", "achievements": "🏆 دستاوردها", "settings": "⚙️ تنظیمات", "customers": "👥 مشتری و نوبت‌دهی",
+    "maintenance": "🛠 حالت تعمیرات", "test_mode": "🧪 تست ۷ روزه", "payments": "💳 پرداخت",
+    "customer_today": "📅 نوبت‌های امروز", "customer_new_appointment": "➕ نوبت جدید",
+    "customer_customers": "👥 مشتریان", "customer_calendar": "🗓️ تقویم کاری",
+    "customer_hours": "⏰ ساعات کاری", "customer_reminders": "🔔 یادآوری‌های مشتری",
+    "customer_analytics": "📊 آمار مشتریان", "customer_loyal": "🏆 مشتریان وفادار",
+    "customer_period": "📆 گزارش دوره‌ای", "customer_booking_link": "🔗 لینک رزرو آنلاین",
+    "customer_online_booking": "🌐 رزرو آنلاین", "customer_business_settings": "⚙️ تنظیمات کسب‌وکار",
+    "goals": "🎯 اهداف", "weekly": "📅 جدول هفتگی", "stats": "📊 آمار من", "profile": "👤 پروفایل", "achievements": "🏆 دستاوردها", "settings": "⚙️ تنظیمات", "customers": "👥 مشتری و نوبت‌دهی",
 }
 
 def get_system_setting(key, default=""):
@@ -4052,32 +4154,63 @@ def test_mode_remaining():
     except Exception:
         return "نامشخص"
 
-FEATURE_CATEGORIES={"goals":("🎯 اهداف و کارهای شخصی",["goals","weekly","stats","profile","achievements","reminders","morning","night"]),"customers":("👥 مشتری و نوبت‌دهی",["customers"]),"channel":("📢 کانال و انتشار",["auto_publish","approval","images","feedback"]),"ai":("🤖 هوش مصنوعی و ابزارها",["ai","price_data"]),"engagement":("⭐ XP / VIP / دعوت",["xp","vip","referrals","payments"]),"support":("🎫 پشتیبانی و سیستم",["support","mini_app","maintenance","test_mode"])}
+FEATURE_CATEGORIES={
+    "goals":("🎯 تنظیمات اهداف",["goals","weekly","stats","profile","achievements","reminders","morning","night"]),
+    "customers":("👥 تنظیمات مشتری و نوبت‌دهی",["customers","customer_today","customer_new_appointment","customer_customers","customer_calendar","customer_hours","customer_reminders","customer_analytics","customer_loyal","customer_period","customer_booking_link","customer_online_booking","customer_business_settings"]),
+    "channel":("📢 تنظیمات کانال و انتشار",["auto_publish","approval","images","feedback"]),
+    "ai":("🤖 تنظیمات هوش مصنوعی و ابزارها",["ai","price_data"]),
+    "engagement":("⭐ تنظیمات XP / VIP / دعوت",["xp","vip","referrals","payments"]),
+    "support":("🎫 تنظیمات پشتیبانی و سیستم",["support","mini_app","maintenance","test_mode"]),
+}
+
+def feature_mode_label(mode):
+    return {"free":"🟢 رایگان","vip":"💎 VIP / پولی","off":"🔴 غیرفعال"}.get(mode,"🟢 رایگان")
+
+
+def set_feature_access_mode(key, mode, admin_id=0):
+    if mode not in ("free","vip","off"):
+        mode="free"
+    now=datetime.now(TZ).isoformat()
+    c=db()
+    c.execute("INSERT INTO feature_access(key,mode,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at",(key,mode,now))
+    c.execute("INSERT INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at",(key,0 if mode=="off" else 1,now))
+    c.commit(); c.close()
+    if admin_id:
+        admin_log(admin_id,"feature_access_change",None,f"{key}={mode}")
+
 
 def feature_admin_keyboard():
-    buttons=[[InlineKeyboardButton(label,callback_data=f"fcat:{key}")] for key,(label,_) in FEATURE_CATEGORIES.items()]; buttons.append([InlineKeyboardButton("🔧 همه قابلیت‌ها",callback_data="fcat:all")]); buttons.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]); return InlineKeyboardMarkup(buttons)
+    buttons=[[InlineKeyboardButton(label,callback_data=f"fcat:{key}")] for key,(label,_) in FEATURE_CATEGORIES.items()]
+    buttons.append([InlineKeyboardButton("🔧 همه قابلیت‌ها",callback_data="fcat:all")])
+    buttons.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+    return InlineKeyboardMarkup(buttons)
+
 
 async def feature_category_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); cat=q.data.split(":",1)[1]; c=db(); rows={r["key"]:r["enabled"] for r in c.execute("SELECT key,enabled FROM feature_flags").fetchall()}; c.close(); keys=list(rows.keys()) if cat=="all" else FEATURE_CATEGORIES.get(cat,("",[]))[1]
+    await q.answer(); cat=q.data.split(":",1)[1]
+    c=db(); all_keys=[r["key"] for r in c.execute("SELECT key FROM feature_flags ORDER BY key").fetchall()]; c.close()
+    keys=all_keys if cat=="all" else FEATURE_CATEGORIES.get(cat,("",[]))[1]
     kb=[]
     for i in range(0,len(keys),2):
         row=[]
         for key in keys[i:i+2]:
-            if key in rows: row.append(InlineKeyboardButton(("🟢 " if rows[key] else "🔴 ")+FEATURE_LABELS_FA.get(key,key),callback_data=f"feat:{key}"))
+            mode=feature_access_mode(key)
+            row.append(InlineKeyboardButton(f"{feature_mode_label(mode)} {FEATURE_LABELS_FA.get(key,key)}",callback_data=f"feat:{key}"))
         if row: kb.append(row)
-    kb.append([InlineKeyboardButton("⬅️ دسته‌های قابلیت",callback_data="adm:features")]); await q.message.edit_text("⚙️ <b>مدیریت قابلیت‌ها</b>\n\n🟢 فعال = نمایش و دسترسی\n🔴 خاموش = پنهان از کاربر\n\nاطلاعات ذخیره‌شده حذف نمی‌شود.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    back_cat="adm:features"
+    kb.append([InlineKeyboardButton("⬅️ دسته‌های تنظیمات",callback_data=back_cat)])
+    title=FEATURE_CATEGORIES.get(cat,("⚙️ همه قابلیت‌ها",[]))[0] if cat!="all" else "⚙️ همه قابلیت‌ها"
+    await q.message.edit_text(f"⚙️ <b>{title}</b>\n\n🟢 رایگان = همه کاربران\n💎 VIP / پولی = فقط VIP\n🔴 غیرفعال = پنهان و غیرقابل استفاده\n\nبا زدن هر قابلیت، وضعیت آن بین این سه حالت تغییر می‌کند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 
 def feature_admin_text():
-    c=db()
-    rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall()
-    c.close()
-    active=sum(1 for r in rows if r["enabled"])
-    return ("⚙️ مدیریت قابلیت‌ها\n\n"
-            f"🟢 فعال: {active}\n🔴 خاموش: {len(rows)-active}\n\n"
-            "خاموش کردن قابلیت، اطلاعات قبلی کاربران را حذف نمی‌کند.")
+    c=db(); rows=c.execute("SELECT key,mode FROM feature_access ORDER BY key").fetchall(); c.close()
+    free=sum(1 for r in rows if r["mode"]=="free"); vip=sum(1 for r in rows if r["mode"]=="vip"); off=sum(1 for r in rows if r["mode"]=="off")
+    return ("⚙️ <b>مرکز تنظیمات قابلیت‌ها</b>\n\n"
+            f"🟢 رایگان: {free}\n💎 VIP / پولی: {vip}\n🔴 غیرفعال: {off}\n\n"
+            "هر دسته تنظیمات مستقل خودش را دارد و خاموش‌کردن قابلیت، اطلاعات قبلی را حذف نمی‌کند.")
 
 async def feature_info_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
@@ -4097,27 +4230,29 @@ async def final_feature_callback(update,context):
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     key=q.data.split(":",1)[1]
     if key == "test":
-        await q.answer()
-        await q.message.edit_text(
-            "🧪 تست ۷ روزه\n\n"
-            f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n"
-            f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
-            "در زمان تست، انتشار خودکار قبل از انتشار نهایی برای Admin پیش‌نمایش می‌شود."
-        )
-        return
-    if key == "customers":
-        current=feature_access_mode("customers")
-        new_mode={"free":"vip","vip":"off","off":"free"}.get(current,"vip")
-        c=db(); c.execute("INSERT INTO feature_access(key,mode,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET mode=excluded.mode,updated_at=excluded.updated_at",("customers",new_mode,datetime.now(TZ).isoformat())); c.commit(); c.close()
-        await q.answer({"free":"🟢 رایگان","vip":"💎 VIP","off":"🔴 غیرفعال"}[new_mode])
-        await q.message.edit_text(f"👥 دسترسی سیستم مشتری تغییر کرد: {new_mode}",reply_markup=final_admin_keyboard()); return
-    current=feature_enabled(key)
-    new_value=not current
-    set_feature(key,new_value,uid)
-    if key=="test_mode" and new_value:
-        set_system_setting("test_mode_started_at", datetime.now(TZ).isoformat())
-    await q.answer("🟢 روشن شد" if new_value else "🔴 خاموش شد")
-    await q.message.edit_text(feature_admin_text(),reply_markup=feature_admin_keyboard())
+        await q.answer(); await q.message.edit_text("🧪 تست ۷ روزه\n\n" f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n" f"زمان باقی‌مانده: {test_mode_remaining()}",reply_markup=feature_admin_keyboard()); return
+    current=feature_access_mode(key)
+    new_mode={"free":"vip","vip":"off","off":"free"}.get(current,"free")
+    set_feature_access_mode(key,new_mode,uid)
+    await q.answer(feature_mode_label(new_mode))
+    # Return to the exact category containing this feature, not the global list.
+    category="all"
+    for cat,(_,keys) in FEATURE_CATEGORIES.items():
+        if key in keys:
+            category=cat; break
+    if category=="all":
+        c=db(); keys=[r["key"] for r in c.execute("SELECT key FROM feature_flags ORDER BY key").fetchall()]; c.close()
+    else:
+        keys=FEATURE_CATEGORIES[category][1]
+    kb=[]
+    for i in range(0,len(keys),2):
+        row=[]
+        for k in keys[i:i+2]:
+            row.append(InlineKeyboardButton(f"{feature_mode_label(feature_access_mode(k))} {FEATURE_LABELS_FA.get(k,k)}",callback_data=f"feat:{k}"))
+        kb.append(row)
+    kb.append([InlineKeyboardButton("⬅️ دسته‌های تنظیمات",callback_data="adm:features")])
+    title=FEATURE_CATEGORIES.get(category,("⚙️ همه قابلیت‌ها",[]))[0]
+    await q.message.edit_text(f"⚙️ <b>{title}</b>\n\n🟢 رایگان | 💎 VIP / پولی | 🔴 غیرفعال",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def final_admin_text(update,context):
     uid=update.effective_user.id
@@ -4154,7 +4289,9 @@ def support_keyboard(uid):
     ])
 
 async def support_start(update,context):
-    uid=update.effective_user.id; clear_flow(context); await update.message.reply_text("🎫 پشتیبانی\n\nیک گزینه را انتخاب کن:" if lang(uid)=="fa" else "🎫 Support\n\nChoose an option:",reply_markup=support_keyboard(uid))
+    uid=update.effective_user.id; clear_flow(context);
+    await hide_main_reply_keyboard(update)
+    await update.message.reply_text("🎫 پشتیبانی\n\nیک گزینه را انتخاب کن:" if lang(uid)=="fa" else "🎫 Support\n\nChoose an option:",reply_markup=support_keyboard(uid))
 
 async def support_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]
@@ -4328,6 +4465,7 @@ async def price_callback(update,context):
 
 async def prices(update,context):
     uid=update.effective_user.id
+    await hide_main_reply_keyboard(update)
     await update.message.reply_text("📈 قیمت آنلاین\n\nیکی را انتخاب کن:",reply_markup=prices_keyboard(uid))
 
 async def ai_chat_start(update,context):
