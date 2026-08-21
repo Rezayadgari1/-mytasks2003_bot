@@ -1,4 +1,5 @@
 
+
 import logging
 from functools import wraps
 import base64
@@ -7828,6 +7829,165 @@ async def v25_callback(update,context):
         await update.callback_query.message.edit_text((f"✅ {n} توکن جدید از XP تبدیل شد.\n\n⭐ موجودی XP به توکن فعلی ثبت شد.\n🎟️ موجودی: {token_balance(uid)}" if lang(uid)=="fa" else f"✅ Converted {n} new tokens from XP.\n\n🎟️ Balance: {token_balance(uid)}"),reply_markup=token_user_keyboard(uid)); return
     return await _OLD_V25_CALLBACK_TOKEN2(update,context)
 
+
+
+# ===================== FINAL NAVIGATION / ONBOARDING REPAIR =====================
+# This compatibility layer is intentionally last so it wins over older wrappers.
+# It does not touch persistent data or database schemas.
+
+# Onboarding choices must be selectable before channel/subscription gating.
+# The original callbacks were decorated with subscription_required, which could
+# reject the very buttons needed to finish /start onboarding.
+try:
+    if hasattr(language_callback, "__wrapped__"):
+        language_callback = language_callback.__wrapped__
+    if hasattr(gender_callback, "__wrapped__"):
+        gender_callback = gender_callback.__wrapped__
+    if hasattr(onboarding_business_callback, "__wrapped__"):
+        onboarding_business_callback = onboarding_business_callback.__wrapped__
+except Exception:
+    logger.exception("Failed to repair onboarding callback wrappers")
+
+
+def keyboard(uid):
+    """Stable, deterministic two-column main menu; preserves legacy + V25 buttons."""
+    fa = lang(uid) == "fa"
+    try:
+        base = filter_menu_rows(uid, [list(row) for row in T["fa" if fa else "en"]["menu"]])
+    except Exception:
+        base = []
+
+    # Keep the original menu order, then add enhanced modules in a predictable grid.
+    extras = []
+    extra_defs = [
+        ("unified_hub", "🧠 مرکز من", "🧠 My Center"),
+        ("portfolio", "💰 سرمایه‌های من", "💰 My Portfolio"),
+        ("installments", "💳 اقساط", "💳 Installments"),
+        ("profile_sharing", "👤 اطلاعات من", "👤 My Profile"),
+        ("voice", "🎙️ دستیار صوتی", "🎙️ Voice Assistant"),
+        ("calendar_hub", "📅 تقویم من", "📅 My Calendar"),
+    ]
+    for key, fa_label, en_label in extra_defs:
+        try:
+            if v25_allowed(uid, key):
+                extras.append(fa_label if fa else en_label)
+        except Exception:
+            # If an optional feature check fails, do not break the main menu.
+            logger.exception("Menu feature check failed: %s", key)
+
+    # Token wallet is available independently of the optional V25 feature flags.
+    extras.append("🎟️ توکن‌های من" if fa else "🎟️ My Tokens")
+
+    rows = [list(r) for r in base if r]
+    for i in range(0, len(extras), 2):
+        rows.append(extras[i:i + 2])
+
+    if admin_is_allowed(uid):
+        rows.append(["📢 مدیریت کانال" if fa else "📢 Channel Management",
+                     "🛡 پنل مدیریت" if fa else "🛡 Admin Panel"])
+
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
+
+
+async def text_router(update, context):
+    """Single final text dispatcher. Main-menu buttons always win over flow states."""
+    if not update.message or not update.message.text:
+        return
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+
+    # Universal navigation has absolute priority.
+    if text in ("🏠 منوی اصلی", "🏠 Main Menu"):
+        clear_flow(context)
+        await update.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+        return
+    if text in ("⬅️ برگشت", "⬅️ Back"):
+        clear_flow(context)
+        await update.message.reply_text(v25_hub_text(uid), parse_mode="HTML", reply_markup=v25_hub_keyboard(uid))
+        return
+
+    # V25 modules must also have priority over transient legacy input states.
+    v25_routes = {
+        "🧠 مرکز من": v25_hub,
+        "🧠 My Center": v25_hub,
+        "💰 سرمایه‌های من": v25_portfolio_menu,
+        "💰 My Portfolio": v25_portfolio_menu,
+        "💳 اقساط": v25_installments_menu,
+        "💳 Installments": v25_installments_menu,
+        "👤 اطلاعات من": v25_profile_menu,
+        "👤 My Profile": v25_profile_menu,
+    }
+    if text in v25_routes:
+        clear_flow(context)
+        await v25_routes[text](update, context)
+        return
+
+    if text in ("🎙️ دستیار صوتی", "🎙️ Voice Assistant"):
+        clear_flow(context)
+        context.user_data["v25_voice_mode"] = True
+        await update.message.reply_text("🎙️ ویس را بفرست. / Send a voice message.")
+        return
+
+    if text in ("🎟️ توکن‌های من", "🎟️ My Tokens"):
+        clear_flow(context)
+        tokens_from_xp(uid)
+        await update.message.reply_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
+        return
+
+    # Every normal legacy button is handled here before any text-input flow.
+    legacy_routes = {
+        "🎯 اهداف امروز": today, "🎯 Today's Goals": today,
+        "✏️ هدف خودم می‌نویسم": custom_goal_start, "✏️ Write my own goal": custom_goal_start,
+        "🏆 اهداف آماده": ready_menu, "🏆 Ready Goals": ready_menu,
+        "✏️ ویرایش اهداف": edit_menu, "✏️ Edit Goals": edit_menu,
+        "📅 جدول هفتگی": weekly, "📅 Weekly Table": weekly,
+        "📊 آمار من": stats, "📊 My Stats": stats,
+        "👤 پروفایل": profile, "👤 Profile": profile,
+        "🏆 دستاوردها": achievements, "🏆 Achievements": achievements,
+        "🤝 دعوت دوستان": referral, "🤝 Referrals": referral,
+        "📈 قیمت آنلاین": prices, "📈 Online Prices": prices,
+        "🤖 چت با AI": ai_chat_start, "🤖 AI Chat": ai_chat_start,
+        "💎 VIP": vip_center,
+        "🎫 پشتیبانی": support_start, "🎫 Support": support_start,
+        "⚙️ تنظیمات": settings, "⚙️ Settings": settings,
+        "👥 مدیریت مشتری و نوبت‌دهی": customer_panel, "👥 Customer & Appointments": customer_panel,
+    }
+    if text in legacy_routes:
+        requested = FEATURE_MENU_MAP.get(text)
+        if requested and not user_feature_allowed(uid, requested):
+            await update.message.reply_text("⛔ این قابلیت فعلاً توسط مدیر غیرفعال شده است.", reply_markup=keyboard(uid))
+            return
+        clear_flow(context)
+        await legacy_routes[text](update, context)
+        return
+
+    if text == "⭐ XP":
+        clear_flow(context)
+        await xp_command(update, context)
+        return
+
+    if text in ("📢 مدیریت کانال", "📢 Channel Management"):
+        clear_flow(context)
+        if admin_guard(uid):
+            await update.message.reply_text(
+                "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\nاتصال کانال، ساخت پست، زمان‌بندی و انتشار خودکار.",
+                parse_mode="HTML", reply_markup=channel_keyboard())
+            await hide_main_reply_keyboard(update)
+        else:
+            await update.message.reply_text("⛔ دسترسی ندارید.")
+        return
+
+    if text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+        clear_flow(context)
+        await admin_command(update, context)
+        return
+
+    # Not a menu button: preserve the complete legacy/V25 input state machine.
+    return await _OLD_TEXT_ROUTER_TOKEN(update, context)
+
+
+# Ensure the application registers the repaired definitions above.
+admin_keyboard = final_admin_keyboard
 
 def main():
     if not BOT_TOKEN:
