@@ -55,7 +55,7 @@ except ImportError:
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "goals.db")
-DB_SCHEMA_VERSION = 24
+DB_SCHEMA_VERSION = 25
 
 # DATA PERSISTENCE CONTRACT
 # -------------------------
@@ -79,8 +79,10 @@ REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "").strip()
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()
 N8N_TIMEOUT = float(os.environ.get("N8N_TIMEOUT", "12"))
-MYTASKS_BUILD_ID = "2026-08-22-AI-N8N-FINAL-01"
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna").strip()
+MYTASKS_BUILD_ID = "2026-08-22-FINAL-CONSOLIDATED-REPORTS-PRICES-CALENDAR-02"
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 AI_FAILOVER_TO_N8N = os.environ.get("AI_FAILOVER_TO_N8N", "1").strip() != "0"
 
 # OmniRoute: optional self-hosted OpenAI-compatible AI gateway.
@@ -511,6 +513,13 @@ def migrate_database(c):
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_subscription_history_user ON subscription_history(user_id, created_at)")
         set_schema_version(c, 22)
+    if version < 25:
+        c.execute("""CREATE TABLE IF NOT EXISTS weekly_reports(
+            report_week TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
+        set_schema_version(c, 25)
     if version < DB_SCHEMA_VERSION:
         set_schema_version(c, DB_SCHEMA_VERSION)
 
@@ -700,6 +709,11 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS payments(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,payload TEXT,currency TEXT,total_amount INTEGER,telegram_charge_id TEXT UNIQUE,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS favorites(user_id INTEGER,asset TEXT,created_at TEXT NOT NULL,PRIMARY KEY(user_id,asset))""")
     c.execute("""CREATE TABLE IF NOT EXISTS daily_reports(report_date TEXT PRIMARY KEY,data TEXT NOT NULL,created_at TEXT NOT NULL)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS weekly_reports(
+        report_week TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS channel_reactions(
         id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, message_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL, reaction TEXT NOT NULL, is_paid INTEGER NOT NULL DEFAULT 0,
@@ -1456,7 +1470,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     cur_ref=c.execute("INSERT OR IGNORE INTO referrals(inviter_id,invited_id,created_at,rewarded) VALUES(?,?,?,0)",(int(inviter["user_id"]),uid,datetime.now(TZ).isoformat()))
                     c.commit()
                     if cur_ref.rowcount == 1:
-                        try: token_referral_reward(int(inviter["user_id"]), uid)
+                        try:
+                            token_referral_reward(int(inviter["user_id"]), uid)
+                            try:
+                                await context.bot.send_message(
+                                    chat_id=int(inviter["user_id"]),
+                                    text="🎉 یک دعوت موفق ثبت شد!\n🎁 پاداش دعوت به کیف پولت اضافه شد.\nبرای دیدن آمار: /referral"
+                                )
+                            except Exception:
+                                logger.exception("Referral reward notification failed")
                         except Exception: logger.exception("Referral token reward failed")
                 c.close()
             except Exception as e: logger.warning("Referral registration failed: %s",e)
@@ -2576,14 +2598,14 @@ def topic_specific_fallback(topic, attempt=1):
 
 def generate_unique_auto_post(channel_id, category, topic):
     recent=recent_auto_posts(channel_id,8)
-    avoid="\\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
+    avoid="\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
     for attempt in range(1,9):
         content=ai_generate_post(topic, avoid_text=avoid, variation_seed=attempt)
         duplicate,score=post_is_duplicate(channel_id,topic,content)
         if not duplicate and _is_topic_relevant(content,topic):
             return content
         logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
-        avoid += f"\\n- نسخه ردشده: {str(content)[:220]}"
+        avoid += f"\n- نسخه ردشده: {str(content)[:220]}"
     for attempt in range(1,9):
         candidate=topic_specific_fallback(topic,attempt)
         duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.90)
@@ -2600,54 +2622,80 @@ def generate_unique_auto_post(channel_id, category, topic):
             return candidate
     raise RuntimeError("Unable to generate a unique automatic post")
 
-def ai_generate_post(topic, avoid_text='', variation_seed=1):
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    model = os.environ.get("OPENAI_MODEL", "gpt-5-mini").strip()
-    focus = _topic_focus(topic)
-    topic_terms = ", ".join(_topic_terms(topic)[:6])
-    if api_key:
-        try:
-            prompt = (
-                "تو نویسنده محتوای تخصصی کانال MyTasks هستی.\n"
-                f"موضوع انتخاب‌شده و غیرقابل‌تغییر: «{topic}»\n"
-                f"راهنمای محتوایی: {focus}\n"
-                f"واژه‌های مرتبط پیشنهادی: {topic_terms}\n"
-                f"تنوع تولید: نسخه {variation_seed}.\n"
-                f"پست‌های اخیر که نباید از نظر جمله‌بندی، تیتر یا ساختار تکرار شوند:\n{avoid_text[:1800]}\n\n"
-                "قانون بسیار مهم: حداقل ۸۰ درصد متن باید مستقیماً درباره همین موضوع انتخاب‌شده باشد. "
-                "موضوع را با موضوعات عمومی مدیریت هدف، انگیزشی یا بهره‌وری جایگزین نکن. "
-                "اگر موضوع درباره ورزش است، درباره خود ورزش و اثرات و اجرای آن بنویس؛ اگر درباره خواب است، درباره خواب بنویس؛ "
-                "و همین منطق را برای هر موضوع دیگری رعایت کن.\n"
-                "حداکثر 120 کلمه. یک تیتر دقیق، توضیح کوتاه موضوع، 3 نکته کاربردی مرتبط و در پایان یک تمرین/اقدام یک‌خطی مرتبط بده. "
-                "ادعاهای پزشکی یا مالی قطعی نکن. فقط متن پست را برگردان."
-            )
-            payload = json.dumps({
-                "model": model,
-                "input": prompt,
-                "max_output_tokens": 360
-            }).encode("utf-8")
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/responses",
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=35) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            text_out = data.get("output_text", "").strip()
-            if text_out and _is_topic_relevant(text_out, topic):
-                return text_out
-            if text_out:
-                logger.warning("AI output rejected for weak topic relevance: %s", topic)
-        except Exception as e:
-            logger.error("AI text generation failed: %s", e)
+def _ai_post_prompt(topic, focus, topic_terms, avoid_text, variation_seed):
+    return (
+        "تو نویسنده حرفه‌ای محتوای کانال MyTasks هستی.\n"
+        f"موضوع انتخاب‌شده و غیرقابل‌تغییر: «{topic}»\n"
+        f"راهنمای موضوع: {focus}\n"
+        f"کلیدواژه‌ها: {topic_terms}\n"
+        f"نسخه: {variation_seed}\n"
+        f"پست‌های اخیر که نباید تکرار شوند:\n{avoid_text[:1800]}\n\n"
+        "فقط متن نهایی پست را برگردان. خود prompt، قوانین، تحلیل یا توضیح فرایند را منتشر نکن. "
+        "حداکثر 120 کلمه. یک تیتر دقیق، یک توضیح کوتاه، سه نکته کاربردی مرتبط و یک اقدام یک‌خطی مرتبط بنویس. "
+        "اگر موضوع ورزش است فقط درباره همان ورزش/تمرین بنویس؛ اگر خواب است درباره خواب؛ موضوع را به مدیریت هدف عمومی تبدیل نکن. "
+        "از ادعاهای قطعی پزشکی یا مالی خودداری کن. متن را با پاراگراف‌بندی طبیعی و بدون نمایش عبارت‌های literal مانند \\\\n برگردان."
+    )
 
-    # Topic-specific fallback. Never use one generic goal-management text for
-    # every automatic topic.
-    return topic_specific_fallback(topic, variation_seed)
+def _clean_ai_post(text):
+    text=str(text or "").strip()
+    text=text.replace("\\\\r\\\\n","\n").replace("\\\\n","\n").replace("\\r\\n","\n")
+    text=re.sub(r'\n{3,}','\n\n',text)
+    # Remove accidental prompt/meta preambles.
+    bad_prefixes=("تمام محتوای پست باید","قانون بسیار مهم","prompt:","system:")
+    lines=text.splitlines()
+    while lines and any(lines[0].strip().lower().startswith(x.lower()) for x in bad_prefixes):
+        lines.pop(0)
+    return "\n".join(lines).strip()
+
+def _gemini_generate_text(prompt):
+    if not GEMINI_API_KEY:
+        return ""
+    try:
+        payload=json.dumps({
+            "contents":[{"parts":[{"text":prompt}]}],
+            "generationConfig":{"temperature":0.8,"maxOutputTokens":360}
+        },ensure_ascii=False).encode("utf-8")
+        url=f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(GEMINI_MODEL)}:generateContent?key={urllib.parse.quote(GEMINI_API_KEY)}"
+        req=urllib.request.Request(url,data=payload,headers={"Content-Type":"application/json"},method="POST")
+        with urllib.request.urlopen(req,timeout=35) as resp:
+            data=json.loads(resp.read().decode("utf-8"))
+        parts=data.get("candidates",[{}])[0].get("content",{}).get("parts",[])
+        return _clean_ai_post("".join(str(x.get("text","")) for x in parts))
+    except Exception as e:
+        logger.error("Gemini text generation failed: %s",e)
+        return ""
+
+def ai_generate_post(topic, avoid_text='', variation_seed=1):
+    focus=_topic_focus(topic)
+    topic_terms=", ".join(_topic_terms(topic)[:6])
+    prompt=_ai_post_prompt(topic,focus,topic_terms,avoid_text,variation_seed)
+
+    providers=[]
+    if n8n_configured(): providers.append(("n8n",lambda:_n8n_ai_fallback_sync(prompt)))
+    if omniroute_configured(): providers.append(("OmniRoute",lambda:_omniroute_ai_sync(prompt)))
+    if GEMINI_API_KEY: providers.append(("Gemini",lambda:_gemini_generate_text(prompt)))
+
+    api_key=os.environ.get("OPENAI_API_KEY","").strip()
+    if api_key:
+        def _openai():
+            payload=json.dumps({"model":OPENAI_MODEL,"input":prompt,"max_output_tokens":360},ensure_ascii=False).encode("utf-8")
+            req=urllib.request.Request("https://api.openai.com/v1/responses",data=payload,
+                headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},method="POST")
+            with urllib.request.urlopen(req,timeout=35) as resp:
+                data=json.loads(resp.read().decode("utf-8"))
+            return _clean_ai_post(data.get("output_text",""))
+        providers.append(("OpenAI",_openai))
+
+    for name,fn in providers:
+        try:
+            result=_clean_ai_post(fn())
+            if result and _is_topic_relevant(result,topic):
+                logger.info("AI post generated via %s",name)
+                return result
+        except Exception as e:
+            logger.error("%s post generation failed: %s",name,e)
+
+    return topic_specific_fallback(topic,variation_seed)
 
 
 def get_auto_topic():
@@ -2738,13 +2786,10 @@ async def send_auto_channel_post(context, channel, topic, category=None):
     content=generate_unique_auto_post(channel,category,topic)
     bot_username,channel_username=await get_identity_handles(context.bot,channel)
     content=content[:950]+compact_channel_footer(bot_username,channel_username)
-    image=await generate_topic_image(topic)
+    # Channel auto-posts are intentionally text-only. Feedback is collected in
+    # the end-of-day poll, not under each individual post.
     try:
-        feedback_markup=content_feedback_keyboard(topic)
-        if image is not None:
-            msg=await context.bot.send_photo(chat_id=channel,photo=image,caption=content,reply_markup=feedback_markup)
-        else:
-            msg=await context.bot.send_message(chat_id=channel,text=content,reply_markup=feedback_markup)
+        msg=await context.bot.send_message(chat_id=channel,text=content)
         save_auto_post_history(channel,topic,category,content)
         if any(k in topic for k in ("ورزش","حرکات","تمرین")):
             try:
@@ -2814,9 +2859,8 @@ async def auto_channel_job(context):
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
         if pending and pending["status"]=="approved":
             try:
-                image=await generate_topic_image(pending["topic"]); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
-                if image is not None: await context.bot.send_photo(chat_id=channel,photo=image,caption=content[:1024],reply_markup=content_feedback_keyboard(pending["topic"]))
-                else: await context.bot.send_message(chat_id=channel,text=content,reply_markup=content_feedback_keyboard(pending["topic"]))
+                bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
+                await context.bot.send_message(chat_id=channel,text=content)
                 save_auto_post_history(channel,pending["topic"],get_auto_setting("category","random"),content)
                 log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
             except Exception as e: logger.error("Approved auto post failed: %s",e)
@@ -2851,6 +2895,8 @@ def channel_keyboard():
         [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
          InlineKeyboardButton("🤖 ساخت پست هوشمند", callback_data="ch:smart")],
         [InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list"),
+         InlineKeyboardButton("🕘 تاریخچه انتشار", callback_data="ch:history")],
+        [InlineKeyboardButton("🧩 چند پست / زمان‌بندی", callback_data="ch:batch"),
          InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
         [InlineKeyboardButton("📢 کانال‌های متصل", callback_data="ch:channels")],
         [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
@@ -3177,6 +3223,32 @@ async def channel_panel_callback(update, context):
     parts=q.data.split(":")
     action = parts[1] if len(parts)>1 else "main"
     cfg = get_channel_config()
+    if action=="history":
+        channel_id=str(cfg["channel_id"]) if cfg and cfg["channel_id"] else ""
+        c=db()
+        rows=c.execute("SELECT topic,category,content,created_at FROM auto_post_history WHERE channel_id=? ORDER BY id DESC LIMIT 30",(channel_id,)).fetchall() if channel_id else []
+        c.close()
+        if not rows:
+            text="🕘 <b>تاریخچه انتشار</b>\n\nهنوز پستی در تاریخچه ثبت نشده است."
+        else:
+            lines=["🕘 <b>تاریخچه انتشار</b>",""]
+            for r in rows:
+                stamp=str(r["created_at"]).replace("T"," ")[:16]
+                preview=html.escape(str(r["content"]).replace("\n"," ")[:90])
+                lines.append(f"📅 <code>{stamp}</code>\n📝 {html.escape(str(r['topic']))}\n{preview}\n")
+            text="\n".join(lines)
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
+        return
+    if action=="batch":
+        context.user_data["channel_state"]="batch"
+        await q.message.edit_text(
+            "🧩 <b>چند پست / زمان‌بندی</b>\n\n"
+            "چند خط بفرست؛ هر خط یک پست باشد و زمان را با | جدا کن:\n"
+            "<code>14:00 | متن پست اول</code>\n"
+            "<code>16:00 | متن پست دوم</code>\n\n"
+            "اگر متن طولانی باشد، می‌توانی فقط متن را بفرستی؛ ربات آن را به چند بخش منطقی تقسیم می‌کند.",
+            parse_mode="HTML")
+        return
     if action=="channels":
         rows=list_managed_channels(); active=str(cfg["channel_id"]) if cfg and cfg["channel_id"] else ""
         kb=[]
@@ -3212,7 +3284,7 @@ async def channel_panel_callback(update, context):
     elif action == "auto":
         await q.message.edit_text(
             "🤖 <b>انتشار خودکار</b>\n\n"
-            "پست کوتاه + تصویر مرتبط + دسته‌بندی و زمان‌بندی قابل تنظیم.",
+            "پست متنی تمیز + دسته‌بندی و زمان‌بندی قابل تنظیم.\nتصویر خودکار برای انتشار کانال خاموش است.",
             parse_mode="HTML",
             reply_markup=auto_channel_keyboard(),
         )
@@ -3265,7 +3337,7 @@ async def channel_schedule_callback(update,context):
     if a=="now":
         cfg=get_channel_config()
         if not cfg or not cfg["channel_id"]: await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=context.user_data["channel_content"]); context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
+        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=_clean_ai_post(context.user_data["channel_content"])); context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
         except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.edit_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
     elif a=="once": context.user_data["channel_state"]="once"; await q.message.edit_text("📅 تاریخ و ساعت را بفرست: 2026-08-20 18:30")
     elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.edit_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
@@ -3324,6 +3396,31 @@ async def channel_text_save(update,context):
                 "حالت تنظیم کانال بسته شد. دوباره «تنظیم کانال» را بزن.",
                 reply_markup=channel_keyboard(),
             )
+        return True
+    if s=="batch":
+        cfg=get_channel_config()
+        if not cfg or not cfg["channel_id"]:
+            await update.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return True
+        lines=[x.strip() for x in text.splitlines() if x.strip()]
+        scheduled=0; immediate=[]
+        for line in lines:
+            if "|" in line:
+                tm,body=line.split("|",1); tm=parse_time(tm.strip()); body=body.strip()
+                if tm and body:
+                    add_channel_post(body,"daily",tm,None,None,uid); scheduled+=1
+                    continue
+            immediate.append(line)
+        # A long text without explicit times is split into readable chunks.
+        if len(lines)==1 and len(text)>700 and not scheduled:
+            chunks=[x.strip() for x in re.split(r'\n\s*\n',text) if x.strip()]
+            if len(chunks)<2:
+                words=text.split(); chunks=[" ".join(words[i:i+90]) for i in range(0,len(words),90)]
+            for i,chunk in enumerate(chunks[:12]):
+                hh=(datetime.now(TZ)+timedelta(minutes=5*(i+1))).strftime("%H:%M")
+                add_channel_post(chunk,"once",None,None,(datetime.now(TZ)+timedelta(minutes=5*(i+1))).isoformat(),uid)
+                scheduled+=1
+        context.user_data.pop("channel_state",None)
+        await update.message.reply_text(f"✅ {scheduled} پست برای انتشار زمان‌بندی شد.",reply_markup=channel_keyboard())
         return True
     if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
@@ -3814,6 +3911,25 @@ def gregorian_to_jalali(gy,gm,gd):
     while jm<11 and jdn>=jdim[jm]: jdn-=jdim[jm]; jm+=1
     return jy,jm+1,jdn+1
 
+def jalali_to_gregorian(jy,jm,jd):
+    jy=int(jy); jm=int(jm); jd=int(jd)
+    jy2=jy-979
+    jdn=365*jy2 + (jy2//33)*8 + ((jy2%33)+3)//4 + (0 if jm<=6 else 6*(jm-1)+2) + (jm-1)*31 + (jd-1)
+    gdn=jdn+79
+    gy=1600+400*(gdn//146097); gdn%=146097
+    leap=True
+    if gdn>=36525:
+        gdn-=1; gy+=100*(gdn//36524); gdn%=36524
+        if gdn>=365: gdn+=1
+        else: leap=False
+    gy+=4*(gdn//1461); gdn%=1461
+    if gdn>=366:
+        leap=False; gdn-=1; gy+=gdn//365; gdn%=365
+    gm=0; gdim=[31,29 if leap else 28,31,30,31,30,31,31,30,31,30,31]
+    while gm<12 and gdn>=gdim[gm]:
+        gdn-=gdim[gm]; gm+=1
+    return gy,gm+1,gdn+1
+
 def jalali_date_str(value):
     try:
         d=value if hasattr(value,'year') else datetime.fromisoformat(str(value)[:10]).date(); y,m,day=gregorian_to_jalali(d.year,d.month,d.day); return f"{y:04d}/{m:02d}/{day:02d}"
@@ -4030,6 +4146,10 @@ async def customer_panel_callback(update,context):
     if a=="reschedulebook":
         await customer_reschedule_booking(update,context,int(p[2])); return
     if a=="bookdate": await booking_date_menu(update,context,p[2]); return
+    if a=="bookmonth":
+        await booking_month_menu(update,context,p[2]); return
+    if a=="calmonth":
+        await customer_calendar_month(update,context,p[2]); return
     if a=="booklink":
         if len(p)>2:
             owner=int(p[2]); prof=ensure_business_profile(owner); context.user_data["booking_owner"]=owner
@@ -4064,11 +4184,45 @@ async def customer_today(update,context):
     lines.append(f"\n👥 مجموع: {len(rows)}")
     await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=customer_back(uid))
 
+def _jalali_months_buttons(prefix, years=2):
+    gy,gm,gd=gregorian_to_jalali(*datetime.now(TZ).date().timetuple()[:3])
+    rows=[]
+    for y in range(gy,gy+years):
+        for m in range(1,13):
+            rows.append([InlineKeyboardButton(f"🗓️ {JALALI_MONTHS_FA[m-1]} {fa_digits(y)}",
+                                               callback_data=f"{prefix}:{y:04d}-{m:02d}")])
+    return rows
+
+
 async def customer_calendar(update,context):
-    q=update.callback_query; uid=q.from_user.id; today=datetime.now(TZ).date(); c=db(); kb=[]
-    for i in range(30):
-        d=today+timedelta(days=i); iso=d.isoformat(); n=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked'",(uid,iso)).fetchone()["n"]; h=c.execute("SELECT 1 FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,iso)).fetchone(); kb.append([InlineKeyboardButton(f"{'🔴' if h else '🟢'} {iso} — {fa_digits(n)} نوبت",callback_data=f"cust:day:{iso}")])
-    c.close(); kb.append([back_button("cust:main",uid=uid)]); await q.message.edit_text("🗓️ <b>تقویم کاری و نوبت‌ها</b>\n۳۰ روز آینده:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query; uid=q.from_user.id
+    kb=_jalali_months_buttons("cust:calmonth")
+    kb.append([back_button("cust:main",uid=uid)])
+    await q.message.edit_text(
+        "🗓️ <b>تقویم کاری و نوبت‌ها</b>\n\nماه موردنظر را انتخاب کن.\nتمام ماه‌های ۲ سال آینده در دسترس است.",
+        parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+
+async def customer_calendar_month(update,context,ym):
+    q=update.callback_query; uid=q.from_user.id
+    try: jy,jm=map(int,ym.split("-")); gy,gm,gd=jalali_to_gregorian(jy,jm,1)
+    except Exception:
+        await q.answer("تاریخ نامعتبر است.",show_alert=True); return
+    import calendar as _cal
+    today=datetime.now(TZ).date()
+    # Number of days in a Jalali month.
+    days=31 if jm<=6 else 30 if jm<=11 else 30 if jalali_to_gregorian(jy+1,1,1)[0] else 29
+    kb=[]; c=db()
+    for day in range(1,days+1):
+        try: gy,gm,gd=jalali_to_gregorian(jy,jm,day); d=datetime(gy,gm,gd,tzinfo=TZ).date()
+        except Exception: continue
+        iso=d.isoformat()
+        n=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked'",(uid,iso)).fetchone()["n"]
+        h=c.execute("SELECT 1 FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,iso)).fetchone()
+        mark="🔴" if h else "🟢"
+        kb.append([InlineKeyboardButton(f"{mark} {fa_digits(day)} — {fa_digits(n)} نوبت",callback_data=f"cust:day:{iso}")])
+    c.close()
+    kb.append([InlineKeyboardButton("⬅️ ماه‌ها",callback_data="cust:calendar")])
+    await q.message.edit_text(f"🗓️ <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nروز را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_day(update,context,d):
     q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? ORDER BY a.appointment_time",(uid,d)).fetchall(); h=c.execute("SELECT note FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,d)).fetchone(); c.close(); text=f"📅 <b>{jalali_pretty_date(d)}</b>\n{'🚫 تعطیل' if h else '🟢 روز کاری'}\n\n"+ ("\n".join(f"🕐 {r['appointment_time']} — {html.escape(r['name'])}" + (f" — 📞 {html.escape(r['phone'])}" if r['phone'] else "") for r in rows) or "بدون نوبت"); kb=[[InlineKeyboardButton("🚫 باز/تعطیل",callback_data=f"cust:holiday:{d}")],[back_button("cust:calendar",uid=uid)]]; await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
@@ -4373,33 +4527,34 @@ async def customer_booking_start(update,context,token):
     return True
 
 async def booking_date_menu_list(update,context,reschedule=False):
+    kb=_jalali_months_buttons("cust:bookmonth")
+    kb.append([InlineKeyboardButton("⬅️ رزرو من" if reschedule else "⬅️ برگشت",
+                                    callback_data="cust:mybookings" if reschedule else "nav:main")])
+    text=("🔄 <b>تغییر زمان رزرو</b>\n\nماه موردنظر را انتخاب کن."
+          if reschedule else "📅 <b>تقویم رزرو آنلاین</b>\n\nماه موردنظر را انتخاب کن.")
+    target=update.callback_query.message if update.callback_query else update.message
+    await target.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)) if update.callback_query else await target.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+
+async def booking_month_menu(update,context,ym):
     owner=context.user_data.get("booking_owner")
-    today=datetime.now(TZ).date()
-    kb=[]
-    for i in range(14):
-        d=today+timedelta(days=i)
-        slots=available_slots(owner,d.isoformat()) if owner else []
-        count=len(slots)
-        status=f"🟢 {fa_digits(count)} زمان آزاد" if count else "🔴 تکمیل"
-        kb.append([InlineKeyboardButton(
-            f"📅 {jalali_pretty_date(d)} — {status}",
-            callback_data=f"cust:bookdate:{d.isoformat()}"
-        )])
-    kb.append([InlineKeyboardButton(
-        "⬅️ برگشت" if not reschedule else "⬅️ رزرو من",
-        callback_data="cust:mybookings" if reschedule else "nav:main"
-    )])
-    if update.callback_query:
-        await update.callback_query.message.edit_text(
-            "🔄 <b>تغییر زمان رزرو</b>\n\nتاریخ جدید را انتخاب کن:" if reschedule
-            else "📅 <b>تقویم رزرو آنلاین</b>\n\nتاریخ را انتخاب کن:",
-            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
-        )
-    else:
-        await update.message.reply_text(
-            "📅 <b>تقویم رزرو آنلاین</b>\n\nتاریخ را انتخاب کن:",
-            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
-        )
+    if not owner:
+        await update.callback_query.answer("صاحب کسب‌وکار مشخص نیست.",show_alert=True); return
+    try: jy,jm=map(int,ym.split("-"))
+    except Exception:
+        await update.callback_query.answer("تاریخ نامعتبر است.",show_alert=True); return
+    today=datetime.now(TZ).date(); kb=[]
+    days=31 if jm<=6 else 30
+    if jm==12:
+        days=30 if jalali_to_gregorian(jy+1,1,1)[0] else 29
+    for day in range(1,days+1):
+        try: gy,gm,gd=jalali_to_gregorian(jy,jm,day); d=datetime(gy,gm,gd,tzinfo=TZ).date()
+        except Exception: continue
+        if d<today: continue
+        slots=available_slots(owner,d.isoformat())
+        status=f"🟢 {fa_digits(len(slots))} زمان آزاد" if slots else "🔴 تکمیل"
+        kb.append([InlineKeyboardButton(f"📅 {fa_digits(day)} — {status}",callback_data=f"cust:bookdate:{d.isoformat()}")])
+    kb.append([InlineKeyboardButton("⬅️ ماه‌ها",callback_data="cust:booklink")])
+    await update.callback_query.message.edit_text(f"📅 <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nروز را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def booking_date_menu(update,context,d):
     context.user_data["booking_date"]=d
@@ -5435,7 +5590,17 @@ async def referral(update,context):
         finally:
             c.close()
     me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code
-    await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}\n💎 هر ۱۰ دعوت موفق = ۳۰ روز VIP")
+    reward=int(token_setting("referral_tokens_per_success","10") or 10)
+    next_count=((n//10)+1)*10
+    await update.message.reply_text(
+        f"🤝 <b>دعوت دوستان</b>\n\n"
+        f"🔗 لینک اختصاصی تو:\n<code>{html.escape(link)}</code>\n\n"
+        f"👥 دعوت موفق: <b>{n}</b> نفر\n"
+        f"🎁 پاداش دریافت‌شده: <b>{n*reward}</b> توکن\n"
+        f"🎁 هر دعوت موفق: <b>{reward}</b> توکن\n"
+        f"💎 هر ۱۰ دعوت موفق = ۳۰ روز VIP\n"
+        f"📈 تا پاداش VIP بعدی: <b>{max(0,next_count-n)}</b> دعوت",
+        parse_mode="HTML")
 
 def prices_keyboard(uid):
     fa=lang(uid)=="fa"
@@ -5530,8 +5695,27 @@ async def fetch_price(asset):
         return f"{meta.get('regularMarketPrice',0):,.2f} USD"
     urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
     # بدون تبدیل عددی؛ فقط واحد نمایش داده می‌شود.
-    raw = await asyncio.to_thread(tgju_value, urls[asset])
-    if asset in ("usd", "eur", "gold18", "coin"):
+    try:
+        raw = await asyncio.to_thread(tgju_value, urls[asset])
+    except Exception as primary_error:
+        # Optional secondary source for USD/EUR; never invent a price when both fail.
+        if asset in ("usd", "eur"):
+            secondary = await v25_bonbast_secondary(asset) if "v25_bonbast_secondary" in globals() else None
+            if secondary is not None:
+                return f"{float(secondary):,.0f} ریال"
+        raise primary_error
+    if asset in ("usd", "eur"):
+        try:
+            secondary = await v25_bonbast_secondary(asset) if "v25_bonbast_secondary" in globals() else None
+            normalized = float(raw.replace(",", "").replace("٫", ".").replace("٬", ""))
+            if secondary is not None and normalized:
+                # If sources are within 1%, average to reduce transient source noise.
+                if abs(float(secondary)-normalized)/max(abs(normalized),1) <= 0.01:
+                    normalized=(normalized+float(secondary))/2
+        except Exception:
+            normalized = float(raw.replace(",", "").replace("٫", ".").replace("٬", ""))
+        return f"{normalized:,.0f} ریال"
+    if asset in ("gold18", "coin"):
         normalized = raw.replace(",", "").replace("٫", ".").replace("٬", "")
         return f"{float(normalized):,.0f} ریال"
     return raw
@@ -5819,6 +6003,7 @@ async def build_daily_report():
         "likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "auto_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "published_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "total_users":c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"],
         "usage_events":c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "usage_users":c.execute("SELECT COUNT(DISTINCT user_id) n FROM bot_usage_events WHERE substr(created_at,1,10)=? AND user_id IS NOT NULL",(d,)).fetchone()["n"],
@@ -5828,6 +6013,12 @@ async def build_daily_report():
         "tickets_created":c.execute("SELECT COUNT(*) n FROM tickets WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "tickets_closed":c.execute("SELECT COUNT(*) n FROM tickets WHERE status IN ('closed','resolved') AND substr(updated_at,1,10)=?",(d,)).fetchone()["n"],
         "ticket_messages":c.execute("SELECT COUNT(*) n FROM ticket_messages WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "payment_count":c.execute("SELECT COUNT(*) n FROM payments WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "paying_users":c.execute("SELECT COUNT(DISTINCT user_id) n FROM payments WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "revenue":c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "vip_users":c.execute("SELECT COUNT(*) n FROM users WHERE vip_until IS NOT NULL AND vip_until>?",(datetime.now(TZ).isoformat(),)).fetchone()["n"],
+        "normal_users":c.execute("SELECT COUNT(*) n FROM users WHERE vip_until IS NULL OR vip_until<=?",(datetime.now(TZ).isoformat(),)).fetchone()["n"],
+        "xp_spent":c.execute("SELECT COALESCE(SUM(-amount),0) n FROM xp_log WHERE amount<0 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
     }
     top_usage=c.execute("SELECT event_type,COUNT(*) n FROM bot_usage_events WHERE substr(created_at,1,10)=? GROUP BY event_type ORDER BY n DESC LIMIT 6",(d,)).fetchall()
     data["top_usage"]=[{"event":r["event_type"],"count":r["n"]} for r in top_usage]
@@ -5839,7 +6030,7 @@ def get_daily_report_text():
     top=x.get("top_usage") or []
     top_text=" | ".join(f"{row.get('event')}: {row.get('count')}" for row in top[:6]) or "ثبت نشده"
     return ("📋 گزارش پایان روز\n\n"
-            f"📢 پست‌ها: {x.get('posts',0)}\n"
+            f"📢 پست‌های زمان‌بندی‌شده: {x.get('posts',0)}\n" + f"🤖 پست‌های خودکار منتشرشده: {x.get('published_posts',x.get('auto_posts',0))}\n"
             f"👥 کاربران ثبت‌شده: {x.get('total_users',0)}\n"
             f"🟢 کاربران فعال امروز: {x.get('active',0)}\n"
             f"🆕 کاربران جدید: {x.get('new',0)}\n"
@@ -5856,6 +6047,73 @@ def get_daily_report_text():
             f"✅ تیکت‌های بسته‌شده: {x.get('tickets_closed',0)}\n"
             f"💬 پیام‌های پشتیبانی: {x.get('ticket_messages',0)}\n"
             f"🔥 فعالیت‌های پرتکرار: {top_text}")
+
+async def build_weekly_admin_report():
+    """Build a Friday-end operational/financial report for Owner/authorized admins."""
+    now=datetime.now(TZ)
+    # Iran week: Saturday(0) ... Friday(6) in Jalali terms is not represented by
+    # Python weekday directly; we only use the current 7-day rolling window.
+    end=now.date()
+    start=end-timedelta(days=6)
+    start_iso=start.isoformat()
+    end_iso=end.isoformat()
+    c=db()
+    data={
+        "start": start_iso, "end": end_iso,
+        "new_users": c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "active_users": c.execute("SELECT COUNT(DISTINCT user_id) n FROM activity_log WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "payments": c.execute("SELECT COUNT(*) n FROM payments WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "paying_users": c.execute("SELECT COUNT(DISTINCT user_id) n FROM payments WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "revenue": c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "vip_users": c.execute("SELECT COUNT(*) n FROM users WHERE vip_until IS NOT NULL AND vip_until>?",(now.isoformat(),)).fetchone()["n"],
+        "normal_users": c.execute("SELECT COUNT(*) n FROM users WHERE vip_until IS NULL OR vip_until<=?",(now.isoformat(),)).fetchone()["n"],
+        "xp_earned": c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE amount>0 AND substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "xp_spent": c.execute("SELECT COALESCE(SUM(-amount),0) n FROM xp_log WHERE amount<0 AND substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "tickets": c.execute("SELECT COUNT(*) n FROM tickets WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "tickets_closed": c.execute("SELECT COUNT(*) n FROM tickets WHERE status IN ('closed','resolved') AND substr(updated_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+        "posts": c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10) BETWEEN ? AND ?",(start_iso,end_iso)).fetchone()["n"],
+    }
+    key=f"{start_iso}:{end_iso}"
+    c.execute("INSERT OR REPLACE INTO weekly_reports(report_week,data,created_at) VALUES(?,?,?)",(key,json.dumps(data,ensure_ascii=False),now.isoformat()))
+    c.commit(); c.close()
+    return data
+
+def get_weekly_admin_report_text(data):
+    return (
+        "📊 گزارش هفتگی ربات\n\n"
+        f"📅 بازه: {data.get('start','—')} تا {data.get('end','—')}\n"
+        f"🆕 کاربران جدید: {data.get('new_users',0)}\n"
+        f"🟢 کاربران فعال: {data.get('active_users',0)}\n"
+        f"💳 پرداخت‌ها: {data.get('payments',0)}\n"
+        f"👤 خریداران یکتا: {data.get('paying_users',0)}\n"
+        f"💰 مبلغ پرداخت‌های ثبت‌شده: {data.get('revenue',0):,}\n"
+        f"💎 VIP فعال: {data.get('vip_users',0)}\n"
+        f"👤 عادی: {data.get('normal_users',0)}\n"
+        f"⭐ XP کسب‌شده: {data.get('xp_earned',0)}\n"
+        f"⭐ XP مصرف‌شده: {data.get('xp_spent',0)}\n"
+        f"🎫 تیکت جدید: {data.get('tickets',0)}\n"
+        f"✅ تیکت بسته‌شده: {data.get('tickets_closed',0)}\n"
+        f"📢 پست خودکار: {data.get('posts',0)}"
+    )
+
+async def weekly_admin_report_job(context):
+    now=datetime.now(TZ)
+    if now.hour != 23 or now.minute != 59 or now.weekday() != 4:
+        return
+    key=(now.date()-timedelta(days=6)).isoformat()+":"+now.date().isoformat()
+    if get_system_setting("last_weekly_admin_report", "") == key:
+        return
+    try:
+        data=await build_weekly_admin_report()
+        report=get_weekly_admin_report_text(data)
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(chat_id=admin_id,text=report)
+            except Exception:
+                logger.exception("Weekly admin report delivery failed")
+        set_system_setting("last_weekly_admin_report",key)
+    except Exception:
+        logger.exception("Weekly admin report build failed")
 
 async def run_health_checks(bot,admin_id=0):
     checks=[]
@@ -8758,6 +9016,7 @@ def main():
         app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
         app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
         app.job_queue.run_repeating(final_daily_report_job, interval=60, first=25)
+        app.job_queue.run_repeating(weekly_admin_report_job, interval=60, first=27)
         app.job_queue.run_repeating(scheduled_health_check_job, interval=60, first=60)
         app.job_queue.run_repeating(customer_reminder_job, interval=60, first=30)
         app.job_queue.run_repeating(customer_morning_job, interval=60, first=35)
@@ -8765,7 +9024,7 @@ def main():
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
 
-    logger.info("MyTasks build: 2026-08-22-OMNI-AI-FIX-02")
+    logger.info("MyTasks build: 2026-08-22-FINAL-AI-POST-REFERRAL-01")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
