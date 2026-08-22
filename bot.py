@@ -5946,6 +5946,17 @@ async def ai_chat_text(update,context):
         # Secondary path: self-hosted OmniRoute.
         if not answer and omniroute_configured():
             answer=_omniroute_ai_sync(text)
+        # Third path: Gemini. It is already used for channel-post generation;
+        # keep it as an independent chat fallback as well.
+        if not answer and GEMINI_API_KEY:
+            gemini_prompt = (
+                "پاسخ کوتاه، دقیق، مودبانه و امن به این سوال کاربر بده. "
+                "اگر موضوع پزشکی یا مالی است، پاسخ عمومی و غیرقطعی نگه دار.\n\n"
+                + text
+            )
+            answer = _gemini_generate_text(gemini_prompt)
+            if answer:
+                _record_service_event("gemini", "OK", "direct chat")
         # Last-resort direct OpenAI path, only when explicitly configured.
         if not answer and api_key:
             payload=json.dumps({
@@ -8999,6 +9010,8 @@ def main():
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
     app.add_handler(CallbackQueryHandler(feature_info_callback, pattern=r"^featinfo:"))
+    app.add_handler(CallbackQueryHandler(compact_section_callback, pattern=r"^menu:"))
+    app.add_handler(CallbackQueryHandler(compact_menu_callback, pattern=r"^cm:"))
     app.add_handler(CallbackQueryHandler(v25_callback, pattern=r"^v25:"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, v25_receipt_handler))
     app.add_handler(MessageHandler(filters.VOICE, v25_voice_handler))
@@ -9029,6 +9042,392 @@ def main():
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
+
+
+
+# Friendly user-facing report renderer. Unlike the old admin report gate,
+# this function is deliberately available to every registered user.
+_OLD_V25_REPORTS_FINAL = v25_reports
+async def v25_reports(update, context, period="day"):
+    uid = update.effective_user.id
+    today = datetime.now(TZ).date()
+    days = 1 if period == "day" else (7 if period == "week" else 30)
+    start = today - timedelta(days=days - 1)
+    c = db()
+    try:
+        rows = c.execute(
+            """SELECT goal_date,
+                      COUNT(*) AS total,
+                      SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+                      SUM(CASE WHEN status='missed' THEN 1 ELSE 0 END) AS missed
+               FROM goal_days
+               WHERE user_id=? AND goal_date BETWEEN ? AND ?
+               GROUP BY goal_date ORDER BY goal_date""",
+            (uid, start.isoformat(), today.isoformat()),
+        ).fetchall()
+    finally:
+        c.close()
+
+    done = sum(int(r["done"] or 0) for r in rows)
+    missed = sum(int(r["missed"] or 0) for r in rows)
+    total = sum(int(r["total"] or 0) for r in rows)
+    rate = (done / total * 100.0) if total else 0.0
+    label = {"day": "روزانه", "week": "هفتگی", "month": "ماهانه"}.get(period, "گزارش")
+
+    if lang(uid) == "fa":
+        lines = [
+            f"📊 <b>گزارش {label} شما</b>",
+            "",
+            f"سلام {html.escape(display_name(uid))} 👋",
+            "این گزارش خلاصه فعالیت و هدف‌های ثبت‌شده شما در بازه انتخاب‌شده است.",
+            "",
+            f"✅ انجام‌شده: <b>{done}</b>",
+            f"❌ انجام‌نشده: <b>{missed}</b>",
+            f"📌 کل موارد ثبت‌شده: <b>{total}</b>",
+            f"📈 نرخ موفقیت: <b>{rate:.1f}%</b>",
+            f"🗓 بازه: <b>{start.isoformat()} تا {today.isoformat()}</b>",
+        ]
+        if period == "week" and rows:
+            lines += ["", "📅 <b>جزئیات روزها:</b>"]
+            for r in rows:
+                d = r["goal_date"]
+                dt = datetime.fromisoformat(d).date()
+                day_names = ["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]
+                day_name = day_names[(dt.weekday() + 1) % 7]
+                lines.append(f"• {day_name} {d}: {int(r['done'] or 0)}/{int(r['total'] or 0)} ✅")
+        if not rows:
+            lines += ["", "ℹ️ هنوز برای این بازه فعالیت ثبت‌شده‌ای ندارید."]
+        text = "\n".join(lines)
+    else:
+        text = (
+            f"📊 <b>Your {label} Report</b>\n\n"
+            f"Hello {html.escape(display_name(uid))} 👋\n"
+            "Here is your activity summary for the selected period.\n\n"
+            f"✅ Completed: <b>{done}</b>\n"
+            f"❌ Missed: <b>{missed}</b>\n"
+            f"📌 Recorded items: <b>{total}</b>\n"
+            f"📈 Success rate: <b>{rate:.1f}%</b>\n"
+            f"🗓 Range: <b>{start.isoformat()} to {today.isoformat()}</b>"
+        )
+        if not rows:
+            text += "\n\nℹ️ No activity has been recorded for this period."
+
+    kb = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 روزانه" if lang(uid)=="fa" else "📊 Daily", callback_data="v25:reports"),
+            InlineKeyboardButton("📆 هفتگی" if lang(uid)=="fa" else "📆 Weekly", callback_data="v25:report_week"),
+            InlineKeyboardButton("🗓 ماهانه" if lang(uid)=="fa" else "🗓 Monthly", callback_data="v25:report_month"),
+        ],
+        [main_menu_button(uid)],
+    ])
+    if getattr(update, "callback_query", None):
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+# ===================== FINAL UX / RESILIENCE PATCH 2026-08-22 =====================
+# Compact navigation + public weekly report + safer callback failover.
+# This layer is additive: it does not delete or reset persistent user data.
+
+def _compact_menu_keyboard(uid, section):
+    fa = lang(uid) == "fa"
+    common = {
+        "goals": [
+            [("🎯 اهداف امروز", "cm:today"), ("✏️ هدف جدید", "cm:custom_goal")],
+            [("🏆 اهداف آماده", "cm:ready_goals"), ("✏️ ویرایش اهداف", "cm:edit_goals")],
+            [("📅 گزارش هفتگی", "cm:weekly"), ("📊 آمار من", "cm:stats")],
+        ],
+        "reports": [
+            [("📅 گزارش هفتگی", "cm:weekly"), ("📊 آمار من", "cm:stats")],
+            [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
+        ],
+        "tools": [
+            [("🤖 چت با AI", "cm:ai"), ("🎙️ دستیار صوتی", "cm:voice")],
+            [("📈 قیمت آنلاین", "cm:prices"), ("🧠 مرکز من", "cm:center")],
+        ],
+        "vip": [
+            [("💎 VIP و اشتراک", "cm:vip"), ("⭐ XP", "cm:xp")],
+            [("🤝 دعوت دوستان", "cm:referral"), ("🎟️ توکن‌های من", "cm:tokens")],
+        ],
+        "account": [
+            [("👤 پروفایل", "cm:profile"), ("⚙️ تنظیمات", "cm:settings")],
+            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم من", "cm:calendar")],
+        ],
+        "support": [
+            [("🎫 پشتیبانی", "cm:support"), ("📚 راهنمای ربات", "cm:guide")],
+        ],
+    }
+    titles = {
+        "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
+        "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
+        "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+        "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
+        "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
+        "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+    }
+    rows = []
+    for row in common.get(section, []):
+        rows.append([
+            InlineKeyboardButton((fa_text if fa else en_text), callback_data=cb)
+            for fa_text, cb in row
+            for en_text in [fa_text]
+        ])
+    # The labels above are intentionally Persian-first for this bot; translate
+    # the small set of category navigation buttons separately where needed.
+    if not fa:
+        en = {
+            "cm:today":"🎯 Today's Goals","cm:custom_goal":"✏️ New Goal",
+            "cm:ready_goals":"🏆 Ready Goals","cm:edit_goals":"✏️ Edit Goals",
+            "cm:weekly":"📅 Weekly Report","cm:stats":"📊 My Stats",
+            "cm:achievements":"🏆 Achievements","cm:xp":"⭐ XP",
+            "cm:ai":"🤖 AI Chat","cm:voice":"🎙️ Voice Assistant",
+            "cm:prices":"📈 Online Prices","cm:center":"🧠 My Center",
+            "cm:vip":"💎 VIP & Subscription","cm:referral":"🤝 Referrals",
+            "cm:tokens":"🎟️ My Tokens","cm:profile":"👤 Profile",
+            "cm:settings":"⚙️ Settings","cm:reminders":"🔔 Reminders",
+            "cm:calendar":"📅 Calendar","cm:support":"🎫 Support",
+            "cm:guide":"📚 Bot Guide",
+        }
+        rows = [[InlineKeyboardButton(en.get(btn.callback_data, btn.text), callback_data=btn.callback_data) for btn in row] for row in rows]
+    rows.append([
+        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home")
+    ])
+    rows.append([main_menu_button(uid)])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _compact_menu_show(update, context, section):
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    titles = {
+        "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
+        "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
+        "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+        "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
+        "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
+        "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+    }
+    text = titles.get(section, titles["goals"])[0 if fa else 1]
+    q = update.callback_query
+    if q:
+        await q.answer()
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_compact_menu_keyboard(uid, section))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=_compact_menu_keyboard(uid, section))
+
+
+async def compact_menu_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    data = q.data
+    await q.answer()
+    if data == "cm:home":
+        await q.message.edit_text(
+            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if lang(uid) == "fa"
+            else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=_compact_root_inline(uid),
+        )
+        return
+
+    routes = {
+        "cm:today": today,
+        "cm:custom_goal": custom_goal_start,
+        "cm:ready_goals": ready_menu,
+        "cm:edit_goals": edit_menu,
+        "cm:weekly": weekly,
+        "cm:stats": stats,
+        "cm:achievements": achievements,
+        "cm:xp": xp_command,
+        "cm:ai": ai_chat_start,
+        "cm:voice": None,
+        "cm:prices": prices,
+        "cm:center": v25_hub,
+        "cm:vip": vip_center,
+        "cm:referral": referral,
+        "cm:tokens": None,
+        "cm:profile": profile,
+        "cm:settings": settings,
+        "cm:reminders": v25_reminders_menu,
+        "cm:calendar": None,
+        "cm:support": support_start,
+        "cm:guide": general_guide,
+    }
+    if data == "cm:voice":
+        clear_flow(context)
+        await q.message.edit_text(
+            "🎙️ <b>دستیار صوتی</b>\n\nویس خودت را در پیام بعدی بفرست." if lang(uid) == "fa"
+            else "🎙️ <b>Voice Assistant</b>\n\nSend your voice message next.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+        )
+        context.user_data["v25_voice_mode"] = True
+        return
+    if data == "cm:tokens":
+        tokens_from_xp(uid)
+        await q.message.edit_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
+        return
+    if data == "cm:calendar":
+        await q.message.edit_text(
+            "📅 <b>تقویم من</b>\n\nاین بخش از «🧠 مرکز من» قابل مدیریت است." if lang(uid) == "fa"
+            else "📅 <b>My Calendar</b>\n\nManage it from My Center.",
+            parse_mode="HTML",
+            reply_markup=v25_hub_keyboard(uid)
+        )
+        return
+    fn = routes.get(data)
+    if fn:
+        clear_flow(context)
+        # Adapt the callback query into a minimal update object so existing
+        # message-based handlers can be reused without duplicating business logic.
+        proxy = type("_MenuUpdate", (), {
+            "effective_user": q.from_user,
+            "message": q.message,
+            "callback_query": None,
+        })()
+        try:
+            await fn(proxy, context)
+        except Exception:
+            logger.exception("Compact menu route failed: %s", data)
+            await q.message.reply_text(
+                "⚠️ این بخش موقتاً با مشکل روبه‌رو شد. بقیه امکانات ربات همچنان در دسترس است."
+                if lang(uid) == "fa" else
+                "⚠️ This section is temporarily unavailable. The rest of the bot is still available.",
+                reply_markup=keyboard(uid),
+            )
+        return
+
+
+def _compact_root_inline(uid):
+    fa = lang(uid) == "fa"
+    labels = [
+        ("🎯 برنامه من", "menu:goals", "🎯 My Plan"),
+        ("📊 گزارش و پیشرفت", "menu:reports", "📊 Reports"),
+        ("🤖 ابزارهای هوشمند", "menu:tools", "🤖 Smart Tools"),
+        ("💎 VIP و XP", "menu:vip", "💎 VIP & XP"),
+        ("👤 حساب من", "menu:account", "👤 My Account"),
+        ("🎫 پشتیبانی", "menu:support", "🎫 Support"),
+    ]
+    rows = []
+    for i in range(0, len(labels), 2):
+        rows.append([
+            InlineKeyboardButton((a if fa else c), callback_data=b)
+            for a, b, c in labels[i:i+2]
+        ])
+    return InlineKeyboardMarkup(rows)
+
+
+async def compact_section_callback(update, context):
+    q = update.callback_query
+    section = q.data.split(":", 1)[1]
+    await _compact_menu_show(update, context, section)
+
+
+def _compact_user_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        ["🎯 برنامه من" if fa else "🎯 My Plan", "📊 گزارش و پیشرفت" if fa else "📊 Reports"],
+        ["🤖 ابزارهای هوشمند" if fa else "🤖 Smart Tools", "💎 VIP و XP" if fa else "💎 VIP & XP"],
+        ["👤 حساب من" if fa else "👤 My Account", "🎫 پشتیبانی" if fa else "🎫 Support"],
+        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+    ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
+
+
+def _compact_admin_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        ["🛡 پنل مدیریت" if fa else "🛡 Admin Panel"],
+        ["🎫 تیکت‌ها" if fa else "🎫 Tickets", "📊 گزارش مدیریت" if fa else "📊 Admin Reports"],
+        ["🧩 قابلیت‌ها" if fa else "🧩 Features", "🤖 مدیریت AI" if fa else "🤖 AI Management"],
+        ["👥 کاربران" if fa else "👥 Users", "💰 مالی" if fa else "💰 Finance"],
+        ["📢 مدیریت کانال" if fa else "📢 Channel Management"],
+    ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
+
+
+def compact_keyboard(uid):
+    """Compact user/admin root menu. Admin UI is intentionally separate."""
+    try:
+        if admin_is_allowed(uid):
+            return _compact_admin_keyboard(uid)
+        return _compact_user_keyboard(uid)
+    except Exception:
+        return _compact_user_keyboard(uid)
+
+
+# Make the compact menu the final renderer used by all subsequent handlers.
+keyboard = compact_keyboard
+
+
+_OLD_TEXT_ROUTER_COMPACT = text_router
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return
+    uid = update.effective_user.id
+    txt = update.message.text.strip()
+    category_map = {
+        "🎯 برنامه من": "goals", "🎯 My Plan": "goals",
+        "📊 گزارش و پیشرفت": "reports", "📊 Reports": "reports",
+        "🤖 ابزارهای هوشمند": "tools", "🤖 Smart Tools": "tools",
+        "💎 VIP و XP": "vip", "💎 VIP & XP": "vip",
+        "👤 حساب من": "account", "👤 My Account": "account",
+        "🎫 پشتیبانی": "support", "🎫 Support": "support",
+    }
+    if txt in category_map:
+        await _compact_menu_show(update, context, category_map[txt])
+        return
+    if txt in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+        await admin_command(update, context)
+        return
+    if txt in ("📊 گزارش مدیریت", "📊 Admin Reports"):
+        await admin_command(update, context)
+        return
+    if txt in ("🎫 تیکت‌ها", "🎫 Tickets"):
+        await admin_command(update, context)
+        return
+    if txt in ("🧩 قابلیت‌ها", "🧩 Features"):
+        await admin_command(update, context)
+        return
+    if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
+        await admin_command(update, context)
+        return
+    if txt in ("👥 کاربران", "👥 Users"):
+        await admin_command(update, context)
+        return
+    if txt in ("💰 مالی", "💰 Finance"):
+        await admin_command(update, context)
+        return
+    if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            return
+        await update.message.reply_text(
+            "📢 <b>مدیریت کانال و پست‌گذاری</b>",
+            parse_mode="HTML",
+            reply_markup=channel_keyboard(),
+        )
+        return
+    if txt == "⚙️ تنظیمات" or txt == "⚙️ Settings":
+        await settings(update, context)
+        return
+    return await _OLD_TEXT_ROUTER_COMPACT(update, context)
+
+
+# Weekly/day/month reports are user-facing. They must never be blocked by the
+# admin permission gate that previously caused the screenshot's error message.
+_OLD_V25_CALLBACK_COMPACT = v25_callback
+async def v25_callback(update, context):
+    data = update.callback_query.data
+    uid = update.effective_user.id
+    if data in {"v25:reports", "v25:report_week", "v25:report_month"}:
+        await update.callback_query.answer()
+        period = {"v25:reports": "day", "v25:report_week": "week", "v25:report_month": "month"}[data]
+        return await v25_reports(update, context, period)
+    return await _OLD_V25_CALLBACK_COMPACT(update, context)
+
+
+# Final callback handler for the compact section buttons.
 
 if __name__ == "__main__":
     main()
