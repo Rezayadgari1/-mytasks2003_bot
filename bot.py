@@ -15,6 +15,7 @@ import urllib.request
 import urllib.parse
 import random
 import hashlib
+import secrets
 import html
 import difflib
 # Pillow is optional: image generation is disabled by default and must never
@@ -3720,7 +3721,7 @@ def customer_feature_allowed(uid):
     return feature_enabled("customers") and mode!="off" and (mode!="vip" or is_vip(uid) or uid in ADMIN_IDS)
 
 def ensure_business_profile(uid):
-    now=datetime.now(TZ).isoformat(); token=hashlib.sha256(f"booking:{uid}".encode()).hexdigest()[:20]
+    now=datetime.now(TZ).isoformat(); token=secrets.token_urlsafe(32)
     c=db(); c.execute("INSERT OR IGNORE INTO business_profiles(user_id,business_type,business_name,contact_phone,contact_telegram,contact_instagram,booking_enabled,booking_token,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",(uid,"","","","","",1,token,now,now))
     for wd in range(7): c.execute("INSERT OR IGNORE INTO working_hours(owner_user_id,weekday,start_time,end_time,enabled) VALUES(?,?,?,?,?)",(uid,wd,"09:00","20:00",1))
     c.commit(); r=c.execute("SELECT * FROM business_profiles WHERE user_id=?",(uid,)).fetchone(); c.close(); return r
@@ -4052,12 +4053,23 @@ async def customer_text_save(update,context):
         if not tm or not d or tm not in available_slots(uid,d,30) or has_conflict(uid,d,tm,30,aid):
             await update.message.reply_text("❌ این زمان خارج از ساعات کاری است یا آزاد نیست. یکی از زمان‌های نمایش‌داده‌شده را انتخاب کن."); return True
         now=datetime.now(TZ).isoformat()
-        c=db(); r=c.execute("SELECT a.*,c.name,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND a.owner_user_id=?",(aid,uid)).fetchone()
-        if not r:
-            c.close(); context.user_data.clear(); await update.message.reply_text("❌ نوبت پیدا نشد.",reply_markup=customer_keyboard(uid)); return True
-        old_date,old_time=r["appointment_date"],r["appointment_time"]
-        c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=? AND owner_user_id=?",(d,tm,now,aid,uid))
-        c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r["customer_id"],aid,"owner_rescheduled",f"{old_date} {old_time} -> {d} {tm}",now)); c.commit(); c.close()
+        c=db()
+        try:
+            c.execute("BEGIN IMMEDIATE")
+            r=c.execute("SELECT a.*,c.name,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND a.owner_user_id=?",(aid,uid)).fetchone()
+            if not r:
+                c.rollback(); c.close(); context.user_data.clear(); await update.message.reply_text("❌ نوبت پیدا نشد.",reply_markup=customer_keyboard(uid)); return True
+            rows=c.execute("SELECT appointment_time,duration_minutes FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked' AND id!=?",(uid,d,aid)).fetchall()
+            start=_mins(tm); end=start+int(r['duration_minutes'] or 30)
+            if any(start < _mins(x['appointment_time'])+int(x['duration_minutes'] or 30) and _mins(x['appointment_time']) < end for x in rows):
+                c.rollback(); c.close(); await update.message.reply_text("❌ این زمان دیگر آزاد نیست.",reply_markup=customer_keyboard(uid)); return True
+            old_date,old_time=r["appointment_date"],r["appointment_time"]
+            c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=? AND owner_user_id=?",(d,tm,now,aid,uid))
+            c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r["customer_id"],aid,"owner_rescheduled",f"{old_date} {old_time} -> {d} {tm}",now)); c.commit(); c.close()
+        except Exception:
+            try: c.rollback(); c.close()
+            except Exception: pass
+            raise
         if r["telegram_user_id"]:
             try:
                 await context.bot.send_message(r["telegram_user_id"],f"🔄 <b>زمان نوبت شما تغییر کرد.</b>\n\n📅 قبلی: {jalali_pretty_date(old_date)}\n⏰ {old_time}\n📅 جدید: {jalali_pretty_date(d)}\n⏰ {tm}",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")]]))
@@ -5243,30 +5255,57 @@ async def precheckout_callback(update,context):
 
 async def successful_payment_callback(update,context):
     payment=update.message.successful_payment; uid=update.effective_user.id
+    charge_id=(payment.telegram_payment_charge_id or '').strip()
+    if not charge_id:
+        await update.message.reply_text("❌ شناسه پرداخت معتبر نیست.",reply_markup=keyboard(uid)); return
+    c=db()
     try:
-        c=db(); c.execute("INSERT OR IGNORE INTO payments(user_id,payload,currency,total_amount,telegram_charge_id,created_at) VALUES(?,?,?,?,?,?)",(uid,payment.invoice_payload,payment.currency,payment.total_amount,payment.telegram_payment_charge_id,datetime.now(TZ).isoformat()))
+        c.execute("BEGIN IMMEDIATE")
+        now_iso=datetime.now(TZ).isoformat()
+        cur=c.execute("INSERT OR IGNORE INTO payments(user_id,payload,currency,total_amount,telegram_charge_id,created_at) VALUES(?,?,?,?,?,?)",(uid,payment.invoice_payload,payment.currency,payment.total_amount,charge_id,now_iso))
+        if cur.rowcount != 1:
+            c.rollback(); c.close(); await update.message.reply_text("ℹ️ این پرداخت قبلاً ثبت شده است.",reply_markup=keyboard(uid)); return
         base=datetime.now(TZ); r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(uid,)).fetchone()
         if r and r["vip_until"]:
             try: base=max(base,datetime.fromisoformat(r["vip_until"]))
             except Exception: pass
-        until=base+timedelta(days=30); now_iso=datetime.now(TZ).isoformat(); c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(until.isoformat(),uid)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,amount,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)",(uid,"VIP",30,"telegram_stars",payment.total_amount,now_iso,until.isoformat(),now_iso)); c.commit(); c.close()
-        add_xp(uid,20,"vip_purchase")
+        until=base+timedelta(days=30)
+        c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(until.isoformat(),uid))
+        c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,amount,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)",(uid,"VIP",30,"telegram_stars",payment.total_amount,now_iso,until.isoformat(),now_iso))
+        c.commit(); c.close(); add_xp(uid,20,"vip_purchase")
         await update.message.reply_text(f"✅ پرداخت موفق بود. VIP تا {until.strftime('%Y-%m-%d %H:%M')} فعال شد.",reply_markup=keyboard(uid))
-    except Exception as e:
-        logger.error("Successful payment handling failed: %s",e); await update.message.reply_text("✅ پرداخت ثبت شد؛ فعال‌سازی VIP در حال بررسی است.",reply_markup=keyboard(uid))
+    except Exception:
+        try: c.rollback(); c.close()
+        except Exception: pass
+        logger.exception("Successful payment handling failed")
+        await update.message.reply_text("❌ ثبت پرداخت انجام نشد.",reply_markup=keyboard(uid))
 
 async def referral(update,context):
     uid=update.effective_user.id
     c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]; c.close()
     code=r["referral_code"] if r and r["referral_code"] else hashlib.sha256(str(uid).encode()).hexdigest()[:10]
     c=db(); c.execute("UPDATE users SET referral_code=? WHERE user_id=?",(code,uid)); c.commit(); c.close()
-    # Automatic referral reward: every 10 successful referrals grants 30 days VIP.
+    # Referral VIP rewards are idempotent: viewing the referral page must never
+    # grant the same 10-referral milestone more than once.
     if feature_enabled("referrals") and n>0 and n%10==0:
-        c=db(); r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(uid,)).fetchone(); base=datetime.now(TZ)
-        if r and r["vip_until"]:
-            try: base=max(base,datetime.fromisoformat(r["vip_until"]))
-            except Exception: pass
-        new_until=base+timedelta(days=30); c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(new_until.isoformat(),uid)); c.commit(); c.close()
+        milestone = n // 10
+        reward_key = f"referral_vip:{uid}:{milestone}"
+        c=db()
+        try:
+            cur=c.execute("INSERT OR IGNORE INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
+                          (reward_key,uid,"referral_vip_days",30,datetime.now(TZ).isoformat()))
+            if cur.rowcount == 1:
+                r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(uid,)).fetchone(); base=datetime.now(TZ)
+                if r and r["vip_until"]:
+                    try: base=max(base,datetime.fromisoformat(r["vip_until"]))
+                    except Exception: pass
+                new_until=base+timedelta(days=30)
+                c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(new_until.isoformat(),uid))
+                c.commit()
+            else:
+                c.rollback()
+        finally:
+            c.close()
     me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code
     await update.message.reply_text(f"🤝 دعوت دوستان\n\n{link}\n\n👥 دعوت موفق: {n}\n⭐ امتیاز: {n*20}\n💎 هر ۱۰ دعوت موفق = ۳۰ روز VIP")
 
@@ -6061,6 +6100,18 @@ def v25_init_db():
         details TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS vip_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        plan_id INTEGER NOT NULL,
+        amount_rial INTEGER NOT NULL DEFAULT 0,
+        receipt_file_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        reviewed_by INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_vip_receipts_status ON vip_receipts(status, created_at);
     ''')
     now=_v25_now()
     for key,val in [('morning_message_enabled','1'),('night_message_enabled','1'),('friday_pause','0'),('price_data_status','auto'),('vip_card_enabled','0'),('vip_gateway_enabled','0')]:
@@ -6325,13 +6376,21 @@ async def v25_installment_text_save(update,context):
     if mode=='inst_bank': context.user_data['inst_bank']=text; context.user_data['v25_mode']='inst_title'; await update.message.reply_text('📝 عنوان تسهیلات را بفرست یا «قسط» بنویس:'); return True
     if mode=='inst_title': context.user_data['inst_title']=text or 'قسط'; context.user_data['v25_mode']='inst_principal'; await update.message.reply_text('💰 مبلغ اصل وام را به ریال وارد کن:'); return True
     if mode=='inst_principal':
-        context.user_data['inst_principal']=int(float(text.replace(',',''))); context.user_data['v25_mode']='inst_rate'; await update.message.reply_text('📈 نرخ سود را انتخاب کن:',reply_markup=v25_rates_keyboard(uid)); return True
+        try: principal=int(float(text.replace(',','')))
+        except Exception: await update.message.reply_text('❌ مبلغ نامعتبر است.'); return True
+        if principal <= 0 or principal > 10**15:
+            await update.message.reply_text('❌ مبلغ باید بیشتر از صفر و در محدوده مجاز باشد.'); return True
+        context.user_data['inst_principal']=principal; context.user_data['v25_mode']='inst_rate'; await update.message.reply_text('📈 نرخ سود را انتخاب کن:',reply_markup=v25_rates_keyboard(uid)); return True
     if mode=='inst_rate_custom':
         try: rate=float(text.replace('%',''))
         except Exception: await update.message.reply_text('❌ نرخ نامعتبر است.'); return True
         context.user_data['inst_rate']=rate; context.user_data['v25_mode']='inst_months'; await update.message.reply_text('🔢 تعداد ماه بازپرداخت را بفرست:'); return True
     if mode=='inst_months':
-        months=int(text); context.user_data['inst_months']=months; context.user_data['v25_mode']='inst_first_date'; await update.message.reply_text('📅 تاریخ اولین قسط را بفرست. نمونه: 2026-08-25'); return True
+        try: months=int(text)
+        except Exception: await update.message.reply_text('❌ تعداد ماه نامعتبر است.'); return True
+        if not 1 <= months <= 600:
+            await update.message.reply_text('❌ تعداد ماه باید بین ۱ تا ۶۰۰ باشد.'); return True
+        context.user_data['inst_months']=months; context.user_data['v25_mode']='inst_first_date'; await update.message.reply_text('📅 تاریخ اولین قسط را بفرست. نمونه: 2026-08-25'); return True
     if mode=='inst_first_date':
         try: d=datetime.strptime(text,'%Y-%m-%d').date().isoformat()
         except Exception: await update.message.reply_text('❌ تاریخ نامعتبر است.'); return True
@@ -6380,9 +6439,16 @@ async def v25_installment_text_save(update,context):
 async def v25_business_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get('v25_mode'); text=update.message.text.strip()
     if mode=='service_name': context.user_data['service_name']=text; context.user_data['v25_mode']='service_duration'; await update.message.reply_text('⏱ مدت خدمت را به دقیقه بفرست:'); return True
-    if mode=='service_duration': context.user_data['service_duration']=int(normalize_digits(text)); context.user_data['v25_mode']='service_price'; await update.message.reply_text('💰 قیمت خدمت را به ریال بفرست:'); return True
+    if mode=='service_duration':
+        try: duration=int(normalize_digits(text))
+        except Exception: await update.message.reply_text('❌ مدت نامعتبر است.'); return True
+        if not 1 <= duration <= 1440: await update.message.reply_text('❌ مدت خدمت باید بین ۱ تا ۱۴۴۰ دقیقه باشد.'); return True
+        context.user_data['service_duration']=duration; context.user_data['v25_mode']='service_price'; await update.message.reply_text('💰 قیمت خدمت را به ریال بفرست:'); return True
     if mode=='service_price':
-        price=int(float(normalize_digits(text).replace(',',''))); s=context.user_data; now=_v25_now(); _v25_exec('INSERT INTO business_services(owner_user_id,name,duration_minutes,price_rial,created_at,updated_at) VALUES(?,?,?,?,?,?)',(uid,s['service_name'],s['service_duration'],price,now,now)); clear_flow(context); await update.message.reply_text('✅ خدمت ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🛠️ خدمات',callback_data='v25:services')],[main_menu_button(uid)]])); return True
+        try: price=int(float(normalize_digits(text).replace(',','')))
+        except Exception: await update.message.reply_text('❌ قیمت نامعتبر است.'); return True
+        if price < 0 or price > 10**15: await update.message.reply_text('❌ قیمت باید در محدوده مجاز باشد.'); return True
+        s=context.user_data; now=_v25_now(); _v25_exec('INSERT INTO business_services(owner_user_id,name,duration_minutes,price_rial,created_at,updated_at) VALUES(?,?,?,?,?,?)',(uid,s['service_name'][:200],s['service_duration'],price,now,now)); clear_flow(context); await update.message.reply_text('✅ خدمت ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🛠️ خدمات',callback_data='v25:services')],[main_menu_button(uid)]])); return True
     if mode=='card_number': context.user_data['card_number']=text; context.user_data['v25_mode']='card_name'; await update.message.reply_text('👤 نام صاحب کارت را بفرست یا - بزن:'); return True
     if mode=='card_name':
         title='' if text=='-' else text; details=f"شماره کارت: {context.user_data['card_number']}\nبه نام: {title}"; now=_v25_now(); _v25_exec('INSERT INTO payment_methods(owner_user_id,method_type,enabled,title,details,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(owner_user_id,method_type) DO UPDATE SET enabled=1,title=excluded.title,details=excluded.details,updated_at=excluded.updated_at',(uid,'card',1,'کارت‌به‌کارت',details,now)); clear_flow(context); await update.message.reply_text('✅ کارت‌به‌کارت فعال شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💳 پرداخت‌ها',callback_data='v25:bizpay')],[main_menu_button(uid)]])); return True
@@ -6428,10 +6494,31 @@ async def v25_sms_send(owner, phone, message):
 async def v25_receipt_handler(update,context):
     if not update.message: return
     mode=context.user_data.get('v25_mode')
-    if mode!='booking_receipt': return
-    uid=update.effective_user.id; photo=update.message.photo[-1] if update.message.photo else None; doc=update.message.document
+    uid=update.effective_user.id
+    photo=update.message.photo[-1] if update.message.photo else None; doc=update.message.document
     file_id=(photo.file_id if photo else (doc.file_id if doc else None))
     if not file_id: return
+
+    if mode=='vip_receipt':
+        plan_id=int(context.user_data.get('vip_plan_id') or 0)
+        plan=_v25_exec('SELECT id,name,price_rial,duration_minutes,enabled FROM subscription_plans_v25 WHERE id=? AND enabled=1',(plan_id,),fetchone=True)
+        if not plan:
+            clear_flow(context); await update.message.reply_text('❌ پلن VIP معتبر نیست.',reply_markup=keyboard(uid)); return
+        rid=_v25_exec('INSERT INTO vip_receipts(user_id,plan_id,amount_rial,receipt_file_id,status,created_at) VALUES(?,?,?,?,?,?)',(uid,plan_id,int(plan['price_rial'] or 0),file_id,'pending',_v25_now()),commit=True)
+        clear_flow(context)
+        await update.message.reply_text('📎 رسید VIP دریافت شد و برای بررسی مدیر ارسال شد. بعد از تأیید، اشتراک فعال می‌شود.',reply_markup=keyboard(uid))
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(admin_id,f'💎 <b>رسید VIP جدید</b>\n\n👤 کاربر: <code>{uid}</code>\n📦 پلن: {html.escape(plan["name"])}\n💰 مبلغ: {irr(plan["price_rial"])}\n🧾 رسید: #{rid}',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ تأیید',callback_data=f'v25:vip_receipt:approve:{rid}'),InlineKeyboardButton('❌ رد',callback_data=f'v25:vip_receipt:reject:{rid}')]]))
+                if hasattr(context.bot,'send_document') and doc:
+                    await context.bot.send_document(admin_id,document=file_id)
+                elif hasattr(context.bot,'send_photo') and photo:
+                    await context.bot.send_photo(admin_id,photo=file_id)
+            except Exception:
+                logger.exception('VIP receipt admin notification failed')
+        return
+
+    if mode!='booking_receipt': return
     owner=context.user_data.get('booking_owner'); aid=context.user_data.get('booking_appointment_id'); amount=int(context.user_data.get('booking_amount_rial') or 0); now=_v25_now()
     # Safe explicit insert below (avoid any schema assumptions in the compatibility query above).
     c=db(); a=c.execute('SELECT owner_user_id,customer_id FROM appointments WHERE id=?',(aid,)).fetchone()
@@ -6500,8 +6587,13 @@ async def v25_callback(update,context):
         if action=='bookedit':
             context.user_data['v25_mode']='booking_name'; await q.message.edit_text('👤 اگر دوست داری نامت را وارد کن؛ اختیاری است. برای رد کردن «-» بزن:',reply_markup=v25_back(uid)); return
         if action=='bookingcard':
-            aid=int(p[2]); owner=context.user_data.get('booking_owner');
-            if not owner: owner=_v25_exec('SELECT owner_user_id FROM appointments WHERE id=?',(aid,),fetchone=True)['owner_user_id'];
+            aid=int(p[2])
+            # Authorization: only the booking customer (or the business owner) may
+            # open card-payment instructions for this appointment.
+            booking=_v25_exec("SELECT a.owner_user_id,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=?",(aid,),fetchone=True)
+            if not booking or (int(booking['telegram_user_id'] or 0) != uid and int(booking['owner_user_id']) != uid):
+                await q.answer('⛔ دسترسی به این رزرو مجاز نیست.',show_alert=True); return
+            owner=int(booking['owner_user_id'])
             pm=_v25_exec("SELECT details FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(owner,),fetchone=True);
             if not pm: await q.message.edit_text('⚠️ کارت‌به‌کارت فعال نیست.',reply_markup=v25_back(uid)); return
             amount=context.user_data.get('booking_amount_rial',0); context.user_data['v25_mode']='booking_receipt'; context.user_data['booking_appointment_id']=aid; context.user_data['booking_owner']=owner;
@@ -6547,6 +6639,8 @@ async def v25_callback(update,context):
             else: await q.message.edit_text('⚠️ کارت‌به‌کارت فعال نشده است.',reply_markup=v25_back(uid,'v25:business'))
             return
         if action=='feat':
+            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if len(p) < 3 or p[2] not in V25_FEATURE_KEYS: await q.answer('قابلیت نامعتبر است.',show_alert=True); return
             key=p[2]; cur=feature_enabled(key); set_feature(key,not cur,uid); mode='free' if not cur else 'off'; set_feature_access_mode(key,mode,uid); await v25_admin_feature_status(update,context); return
         if action=='voice_retry': context.user_data['v25_voice_mode']=True; await q.message.edit_text('🎙️ ویس اصلاحی را بفرست. من متن جدید را جایگزین می‌کنم.',reply_markup=v25_back(uid)); return
         if action=='voice_edit': await v25_voice_edit(update,context); return
@@ -6661,9 +6755,19 @@ async def v25_create_booking(context,uid,owner,service_id=0):
     if service_id:
         s=c.execute('SELECT * FROM business_services WHERE id=? AND owner_user_id=? AND enabled=1',(service_id,owner)).fetchone();
         if s: service=s['name']; amount=int(s['price_rial']); duration=int(s['duration_minutes'] or 30)
-    if has_conflict(owner,d,tm,duration): c.close(); raise ValueError('slot-conflict')
-    aid=c.execute('INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(owner,cid,d,tm,duration,service,'رزرو آنلاین','30','booked','online',now,now)).lastrowid
-    c.execute('INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)',(owner,cid,aid,'online_booking',service,now)); c.commit(); c.close();
+    try:
+        c.execute('BEGIN IMMEDIATE')
+        rows=c.execute("SELECT appointment_time,duration_minutes FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked'",(owner,d)).fetchall()
+        start=_mins(tm); end=start+duration
+        if any(start < _mins(r['appointment_time'])+int(r['duration_minutes'] or 30) and _mins(r['appointment_time']) < end for r in rows):
+            raise ValueError('slot-conflict')
+        aid=c.execute('INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(owner,cid,d,tm,duration,service,'رزرو آنلاین','30','booked','online',now,now)).lastrowid
+        c.execute('INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)',(owner,cid,aid,'online_booking',service,now))
+        c.commit(); c.close()
+    except Exception:
+        try: c.rollback(); c.close()
+        except Exception: pass
+        raise;
     return aid,service,amount,name,phone
 
 async def v25_booking_payment_menu(update,context,aid,owner,amount,business_name):
@@ -7179,7 +7283,9 @@ async def v25_callback(update,context):
             kb.append([InlineKeyboardButton('⬅️ پلن‌ها',callback_data='v25:vip'),main_menu_button(uid)])
             await q.message.edit_text(f"💎 <b>{html.escape(plan['name'])}</b>\n\n💰 {irr(plan['price_rial'])}\n\nروش پرداخت را انتخاب کن:",parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb)); return
         if action=='vipglobalcard':
-            plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=?',(int(p[2]),),fetchone=True)
+            plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=? AND enabled=1',(int(p[2]),),fetchone=True)
+            if not plan or get_system_setting('vip_card_enabled','0')!='1' or not get_system_setting('vip_card_number',''):
+                await q.answer('پرداخت کارت‌به‌کارت VIP در حال حاضر فعال نیست.',show_alert=True); return
             num=get_system_setting('vip_card_number',''); name=get_system_setting('vip_card_name','')
             context.user_data['v25_mode']='vip_receipt'; context.user_data['vip_plan_id']=int(p[2])
             await q.message.edit_text(f'💵 <b>پرداخت کارت‌به‌کارت VIP</b>\n\n💰 مبلغ: {irr(plan["price_rial"])}\n💳 شماره کارت: <code>{html.escape(num)}</code>\n👤 به نام: {html.escape(name or "—")}\n\n📎 بعد از واریز تصویر رسید را بفرست.',parse_mode='HTML',reply_markup=v25_back(uid,'v25:vip')); return
@@ -7198,7 +7304,9 @@ async def v25_callback(update,context):
             context.user_data['v25_mode']='admin_vip_gateway_url'; await q.message.edit_text('🔗 لینک درگاه VIP را بفرست:'); return
         if action=='finadd':
             if not admin_guard(uid) and not customer_feature_allowed(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='v25_mode_fin_total'; context.user_data['fin_customer_id']=int(p[2]); await q.message.edit_text('💰 مبلغ کل خدمت را به ریال وارد کن:'); return
+            customer_id=int(p[2]); c=db(); owner_row=c.execute('SELECT id FROM customers WHERE id=? AND owner_user_id=?',(customer_id,uid)).fetchone(); c.close();
+            if not owner_row: await q.answer('⛔ مشتری متعلق به حساب شما نیست.',show_alert=True); return
+            context.user_data['v25_mode']='v25_mode_fin_total'; context.user_data['fin_customer_id']=customer_id; await q.message.edit_text('💰 مبلغ کل خدمت را به ریال وارد کن:'); return
         if action=='bizfinance': return await v25_finance_menu(update,context)
         return await _OLD_V25_CALLBACK_EXTRA(update,context)
     except Exception as e:
@@ -7363,6 +7471,8 @@ async def v25_callback(update,context):
         if data=='v25:adminvoice': return await v25_admin_voice(update,context)
         if data=='v25:adminmorning': return await v25_admin_morning(update,context)
         if data=='v25:adminprices': return await v25_admin_prices(update,context)
+        if data in {'v25:reports','v25:report_week','v25:report_month','v25:toggle_morning','v25:toggle_night','v25:toggle_friday','v25:toggle_prices'} and not admin_guard(uid):
+            await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
         if data=='v25:reports': return await v25_reports(update,context,'day')
         if data=='v25:report_week': return await v25_reports(update,context,'week')
         if data=='v25:report_month': return await v25_reports(update,context,'month')
@@ -7370,10 +7480,38 @@ async def v25_callback(update,context):
         if data=='v25:toggle_night': set_system_setting('night_message_enabled','0' if get_system_setting('night_message_enabled','1')=='1' else '1',uid); return await v25_admin_morning(update,context)
         if data=='v25:toggle_friday': set_system_setting('friday_pause','0' if get_system_setting('friday_pause','0')=='1' else '1',uid); return await v25_admin_morning(update,context)
         if data=='v25:toggle_prices': set_system_setting('price_data_status','off' if get_system_setting('price_data_status','auto')!='off' else 'auto',uid); return await v25_admin_prices(update,context)
+        if action=='vip_receipt':
+            if not admin_guard(uid): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+            if len(parts) < 4 or parts[2] not in {'approve','reject'}:
+                await q.answer('عملیات نامعتبر است.',show_alert=True); return
+            rid=int(parts[3])
+            c=db(); row=c.execute('SELECT vr.*,p.name,p.duration_minutes FROM vip_receipts vr JOIN subscription_plans_v25 p ON p.id=vr.plan_id WHERE vr.id=?',(rid,)).fetchone()
+            if not row: c.close(); await q.answer('رسید پیدا نشد.',show_alert=True); return
+            if row['status']!='pending': c.close(); await q.answer('این رسید قبلاً بررسی شده است.',show_alert=True); return
+            now=_v25_now(); status=parts[2]
+            if status=='approve':
+                base=datetime.now(TZ); u=c.execute('SELECT vip_until FROM users WHERE user_id=?',(row['user_id'],)).fetchone()
+                if u and u['vip_until']:
+                    try: base=max(base,datetime.fromisoformat(u['vip_until']))
+                    except Exception: pass
+                expires=base+timedelta(minutes=int(row['duration_minutes']))
+                c.execute('UPDATE users SET vip_until=? WHERE user_id=?',(expires.isoformat(),row['user_id']))
+                c.execute('INSERT INTO subscription_history(user_id,plan,duration_days,source,amount,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)',(row['user_id'],row['name'],max(0,int(round(int(row['duration_minutes'])/1440))), 'card_receipt',row['amount_rial'],now,expires.isoformat(),now))
+                msg='✅ رسید تأیید شد و VIP فعال شد.'
+                user_msg=f'✅ پرداخت VIP شما تأیید شد.\n\n💎 پلن: {html.escape(row["name"])}\n⏰ پایان VIP: {expires.strftime("%Y-%m-%d %H:%M")}'
+            else:
+                msg='❌ رسید رد شد.'; user_msg='❌ رسید پرداخت VIP شما تأیید نشد. لطفاً اطلاعات پرداخت را بررسی و در صورت نیاز دوباره اقدام کنید.'
+            c.execute("UPDATE vip_receipts SET status=?,reviewed_at=?,reviewed_by=? WHERE id=? AND status=\'pending\'",(status,now,uid,rid)); c.commit(); c.close()
+            try: await context.bot.send_message(row['user_id'],user_msg,parse_mode='HTML',reply_markup=keyboard(row['user_id']))
+            except Exception: logger.exception('VIP receipt user notification failed')
+            await q.message.edit_text(msg,reply_markup=v25_back(uid,'v25:adminvip')); return
         if action=='instview': return await v25_installment_view(update,context,int(parts[2]))
         if action=='instpay':
-            ipid=int(parts[2]); status=parts[3]; row=_v25_exec('SELECT * FROM installment_payments WHERE id=?', (ipid,), fetchone=True)
-            if not row: await q.answer('قسط پیدا نشد.',show_alert=True); return
+            ipid=int(parts[2]); status=parts[3]
+            # Never allow a user to mutate another user's installment by guessing its ID.
+            row=_v25_exec('SELECT ip.*,p.user_id FROM installment_payments ip JOIN installment_plans p ON p.id=ip.plan_id WHERE ip.id=? AND p.user_id=?', (ipid,uid), fetchone=True)
+            if not row: await q.answer('⛔ این قسط متعلق به حساب شما نیست.',show_alert=True); return
+            if status not in {'paid','later','unpaid'}: await q.answer('وضعیت نامعتبر است.',show_alert=True); return
             if status=='paid': _v25_exec('UPDATE installment_payments SET status="paid",paid_rial=amount_rial,paid_at=? WHERE id=?',(_v25_now(),ipid)); msg='✅ پرداخت ثبت شد.'
             elif status=='later': _v25_exec('UPDATE installment_payments SET status="partial",note=? WHERE id=?',('کاربر اعلام کرد بعداً پرداخت می‌کند.',ipid)); msg='⏳ برای بعد نگه داشته شد.'
             else: _v25_exec('UPDATE installment_payments SET status="unpaid" WHERE id=?',(ipid,)); msg='❌ عدم پرداخت ثبت شد.'
@@ -7388,10 +7526,22 @@ async def v25_callback(update,context):
             context.user_data['v25_mode']='admin_plan_name'; await q.message.edit_text('📝 نام پلن جدید را بفرست:'); return
         if action=='feat':
             if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if len(parts) < 3 or parts[2] not in V25_FEATURE_KEYS:
+                await q.answer('قابلیت نامعتبر است.',show_alert=True); return
+            key=parts[2]
+            cur=feature_enabled(key)
+            set_feature(key,not cur,uid)
+            set_feature_access_mode(key,'free' if not cur else 'off',uid)
+            return await v25_admin_feature_status(update,context)
         if action=='smstoggle':
+            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
             cfg=_v25_exec('SELECT enabled FROM sms_settings WHERE owner_user_id=?',(uid,),fetchone=True); enabled=not bool(cfg and cfg['enabled']); now=_v25_now(); _v25_exec('INSERT INTO sms_settings(owner_user_id,enabled,updated_at) VALUES(?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at',(uid,int(enabled),now)); return await v25_admin_sms(update,context)
-        if action=='smsconfig': context.user_data['v25_mode']='admin_sms_endpoint'; await q.message.edit_text('📡 Endpoint سرویس پیامکی را بفرست:'); return
-        if action=='smstest': context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('📱 شماره مقصد تست را بفرست:',reply_markup=v25_back(uid,'v25:adminsms')); return
+        if action=='smsconfig':
+            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            context.user_data['v25_mode']='admin_sms_endpoint'; await q.message.edit_text('📡 Endpoint سرویس پیامکی را بفرست:'); return
+        if action=='smstest':
+            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('📱 شماره مقصد تست را بفرست:',reply_markup=v25_back(uid,'v25:adminsms')); return
         if action=='voice_confirm' and admin_guard(uid):
             return await _OLD_V25_CALLBACK_FINAL(update,context)
         if action=='gateway' and admin_guard(uid):
@@ -7437,9 +7587,19 @@ async def v25_installment_text_save(update,context):
     if mode=='v25_mode_fin_total':
         context.user_data['fin_total']=int(float(text.replace(',',''))); context.user_data['v25_mode']='v25_mode_fin_paid'; await update.message.reply_text('✅ مبلغ پرداخت‌شده را به ریال وارد کن (اگر هنوز چیزی پرداخت نشده 0 بزن):'); return True
     if mode=='v25_mode_fin_paid':
-        paid=int(float(text.replace(',',''))); total=int(context.user_data.get('fin_total',0)); customer_id=int(context.user_data['fin_customer_id']); status='paid' if paid>=total else ('partial' if paid>0 else 'pending'); _v25_exec('INSERT INTO customer_finance(owner_user_id,customer_id,amount_rial,paid_rial,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,customer_id,total,paid,status,_v25_now(),_v25_now())); clear_flow(context); await update.message.reply_text('✅ تراکنش مالی مشتری ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📒 مالی مشتریان',callback_data='v25:bizfinance')],[main_menu_button(uid)]])); return True
+        paid=int(float(text.replace(',',''))); total=int(context.user_data.get('fin_total',0)); customer_id=int(context.user_data['fin_customer_id'])
+        if total < 0 or paid < 0 or paid > total:
+            await update.message.reply_text('❌ مبلغ واردشده معتبر نیست.'); return True
+        c=db(); owner_row=c.execute('SELECT id FROM customers WHERE id=? AND owner_user_id=?',(customer_id,uid)).fetchone()
+        if not owner_row:
+            c.close(); clear_flow(context); await update.message.reply_text('⛔ مشتری متعلق به حساب شما نیست.'); return True
+        status='paid' if paid>=total else ('partial' if paid>0 else 'pending')
+        c.execute('INSERT INTO customer_finance(owner_user_id,customer_id,amount_rial,paid_rial,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,customer_id,total,paid,status,_v25_now(),_v25_now())); c.commit(); c.close(); clear_flow(context)
+        await update.message.reply_text('✅ تراکنش مالی مشتری ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📒 مالی مشتریان',callback_data='v25:bizfinance')],[main_menu_button(uid)]])); return True
     if mode=='survey_comment':
-        aid=int(context.user_data.get('survey_appointment_id')); c=db(); c.execute('UPDATE survey_responses SET suggestion=?,comment=? WHERE appointment_id=?',(text,text,aid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('🙏 ممنون؛ پیشنهادت ثبت شد.',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])); return True
+        aid=int(context.user_data.get('survey_appointment_id')); c=db(); owner_ok=c.execute('SELECT id FROM appointments WHERE id=? AND customer_id IN (SELECT id FROM customers WHERE telegram_user_id=? )',(aid,uid)).fetchone();
+        if not owner_ok: c.close(); clear_flow(context); await update.message.reply_text('⛔ این نظرسنجی متعلق به حساب شما نیست.'); return True
+        c.execute('UPDATE survey_responses SET suggestion=?,comment=? WHERE appointment_id=?',(text,text,aid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('🙏 ممنون؛ پیشنهادت ثبت شد.',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])); return True
     return await _OLD_V25_INSTALLMENT_TEXT_SAVE(update,context)
 
 _OLD_V25_BUSINESS_TEXT_SAVE=v25_business_text_save
@@ -7541,9 +7701,11 @@ def spend_tokens(uid, amount, reason="", ref_key=None):
     if amount <= 0: return True
     c=db()
     try:
+        # Serialize balance checks + deductions so concurrent requests cannot overspend.
+        c.execute("BEGIN IMMEDIATE")
         r=c.execute("SELECT balance FROM token_wallets WHERE user_id=?",(int(uid),)).fetchone()
         if not r or int(r["balance"]) < amount:
-            c.close(); return False
+            c.rollback(); c.close(); return False
         if ref_key:
             cur=c.execute("INSERT OR IGNORE INTO token_ledger(user_id,delta,reason,ref_key,created_at) VALUES(?,?,?,?,?)",(int(uid),-amount,reason,ref_key,token_now()))
             if cur.rowcount != 1:
@@ -7713,9 +7875,14 @@ def token_init_db():
 
 # Seed every registered user with a wallet and migrate referrals -> tokens only once.
 def token_backfill_existing_users():
-    c=db(); users=c.execute("SELECT user_id FROM users").fetchall(); c.close()
-    for r in users:
-        add_tokens(int(r["user_id"]),0,"wallet_init")
+    c=db()
+    try:
+        now=token_now()
+        users=c.execute("SELECT user_id FROM users").fetchall()
+        c.executemany("INSERT OR IGNORE INTO token_wallets(user_id,balance,updated_at) VALUES(?,?,?)",[(int(r["user_id"]),0,now) for r in users])
+        c.commit()
+    finally:
+        c.close()
 
 def token_referral_reward(inviter_id, invited_id):
     amount=int(token_setting("referral_tokens_per_success","10") or 10)
