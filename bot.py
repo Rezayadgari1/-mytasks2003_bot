@@ -74,6 +74,23 @@ TZ = ZoneInfo("Asia/Tehran")
 # می‌توان REQUIRED_CHANNEL_URL را در Variables تنظیم کرد.
 REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 
+# Optional AI/automation gateway. n8n is never trusted with permissions, payments,
+# or raw user records; it only receives explicitly approved workflow payloads.
+N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "").strip()
+N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()
+N8N_TIMEOUT = float(os.environ.get("N8N_TIMEOUT", "12"))
+MYTASKS_BUILD_ID = "2026-08-22-AI-N8N-FINAL-01"
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna").strip()
+AI_FAILOVER_TO_N8N = os.environ.get("AI_FAILOVER_TO_N8N", "1").strip() != "0"
+
+# OmniRoute: optional self-hosted OpenAI-compatible AI gateway.
+# Only HTTPS remote endpoints are accepted. It receives prompts, never payment,
+# ownership, or raw database records.
+OMNIROUTE_BASE_URL = os.environ.get("OMNIROUTE_BASE_URL", "").strip().rstrip("/")
+OMNIROUTE_API_KEY = os.environ.get("OMNIROUTE_API_KEY", "").strip()
+OMNIROUTE_MODEL = os.environ.get("OMNIROUTE_MODEL", "auto").strip() or "auto"
+OMNIROUTE_TIMEOUT = float(os.environ.get("OMNIROUTE_TIMEOUT", "20"))
+
 
 # Set admin Telegram IDs in environment:
 # ADMIN_IDS=123456789,987654321
@@ -96,6 +113,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+logger.info("MyTasks build %s | AI gateway: OmniRoute -> OpenAI -> n8n", MYTASKS_BUILD_ID)
 
 def subscription_required(func):
     @wraps(func)
@@ -397,6 +415,11 @@ def backup_database():
             src_conn.backup(dst_conn)
         dst_conn.close()
         src_conn.close()
+        try:
+            if os.name == "posix":
+                os.chmod(DB_BACKUP_PATH, 0o600)
+        except OSError:
+            pass
         return True
     except Exception as e:
         logger.error("Database backup failed: %s", e)
@@ -418,6 +441,11 @@ def backup_database_snapshot(keep=10):
         with dst_conn:
             src_conn.backup(dst_conn)
         dst_conn.close(); src_conn.close()
+        try:
+            if os.name == "posix":
+                os.chmod(target, 0o600)
+        except OSError:
+            pass
         files=sorted(
             [os.path.join(folder,x) for x in os.listdir(folder) if x.endswith(".db")],
             key=lambda x: os.path.getmtime(x), reverse=True
@@ -602,6 +630,14 @@ def init_db():
     user_cols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
     for col,ddl in [("xp","INTEGER NOT NULL DEFAULT 0"),("blocked","INTEGER NOT NULL DEFAULT 0"),("warnings","INTEGER NOT NULL DEFAULT 0"),("vip_until","TEXT"),("referrer_id","INTEGER"),("referral_code","TEXT")]:
         if col not in user_cols: c.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_feature_preferences(
+        user_id INTEGER NOT NULL, feature_key TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL, PRIMARY KEY(user_id, feature_key)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS service_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT NOT NULL, status TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS feature_flags(key TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,admin_id INTEGER,action TEXT,target_user INTEGER,details TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS xp_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,amount INTEGER NOT NULL,reason TEXT,created_at TEXT NOT NULL)""")
@@ -837,12 +873,54 @@ FEATURE_MENU_MAP = {
     "👥 مدیریت مشتری و نوبت‌دهی":"customers","👥 Customer & Appointments":"customers",
 }
 
+def _ensure_user_feature_preferences(uid):
+    """Create default personal menu preferences without touching existing user data."""
+    now=datetime.now(TZ).isoformat()
+    c=db()
+    try:
+        keys=set(FEATURE_MENU_MAP.values()) if "FEATURE_MENU_MAP" in globals() else set()
+        for key in keys:
+            c.execute(
+                "INSERT OR IGNORE INTO user_feature_preferences(user_id,feature_key,enabled,updated_at) VALUES(?,?,1,?)",
+                (int(uid),key,now)
+            )
+        c.commit()
+    finally:
+        c.close()
+
+def user_pref_enabled(uid,key):
+    try:
+        _ensure_user_feature_preferences(uid)
+        c=db()
+        row=c.execute(
+            "SELECT enabled FROM user_feature_preferences WHERE user_id=? AND feature_key=?",
+            (int(uid),key)
+        ).fetchone()
+        c.close()
+        return True if row is None else bool(row["enabled"])
+    except Exception:
+        logger.exception("User feature preference check failed: %s", key)
+        return True
+
+def set_user_pref(uid,key,enabled):
+    c=db()
+    c.execute(
+        """INSERT INTO user_feature_preferences(user_id,feature_key,enabled,updated_at)
+           VALUES(?,?,?,?)
+           ON CONFLICT(user_id,feature_key)
+           DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at""",
+        (int(uid),key,int(bool(enabled)),datetime.now(TZ).isoformat())
+    )
+    c.commit(); c.close()
+
 def user_feature_allowed(uid,key):
     if admin_is_allowed(uid) or key=="xp": return True
     try:
+        # Manager-level OFF always wins over a user's personal preference.
         if not feature_enabled(key): return False
         mode=feature_access_mode(key,uid)
-        return mode!="off" and (mode!="vip" or is_vip(uid))
+        if mode=="off" or (mode=="vip" and not is_vip(uid)): return False
+        return user_pref_enabled(uid,key)
     except Exception:
         return True
 
@@ -854,6 +932,7 @@ def filter_menu_rows(uid,rows):
     return out
 
 def keyboard(uid):
+    _ensure_user_feature_preferences(uid)
     rows=filter_menu_rows(uid,[list(row) for row in T[lang(uid)]["menu"]])
     try:
         if user_feature_allowed(uid,"customers"):
@@ -1430,6 +1509,43 @@ def onboarding_business_keyboard(uid):
     return InlineKeyboardMarkup(rows)
 
 
+def onboarding_feature_keyboard(uid):
+    fa=lang(uid)=="fa"
+    choices=[
+        ("goals","🎯 اهداف","🎯 Goals"),
+        ("weekly","📅 جدول هفتگی","📅 Weekly"),
+        ("stats","📊 آمار من","📊 My Stats"),
+        ("price_data","📈 قیمت آنلاین","📈 Online Prices"),
+        ("ai","🤖 چت با AI","🤖 AI Chat"),
+        ("support","🎫 پشتیبانی","🎫 Support"),
+        ("customers","👥 مدیریت مشتری و نوبت‌دهی","👥 Customers & Appointments"),
+    ]
+    rows=[]
+    for key,fa_label,en_label in choices:
+        if not feature_enabled(key): continue
+        label=fa_label if fa else en_label
+        mark="✅" if user_pref_enabled(uid,key) else "⬜"
+        rows.append([InlineKeyboardButton(f"{mark} {label}",callback_data=f"pref:{key}")])
+    rows.append([InlineKeyboardButton("⏭️ رد کردن / بعداً تنظیم می‌کنم" if fa else "⏭️ Skip / Configure later",callback_data="pref:skip")])
+    rows.append([InlineKeyboardButton("✅ ادامه" if fa else "✅ Continue",callback_data="pref:done")])
+    return InlineKeyboardMarkup(rows)
+
+async def onboarding_feature_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not q: return
+    await q.answer()
+    action=q.data.split(":",1)[1]
+    if action in ("done","skip"):
+        await q.message.edit_text(
+            "✅ تنظیمات اولیه ذخیره شد. هر زمان تمایل داشته باشید می‌توانید منوی شخصی خود را تغییر دهید."
+            if lang(uid)=="fa" else
+            "✅ Your initial preferences were saved. You can change your personal menu anytime.",
+            reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+        )
+        return
+    set_user_pref(uid,action,not user_pref_enabled(uid,action))
+    await q.message.edit_reply_markup(reply_markup=onboarding_feature_keyboard(uid))
+
 @subscription_required
 async def onboarding_business_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer()
@@ -1438,7 +1554,13 @@ async def onboarding_business_callback(update,context):
         types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN; idx=int(value)
         ensure_business_profile(uid)
         c=db(); c.execute("UPDATE business_profiles SET business_type=?,updated_at=? WHERE user_id=?",(types[idx],datetime.now(TZ).isoformat(),uid)); c.commit(); c.close()
-    await q.message.edit_text("✅ تنظیم اولیه انجام شد. هر زمان خواستی از «مدیریت مشتری و نوبت‌دهی» قابل تغییر است." if value!="skip" else "⏭️ رد شد. هر زمان خواستی می‌توانی نوع فعالیتت را انتخاب کنی.",reply_markup=keyboard(uid))
+    _ensure_user_feature_preferences(uid)
+    await q.message.edit_text(
+        "⚙️ اگر تمایل داشته باشید، می‌توانید مشخص کنید کدام بخش‌ها در منوی شخصی شما نمایش داده شوند. این مرحله کاملاً اختیاری است."
+        if lang(uid)=="fa" else
+        "⚙️ If you wish, choose which sections you would like to see in your personal menu. This step is completely optional.",
+        reply_markup=onboarding_feature_keyboard(uid)
+    )
 
 
 @subscription_required
@@ -1519,8 +1641,14 @@ async def settings_callback(update, context):
     if action=="goals":
         await q.message.edit_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
     if action=="ai":
-        configured=bool(os.environ.get("OPENAI_API_KEY","").strip())
-        await q.message.edit_text(("🤖 چت با AI\n\nوضعیت کلید: " + ("🟢 تنظیم شده" if configured else "🔴 تنظیم نشده") + "\nسهمیه رایگان روزانه: ۱۰ پیام" if fa else "🤖 AI Chat\n\nKey status: " + ("🟢 configured" if configured else "🔴 missing") + "\nFree daily quota: 10 messages"),reply_markup=settings_keyboard(uid)); return
+        providers=[]
+        if omniroute_configured(): providers.append("🟢 OmniRoute")
+        if bool(os.environ.get("OPENAI_API_KEY","").strip()): providers.append("🟢 OpenAI")
+        if n8n_configured(): providers.append("🟢 n8n")
+        status = "، ".join(providers) if providers else ("🔴 فعلاً هیچ سرویس AI متصل نیست." if fa else "🔴 No AI provider is connected yet.")
+        text = (f"🤖 <b>چت با AI</b>\\n\\nسرویس‌های آماده: {status}\\nسهمیه رایگان روزانه: ۱۰ پیام"
+                if fa else f"🤖 <b>AI Chat</b>\\n\\nAvailable providers: {status}\\nFree daily quota: 10 messages")
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=settings_keyboard(uid)); return
     if action=="vip":
         xp,level,vip_until=xp_info(uid)
         text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
@@ -4745,7 +4873,7 @@ def _admin_db_diagnostics():
             "appointments","customers","working_hours","channel_config",
             "channel_posts","auto_post_history","auto_pending",
             "health_checks","admin_logs","tickets","payments",
-            "daily_reports","system_settings","managed_channels","goal_reminder_overrides","customer_broadcasts","customer_reengagement_log","auto_channel_settings_v2"
+            "daily_reports","system_settings","managed_channels","goal_reminder_overrides","customer_broadcasts","customer_reengagement_log","auto_channel_settings_v2","service_events","user_feature_preferences"
         ]
         existing={r["name"] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         for name in required:
@@ -5179,7 +5307,7 @@ async def final_admin_text(update,context):
         else: c.close(); await update.message.reply_text("❌ دستور نامعتبر"); return True
         c.commit(); c.close(); admin_log(uid,action,target,text); await update.message.reply_text("✅ انجام شد",reply_markup=final_admin_keyboard()); return True
     except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {e}"); return True
+        await update.message.reply_text(f"❌ خطا: {html.escape(str(e))}", parse_mode="HTML"); return True
 
 async def navigation_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]; clear_flow(context)
@@ -5205,7 +5333,7 @@ async def support_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]
     if action=="main": clear_flow(context); await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
     if action=="faq":
-        text=("❓ سوالات متداول\n\n• چطور هدف اضافه کنم؟ از «✏️ هدف خودم می‌نویسم» استفاده کن.\n• چطور زمان یادآوری را عوض کنم؟ از «✏️ ویرایش اهداف».\n• چطور AI را فعال کنم؟ مدیر باید OPENAI_API_KEY را در Railway تنظیم کند.\n• چطور کانال را وصل کنم؟ مدیر ← مدیریت کانال ← تنظیم کانال.")
+        text=("❓ سوالات متداول\n\n• چطور هدف اضافه کنم؟ از «✏️ هدف خودم می‌نویسم» استفاده کن.\n• چطور زمان یادآوری را عوض کنم؟ از «✏️ ویرایش اهداف».\n• چطور AI را فعال کنم؟ اگر سرویس هوشمند در دسترس نباشد، مدیر می‌تواند اتصال سرویس‌های AI را از تنظیمات سرور بررسی کند.\n• چطور کانال را وصل کنم؟ مدیر ← مدیریت کانال ← تنظیم کانال.")
         await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پشتیبانی",callback_data="support:main")],[main_menu_button(uid)]])); return
     if action=="new":
         context.user_data["support_new"]=True; await q.message.reply_text("📝 پیام پشتیبانی را بفرست. برای لغو «⬅️ برگشت» را بزن.",reply_markup=nav_keyboard(uid)); return
@@ -5427,6 +5555,159 @@ async def prices(update,context):
     await hide_main_reply_keyboard(update)
     await update.message.reply_text("📈 قیمت آنلاین\n\nیکی را انتخاب کن:",reply_markup=prices_keyboard(uid))
 
+def _record_service_event(service,status,details=""):
+    try:
+        c=db()
+        c.execute(
+            "INSERT INTO service_events(service,status,details,created_at) VALUES(?,?,?,?)",
+            (str(service),str(status),str(details)[:1000],datetime.now(TZ).isoformat())
+        )
+        c.commit(); c.close()
+    except Exception:
+        pass
+
+def _n8n_ai_fallback_sync(prompt):
+    """Call the configured n8n AI workflow.
+    n8n itself owns the OpenAI credential; Railway does not need OPENAI_API_KEY
+    when this workflow is configured. Only the user prompt is sent.
+    """
+    if not AI_FAILOVER_TO_N8N or not _secure_remote_base(N8N_WEBHOOK_URL):
+        return None
+    payload=json.dumps({
+        "event":"ai_chat",
+        "prompt":str(prompt)[:8000],
+        "model": os.environ.get("N8N_AI_MODEL", "gpt-4o-mini").strip(),
+        "messages":[
+            {"role":"system","content":"پاسخ کوتاه، مفید، مودبانه و امن بده. اطلاعات حساس یا حدس قطعی ارائه نکن."},
+            {"role":"user","content":str(prompt)[:8000]}
+        ],
+    },ensure_ascii=False).encode("utf-8")
+    headers={"Content-Type":"application/json"}
+    # Optional shared secret. A standard n8n Webhook does not require one.
+    if N8N_API_KEY:
+        headers["X-MyTasks-Key"]=N8N_API_KEY
+        headers["Authorization"]=f"Bearer {N8N_API_KEY}"
+    try:
+        req=urllib.request.Request(N8N_WEBHOOK_URL,data=payload,headers=headers,method="POST")
+        with urllib.request.urlopen(req,timeout=N8N_TIMEOUT) as resp:
+            raw=resp.read().decode("utf-8","replace")
+        data=json.loads(raw)
+        # n8n Webhook responses commonly arrive either as an object or a one-item array.
+        if isinstance(data,list):
+            data=data[0] if data and isinstance(data[0],dict) else {}
+        answer=""
+        if isinstance(data,dict):
+            answer=(data.get("output_text") or data.get("answer") or data.get("text")
+                    or data.get("output") or data.get("response") or "")
+            if not answer and isinstance(data.get("data"),dict):
+                nested=data["data"]
+                answer=(nested.get("output_text") or nested.get("answer")
+                        or nested.get("text") or nested.get("output") or "")
+        answer=str(answer).strip()
+        if answer:
+            _record_service_event("n8n","OK","AI workflow")
+            return answer[:4000]
+        _record_service_event("n8n","WARN","empty AI workflow response")
+    except Exception as exc:
+        _record_service_event("n8n","ERROR",type(exc).__name__)
+        logger.warning("n8n AI workflow failed: %s", type(exc).__name__)
+    return None
+
+def _secure_remote_base(url):
+    if not url:
+        return False
+    low=url.lower()
+    # Plain HTTP is accepted only for loopback/private local deployment.
+    if low.startswith("https://"):
+        return True
+    return low.startswith("http://127.0.0.1") or low.startswith("http://localhost")
+
+def omniroute_configured():
+    return bool(_secure_remote_base(OMNIROUTE_BASE_URL) and OMNIROUTE_API_KEY)
+
+def _omniroute_root():
+    if not omniroute_configured():
+        return None
+    return OMNIROUTE_BASE_URL[:-3] if OMNIROUTE_BASE_URL.endswith("/v1") else OMNIROUTE_BASE_URL
+
+def _omniroute_api_base():
+    root=_omniroute_root()
+    return root + "/v1" if root else None
+
+def _omniroute_ai_sync(prompt):
+    """Call the self-hosted OmniRoute OpenAI-compatible gateway safely."""
+    if not omniroute_configured():
+        return None
+    payload=json.dumps({
+        "model": OMNIROUTE_MODEL,
+        "messages":[
+            {"role":"system","content":"پاسخ کوتاه، مفید، مودبانه و امن بده. اطلاعات حساس یا حدس قطعی ارائه نکن."},
+            {"role":"user","content":str(prompt)[:8000]}
+        ],
+        "temperature":0.2,
+        "max_tokens":500
+    },ensure_ascii=False).encode("utf-8")
+    try:
+        req=urllib.request.Request(
+            _omniroute_api_base()+"/chat/completions",
+            data=payload,
+            headers={
+                "Authorization":f"Bearer {OMNIROUTE_API_KEY}",
+                "Content-Type":"application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req,timeout=OMNIROUTE_TIMEOUT) as resp:
+            data=json.loads(resp.read().decode("utf-8"))
+        choices=data.get("choices") or []
+        answer=""
+        if choices:
+            message=choices[0].get("message") or {}
+            content=message.get("content","")
+            if isinstance(content,list):
+                content=" ".join(str(x.get("text","")) for x in content if isinstance(x,dict))
+            answer=str(content).strip()
+        if answer:
+            _record_service_event("omniroute","OK","AI gateway")
+            return answer[:4000]
+        _record_service_event("omniroute","WARN","empty response")
+    except Exception as exc:
+        _record_service_event("omniroute","ERROR",type(exc).__name__)
+        logger.warning("OmniRoute AI failed: %s", type(exc).__name__)
+    return None
+
+def _omniroute_health_sync():
+    if not omniroute_configured():
+        return False, "OMNIROUTE_BASE_URL/OMNIROUTE_API_KEY تنظیم نشده است."
+    try:
+        req=urllib.request.Request(
+            _omniroute_root() + "/api/health",
+            headers={"Authorization":f"Bearer {OMNIROUTE_API_KEY}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req,timeout=min(OMNIROUTE_TIMEOUT,8)) as resp:
+            status=getattr(resp,"status",200)
+            body=resp.read(4096).decode("utf-8","replace")
+        if status == 200:
+            return True, "OmniRoute در دسترس است."
+        return False, f"HTTP {status}"
+    except Exception as exc:
+        return False, f"اتصال برقرار نشد: {type(exc).__name__}"
+
+def ai_provider_diagnostics():
+    """Return provider state for admin/health-check use only; never expose secrets."""
+    return {
+        "omniroute": omniroute_configured(),
+        "openai": bool(os.environ.get("OPENAI_API_KEY","").strip()),
+        "n8n": n8n_configured(),
+    }
+
+def n8n_configured():
+    # A normal n8n Webhook can be secured by its own URL/auth. The shared key
+    # is optional so a valid webhook can act as the AI gateway without exposing
+    # OPENAI_API_KEY to Railway.
+    return bool(_secure_remote_base(N8N_WEBHOOK_URL))
+
 async def ai_chat_start(update,context):
     uid=update.effective_user.id
     if not user_feature_allowed(uid,"ai"):
@@ -5436,19 +5717,19 @@ async def ai_chat_start(update,context):
         await update.message.reply_text(token_gate_message(uid, "ai", reason), reply_markup=keyboard(uid))
         return
     api_key=os.environ.get("OPENAI_API_KEY","").strip()
-    if not api_key:
+    if not api_key and not omniroute_configured() and not n8n_configured():
         clear_flow(context)
         await update.message.reply_text(
-            "⚠️ چت AI فعلاً آماده نیست چون OPENAI_API_KEY در Railway تنظیم نشده است.\n\n"
-            "بقیه امکانات ربات بدون AI باید正常 کار کنند.",
+            "⚠️ در حال حاضر سرویس هوش مصنوعی در دسترس نیست. اگر تمایل داشته باشید، می‌توانید بعداً دوباره تلاش بفرمایید.",
             reply_markup=keyboard(uid),
         )
         return
     clear_flow(context)
     context.user_data["ai_chat"]=True
     await update.message.reply_text(
-        "🤖 سوالت را بفرست. برای خروج «⬅️ برگشت» یا «🏠 منوی اصلی» را بزن." if lang(uid)=="fa" else
-        "🤖 Send your question. Use «⬅️ Back» or «🏠 Main Menu» to exit.",
+        "🤖 آماده‌ام. سوالت را بفرست؛ پاسخ را از سرویس هوشمند در دسترس دریافت می‌کنم. برای خروج «⬅️ برگشت» یا «🏠 منوی اصلی» را بزن."
+        if lang(uid)=="fa" else
+        "🤖 Ready. Send your question and I will use the available AI provider. Use «⬅️ Back» or «🏠 Main Menu» to exit.",
         reply_markup=nav_keyboard(uid),
     )
 
@@ -5460,11 +5741,11 @@ async def ai_chat_text(update,context):
         await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
         return True
     api_key=os.environ.get("OPENAI_API_KEY","").strip()
-    if not api_key:
+    if not api_key and not omniroute_configured() and not n8n_configured():
         clear_flow(context)
         await update.message.reply_text(
-            "⚠️ سرویس AI در دسترس نیست چون OPENAI_API_KEY تنظیم نشده است.\n"
-            "از Railway → Variables آن را تنظیم کن؛ بعد دوباره «🤖 چت با AI» را بزن.",
+            "⚠️ در حال حاضر دستیار هوشمند موقتاً در دسترس نیست.\n"
+            "لطفاً کمی بعد دوباره تلاش بفرمایید. 🌷",
             reply_markup=keyboard(uid),
         )
         return True
@@ -5473,16 +5754,56 @@ async def ai_chat_text(update,context):
         c.close(); await update.message.reply_text("⛔ سهمیه AI امروز تمام شده است." if lang(uid)=="fa" else "⛔ Your AI quota for today is used up.",reply_markup=nav_keyboard(uid)); return True
     c.close()
     try:
-        payload=json.dumps({"model":os.environ.get("OPENAI_MODEL","gpt-5.6-luna"),"input":f"پاسخ کوتاه، مفید و امن به این سوال کاربر بده. اگر موضوع پزشکی یا مالی است، پاسخ را عمومی و غیرقطعی نگه دار: {text}","max_output_tokens":500}).encode("utf-8")
-        req=urllib.request.Request("https://api.openai.com/v1/responses",data=payload,headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},method="POST")
-        with urllib.request.urlopen(req,timeout=35) as resp: data=json.loads(resp.read().decode("utf-8"))
-        answer=data.get("output_text","").strip() or "پاسخی دریافت نشد."
-        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET ai_daily_used=?,ai_used_date=? WHERE user_id=?",(used+1,today,uid)); c.commit(); c.close()
+        answer=None
+        # Primary path: n8n workflow. The OpenAI credential lives inside n8n,
+        # so Railway does not need OPENAI_API_KEY for the normal AI chat path.
+        if n8n_configured():
+            answer=_n8n_ai_fallback_sync(text)
+        # Secondary path: self-hosted OmniRoute.
+        if not answer and omniroute_configured():
+            answer=_omniroute_ai_sync(text)
+        # Last-resort direct OpenAI path, only when explicitly configured.
+        if not answer and api_key:
+            payload=json.dumps({
+                "model":OPENAI_MODEL,
+                "input":(
+                    "پاسخ کوتاه، مفید، مودبانه و امن به این سوال کاربر بده. "
+                    "اگر موضوع پزشکی یا مالی است، پاسخ عمومی و غیرقطعی نگه دار: "
+                    + text
+                ),
+                "max_output_tokens":500
+            },ensure_ascii=False).encode("utf-8")
+            req=urllib.request.Request(
+                "https://api.openai.com/v1/responses",
+                data=payload,
+                headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req,timeout=35) as resp:
+                data=json.loads(resp.read().decode("utf-8"))
+            answer=data.get("output_text","").strip() or None
+            if answer:
+                _record_service_event("openai","OK","direct chat")
+        if not answer:
+            raise RuntimeError("No AI provider returned a response")
+        if not answer:
+            raise RuntimeError("No AI provider returned a response")
+        c=db()
+        c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,))
+        c.execute(
+            "UPDATE user_settings SET ai_daily_used=?,ai_used_date=? WHERE user_id=?",
+            (used+1,today,uid)
+        )
+        c.commit(); c.close()
         await update.message.reply_text(answer,reply_markup=nav_keyboard(uid))
     except Exception as e:
         logger.error("AI chat failed: %s",e)
         clear_flow(context)
-        await update.message.reply_text("❌ پاسخ AI دریافت نشد. بخش AI بسته شد تا بقیه امکانات ربات بدون مشکل در دسترس باشند.",reply_markup=keyboard(uid))
+        await update.message.reply_text(
+            "⚠️ متأسفانه در حال حاضر پاسخ هوش مصنوعی دریافت نشد. "
+            "لطفاً اگر تمایل دارید، کمی بعد دوباره تلاش بفرمایید.",
+            reply_markup=keyboard(uid)
+        )
     return True
 
 
@@ -5504,6 +5825,9 @@ async def build_daily_report():
         "goals_created":c.execute("SELECT COUNT(*) n FROM goals WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "poll_participation":c.execute("SELECT COUNT(DISTINCT user_id) n FROM channel_poll_votes WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "reaction_users":c.execute("SELECT COUNT(DISTINCT user_id) n FROM channel_reactions WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "tickets_created":c.execute("SELECT COUNT(*) n FROM tickets WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
+        "tickets_closed":c.execute("SELECT COUNT(*) n FROM tickets WHERE status IN ('closed','resolved') AND substr(updated_at,1,10)=?",(d,)).fetchone()["n"],
+        "ticket_messages":c.execute("SELECT COUNT(*) n FROM ticket_messages WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
     }
     top_usage=c.execute("SELECT event_type,COUNT(*) n FROM bot_usage_events WHERE substr(created_at,1,10)=? GROUP BY event_type ORDER BY n DESC LIMIT 6",(d,)).fetchall()
     data["top_usage"]=[{"event":r["event_type"],"count":r["n"]} for r in top_usage]
@@ -5528,6 +5852,9 @@ def get_daily_report_text():
             f"❤️ کاربران دارای واکنش کانال: {x.get('reaction_users',0)} نفر\n"
             f"👍 مفید: {x.get('likes',0)}\n"
             f"👎 نامناسب: {x.get('dislikes',0)}\n"
+            f"🎫 تیکت‌های جدید: {x.get('tickets_created',0)}\n"
+            f"✅ تیکت‌های بسته‌شده: {x.get('tickets_closed',0)}\n"
+            f"💬 پیام‌های پشتیبانی: {x.get('ticket_messages',0)}\n"
             f"🔥 فعالیت‌های پرتکرار: {top_text}")
 
 async def run_health_checks(bot,admin_id=0):
@@ -5569,19 +5896,64 @@ async def run_health_checks(bot,admin_id=0):
         checks.append(("Channel","WARN","کانال هنوز در تنظیمات مدیریت کانال متصل نشده است."))
 
     scheduler_ok=bool(getattr(bot,"job_queue",None))
-    checks.append(("Scheduler","OK" if scheduler_ok else "ERROR",
-                   "JobQueue فعال است؛ یادآوری‌ها و کارهای زمان‌بندی‌شده اجرا می‌شوند."
+    checks.append(("Scheduler","OK" if scheduler_ok else "WARN",
+                   "زمان‌بندی ربات فعال است."
                    if scheduler_ok else
-                   "JobQueue در دسترس نیست؛ یادآوری‌ها و کارهای زمان‌بندی‌شده اجرا نمی‌شوند."))
+                   "صف زمان‌بندی داخلی کتابخانه در دسترس نیست؛ fallback داخلی ربات استفاده می‌شود."))
+
+    n8n_ok=n8n_configured()
+    checks.append(("n8n","OK" if n8n_ok else "WARN",
+                   "Workflow هوش مصنوعی/اتوماسیون متصل است؛ اعتبارنامه OpenAI می‌تواند داخل n8n نگهداری شود."
+                   if n8n_ok else
+                   "Workflow هوش مصنوعی n8n هنوز متصل نشده است؛ مسیرهای دیگر در صورت تنظیم استفاده می‌شوند."))
+
+    omni_ok=False
+    omni_detail="OmniRoute تنظیم نشده است."
+    if omniroute_configured():
+        omni_ok, omni_detail = _omniroute_health_sync()
+    checks.append(("OmniRoute","OK" if omni_ok else ("WARN" if not omniroute_configured() else "ERROR"), omni_detail))
+
+    price_enabled=feature_enabled("price_data")
+    checks.append(("Price Sources","OK" if price_enabled else "OFF",
+                   "قیمت از منابع بازار دریافت می‌شود؛ AI منبع عدد قیمت نیست."
+                   if price_enabled else
+                   "قیمت آنلاین توسط مدیر غیرفعال شده است."))
+
+    try:
+        c=db()
+        orphan_appointments=c.execute("""
+            SELECT COUNT(*) n FROM appointments a
+            LEFT JOIN customers cu ON cu.id=a.customer_id
+            WHERE a.customer_id IS NOT NULL AND cu.id IS NULL
+        """).fetchone()["n"]
+        bad_customer_owners=c.execute("""
+            SELECT COUNT(*) n FROM appointments a
+            JOIN customers cu ON cu.id=a.customer_id
+            WHERE a.owner_user_id IS NOT NULL AND cu.owner_user_id IS NOT NULL
+              AND a.owner_user_id != cu.owner_user_id
+        """).fetchone()["n"]
+        c.close()
+        isolation_bad=int(orphan_appointments or 0)+int(bad_customer_owners or 0)
+        checks.append(("Data Isolation","OK" if isolation_bad==0 else "ERROR",
+                       "روابط مالکیت کاربران و مشتری/رزرو سازگار است."
+                       if isolation_bad==0 else
+                       f"{isolation_bad} رابطه ناسازگار پیدا شد؛ نیازمند بررسی مدیر است."))
+    except Exception:
+        checks.append(("Data Isolation","WARN","ممیزی مالکیت در این نوبت کامل نشد."))
 
     ai_enabled=feature_enabled("ai")
-    ai_key=bool(os.environ.get("OPENAI_API_KEY","").strip())
+    provider_state=ai_provider_diagnostics()
+    ai_key=provider_state["openai"]
     if not ai_enabled:
         checks.append(("AI","OFF","هوش مصنوعی توسط مدیر غیرفعال شده است."))
-    elif ai_key:
-        checks.append(("AI","OK","AI فعال است و OPENAI_API_KEY تنظیم شده است."))
+    elif any(provider_state.values()):
+        providers=[]
+        if provider_state["omniroute"]: providers.append("OmniRoute")
+        if provider_state["openai"]: providers.append("OpenAI")
+        if provider_state["n8n"]: providers.append("n8n fallback")
+        checks.append(("AI","OK","AI فعال است؛ مسیرها: " + " + ".join(providers)))
     else:
-        checks.append(("AI","WARN","AI فعال است ولی OPENAI_API_KEY تنظیم نشده است."))
+        checks.append(("AI","WARN","دستیار هوشمند فعال است ولی هیچ مسیر AI قابل استفاده‌ای متصل نیست."))
 
     try:
         c=db()
@@ -5593,6 +5965,9 @@ async def run_health_checks(bot,admin_id=0):
     except Exception as e:
         checks.append(("Feature Access","ERROR",f"خواندن تنظیمات قابلیت‌ها خطا دارد: {e}"))
 
+    for name,ok,detail in _security_patch_audit():
+        checks.append((name,"OK" if ok else "ERROR",detail))
+
     c=db()
     now=datetime.now(TZ).isoformat()
     c.executemany(
@@ -5601,20 +5976,66 @@ async def run_health_checks(bot,admin_id=0):
     )
     c.commit(); c.close()
 
+def _security_patch_audit():
+    """Non-destructive runtime security audit for the management health check."""
+    checks=[]
+    # SQLite security primitives
+    try:
+        c=db()
+        fk=c.execute("PRAGMA foreign_keys").fetchone()[0]
+        journal=c.execute("PRAGMA journal_mode").fetchone()[0]
+        sync=c.execute("PRAGMA synchronous").fetchone()[0]
+        checks.append(("SQLite Foreign Keys", fk==1, f"foreign_keys={fk}"))
+        checks.append(("SQLite Journal", str(journal).lower()=="wal", f"journal_mode={journal}"))
+        checks.append(("SQLite Sync", int(sync)>=1, f"synchronous={sync}"))
+        # Cross-user ownership checks for the most sensitive business records.
+        queries=[
+            ("""SELECT COUNT(*) n FROM goals g LEFT JOIN users u ON u.user_id=g.user_id WHERE u.user_id IS NULL""","Orphan goals"),
+            ("""SELECT COUNT(*) n FROM customers c LEFT JOIN users u ON u.user_id=c.owner_user_id WHERE c.owner_user_id IS NOT NULL AND u.user_id IS NULL""","Orphan customers"),
+            ("""SELECT COUNT(*) n FROM appointments a LEFT JOIN users u ON u.user_id=a.owner_user_id WHERE a.owner_user_id IS NOT NULL AND u.user_id IS NULL""","Orphan appointments"),
+            ("""SELECT COUNT(*) n FROM payments p LEFT JOIN users u ON u.user_id=p.user_id WHERE p.user_id IS NOT NULL AND u.user_id IS NULL""","Orphan payments"),
+        ]
+        for sql,label in queries:
+            try:
+                n=int(c.execute(sql).fetchone()["n"])
+                checks.append((label,n==0,str(n) if n else "0"))
+            except Exception:
+                checks.append((label,True,"table/schema not applicable"))
+        c.close()
+    except Exception as exc:
+        checks.append(("Database security audit",False,type(exc).__name__))
+
+    # Restrict DB/backup files from group/other users where the OS supports chmod.
+    if os.name == "posix":
+        for path,label in [(DB_PATH,"DB file permissions"),(DB_BACKUP_PATH,"Backup permissions")]:
+            try:
+                if os.path.exists(path):
+                    mode=os.stat(path).st_mode & 0o777
+                    checks.append((label,(mode & 0o077)==0,oct(mode)))
+                    if (mode & 0o077)!=0:
+                        try: os.chmod(path,0o600)
+                        except OSError: pass
+            except OSError as exc:
+                checks.append((label,False,type(exc).__name__))
+    return checks
+
 def health_text():
     c=db()
     rows=c.execute("""
         SELECT service,status,details
         FROM health_checks
-        ORDER BY id DESC LIMIT 7
+        WHERE created_at=(SELECT MAX(created_at) FROM health_checks)
+        ORDER BY id ASC
     """).fetchall()
     c.close()
-    lines=["🩺 <b>Health Check / چکاپ ربات</b>",""]
+    lines=["🩺 Health Check / چکاپ ربات",""]
     for r in rows:
         icon={"OK":"🟢","ERROR":"🔴","WARN":"🟡","OFF":"⚪"}.get(r["status"],"⚪")
-        lines.append(f"{icon} <b>{html.escape(r['service'])}</b>: {html.escape(r['status'])}")
-        if r["details"]:
-            lines.append(f"   ↳ {html.escape(r['details'])}")
+        service=re.sub(r"<[^>]+>", "", str(r["service"] or ""))
+        details=re.sub(r"<[^>]+>", "", str(r["details"] or ""))
+        lines.append(f"{icon} {service}: {r['status']}")
+        if details:
+            lines.append(f"   ↳ {details}")
     return "\n".join(lines)
 async def scheduled_health_check_job(context):
     """Run the automatic admin health check once per day at the configured time."""
@@ -6300,7 +6721,7 @@ async def v25_voice_prompt(update,context):
 
 async def v25_transcribe_voice(file_bytes, filename='voice.ogg'):
     api_key=os.environ.get('OPENAI_API_KEY','').strip()
-    if not api_key: raise RuntimeError('OPENAI_API_KEY is not configured')
+    if not api_key: raise RuntimeError('Voice transcription provider is not configured')
     model=os.environ.get('OPENAI_TRANSCRIBE_MODEL','gpt-4o-mini-transcribe').strip()
     boundary='----MyTasksBoundary'+hashlib.sha256(os.urandom(16)).hexdigest()
     body=[]
@@ -6324,7 +6745,7 @@ async def v25_voice_handler(update,context):
     try:
         tg_file=await update.message.voice.get_file(); data=await tg_file.download_as_bytearray(); text=await v25_transcribe_voice(bytes(data))
     except Exception as e:
-        logger.warning('Voice transcription failed: %s',e); await update.message.reply_text('🎙️ فعلاً نتوانستم ویس را تبدیل به متن کنم. برای فعال بودن این قابلیت باید OPENAI_API_KEY تنظیم شده باشد.' if lang(uid)=='fa' else '🎙️ I could not transcribe the voice. OPENAI_API_KEY must be configured for voice transcription.'); return
+        logger.warning('Voice transcription failed: %s',type(e).__name__); await update.message.reply_text('🎙️ فعلاً امکان تبدیل این ویس به متن فراهم نیست. لطفاً کمی بعد دوباره تلاش بفرمایید. 🌷' if lang(uid)=='fa' else '🎙️ Voice transcription is temporarily unavailable. Please try again later. 🌷'); return
     if not text:
         await update.message.reply_text('❌ متن قابل تشخیصی از ویس پیدا نشد.'); return
     context.user_data['v25_voice_text']=text
@@ -8156,6 +8577,68 @@ async def text_router(update, context):
 # Ensure the application registers the repaired definitions above.
 admin_keyboard = final_admin_keyboard
 
+
+class _FallbackJob:
+    def __init__(self, data=None, name=""):
+        self.data=data
+        self.name=name
+
+class _FallbackJobQueue:
+    """Small asyncio fallback when python-telegram-bot was installed without APScheduler.
+    It preserves the bot's existing run_once/run_repeating API instead of silently disabling jobs.
+    """
+    def __init__(self, application):
+        self.application=application
+        self._tasks=set()
+
+    def _context(self, job):
+        return type("FallbackJobContext", (), {
+            "bot": self.application.bot,
+            "application": self.application,
+            "job": job,
+            "job_queue": self,
+        })()
+
+    def _track(self, task):
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    def run_once(self, callback, when, data=None, name=""):
+        delay=float(when.total_seconds()) if isinstance(when,timedelta) else float(when)
+        job=_FallbackJob(data=data,name=name)
+        async def runner():
+            await asyncio.sleep(max(0.0,delay))
+            try:
+                await callback(self._context(job))
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Fallback JobQueue one-shot job failed: %s",name)
+        return self._track(asyncio.get_event_loop().create_task(runner()))
+
+    def run_repeating(self, callback, interval, first=None, data=None, name=""):
+        delay=float(first.total_seconds()) if isinstance(first,timedelta) else float(first if first is not None else interval)
+        period=float(interval.total_seconds()) if isinstance(interval,timedelta) else float(interval)
+        period=max(1.0,period)
+        job=_FallbackJob(data=data,name=name)
+        async def runner():
+            await asyncio.sleep(max(0.0,delay))
+            while True:
+                try:
+                    await callback(self._context(job))
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Fallback JobQueue repeating job failed: %s",name)
+                await asyncio.sleep(period)
+        return self._track(asyncio.get_event_loop().create_task(runner()))
+
+    def stop(self):
+        for task in tuple(self._tasks):
+            task.cancel()
+        self._tasks.clear()
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
@@ -8182,6 +8665,13 @@ def main():
     c.close()
 
     app = Application.builder().token(BOT_TOKEN).build()
+    # If the deployment lacks APScheduler, keep scheduled features alive through asyncio
+    # instead of silently skipping every reminder/report/health-check job.
+    if app.job_queue is None:
+        app._job_queue = _FallbackJobQueue(app)
+        logger.warning("python-telegram-bot JobQueue unavailable; using asyncio fallback scheduler.")
+    else:
+        logger.info("python-telegram-bot JobQueue is active.")
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", my_id))
@@ -8216,6 +8706,7 @@ def main():
     app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
     app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
+    app.add_handler(CallbackQueryHandler(onboarding_feature_callback, pattern=r"^pref:"))
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
     app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
@@ -8274,6 +8765,8 @@ def main():
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
 
+    logger.info("MyTasks build: 2026-08-22-OMNI-AI-FIX-02")
+    logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
