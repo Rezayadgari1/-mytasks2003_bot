@@ -9335,14 +9335,48 @@ def _compact_user_keyboard(uid):
 
 
 def _compact_admin_keyboard(uid):
+    """Admin gets the complete user menu plus the full management entry points.
+
+    Owner/admin access must not hide normal user features. The admin uses the
+    same feature routes as every user, while management controls stay separate.
+    """
     fa = lang(uid) == "fa"
-    rows = [
+    try:
+        base = filter_menu_rows(uid, [list(row) for row in T["fa" if fa else "en"]["menu"]])
+    except Exception:
+        base = [list(row) for row in T["fa" if fa else "en"]["menu"]]
+
+    # Admins bypass feature visibility checks, but keep the normal user menu.
+    extras = []
+    extra_defs = [
+        ("unified_hub", "🧠 مرکز من", "🧠 My Center"),
+        ("portfolio", "💰 سرمایه‌های من", "💰 My Portfolio"),
+        ("installments", "💳 اقساط", "💳 Installments"),
+        ("profile_sharing", "👤 اطلاعات من", "👤 My Profile"),
+        ("voice", "🎙️ دستیار صوتی", "🎙️ Voice Assistant"),
+        ("calendar_hub", "📅 تقویم من", "📅 My Calendar"),
+    ]
+    for key, fa_label, en_label in extra_defs:
+        try:
+            if admin_is_allowed(uid) or v25_allowed(uid, key):
+                extras.append(fa_label if fa else en_label)
+        except Exception:
+            logger.exception("Admin menu feature check failed: %s", key)
+    extras.append("🎟️ توکن‌های من" if fa else "🎟️ My Tokens")
+
+    rows = [list(r) for r in base if r]
+    for i in range(0, len(extras), 2):
+        rows.append(extras[i:i + 2])
+
+    # Management controls are added after all user capabilities.
+    rows.extend([
         ["🛡 پنل مدیریت" if fa else "🛡 Admin Panel"],
         ["🎫 تیکت‌ها" if fa else "🎫 Tickets", "📊 گزارش مدیریت" if fa else "📊 Admin Reports"],
         ["🧩 قابلیت‌ها" if fa else "🧩 Features", "🤖 مدیریت AI" if fa else "🤖 AI Management"],
         ["👥 کاربران" if fa else "👥 Users", "💰 مالی" if fa else "💰 Finance"],
         ["📢 مدیریت کانال" if fa else "📢 Channel Management"],
-    ]
+        ["🧭 کنترل کامل سیستم" if fa else "🧭 Full System Control"],
+    ])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
 
@@ -9397,6 +9431,19 @@ async def text_router(update, context):
         return
     if txt in ("💰 مالی", "💰 Finance"):
         await admin_command(update, context)
+        return
+    if txt in ("🧭 کنترل کامل سیستم", "🧭 Full System Control"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            return
+        await update.message.reply_text(
+            "🧭 <b>مرکز کنترل کامل سیستم</b>\n\nاز دکمه زیر وارد مرکز مدیریت کامل شو.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🧭 ورود به مرکز مدیریت", callback_data="v25:master:home")],
+                [main_menu_button(uid)],
+            ]),
+        )
         return
     if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
         if not admin_guard(uid):
@@ -9768,3 +9815,4 @@ admin_keyboard=final_admin_keyboard
 
 if __name__ == "__main__":
     main()
+
