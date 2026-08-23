@@ -29,6 +29,7 @@ except ImportError:
 
 from telegram import (
     Update,
+    Message,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -53,6 +54,47 @@ except ImportError:
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+
+
+# ===================== SINGLE MENU MESSAGE UX =====================
+# Keep only one bot-sent ReplyKeyboard menu message per private chat. When a
+# navigation action opens another top-level menu, the previous bot menu is
+# removed before the new one is sent. Inline menus continue to use edit_text()
+# and therefore stay in the same Telegram message naturally.
+_SINGLE_MENU_MESSAGE_IDS = {}
+_SINGLE_MENU_LOCK = asyncio.Lock()
+_SINGLE_MENU_ENABLED = True
+_SINGLE_MENU_BLANK = "\u200b"  # visually empty; carries the ReplyKeyboardMarkup
+
+_original_message_reply_text_single_menu = Message.reply_text
+
+async def _single_menu_reply_text(self, text, *args, **kwargs):
+    reply_markup = kwargs.get("reply_markup")
+    is_reply_menu = isinstance(reply_markup, ReplyKeyboardMarkup)
+    if not is_reply_menu or not _SINGLE_MENU_ENABLED:
+        return await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
+
+    chat_id = getattr(self, "chat_id", None)
+    if chat_id is not None:
+        async with _SINGLE_MENU_LOCK:
+            old_id = _SINGLE_MENU_MESSAGE_IDS.get(int(chat_id))
+            if old_id and old_id != getattr(self, "message_id", None):
+                try:
+                    await self.get_bot().delete_message(chat_id=int(chat_id), message_id=int(old_id))
+                except Exception:
+                    pass
+            # Navigation messages carrying the main reply keyboard should not
+            # add another visible "🏠 منوی اصلی" bubble to the conversation.
+            if isinstance(text, str) and text.strip() in {"🏠 منوی اصلی", "🏠 Main Menu", "🏠"}:
+                text = _SINGLE_MENU_BLANK
+            result = await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
+            if result is not None:
+                _SINGLE_MENU_MESSAGE_IDS[int(chat_id)] = int(result.message_id)
+            return result
+
+    return await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
+
+Message.reply_text = _single_menu_reply_text
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "goals.db")
 # IMPORTANT: In Railway, set DB_PATH to a path on a persistent Volume.
@@ -11284,10 +11326,22 @@ def _manager_main_keyboard(uid):
         ("manage_system",["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"]),
         ("manage_roles",["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"]),
     ]
-    rows=[["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
+    # Compact two-column layout so the manager menu fits on screen without
+    # changing any callback labels, permissions, or navigation behavior.
+    visible = [["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
     for perm,labels in specs:
-        if master_has_permission(uid,perm): rows.append(labels)
-    rows += [["👤 استفاده از ربات" if fa else "👤 Use Bot"],["🏠 منوی اصلی" if fa else "🏠 Main Menu"]]
+        if master_has_permission(uid,perm):
+            visible.append(labels)
+
+    visible += [
+        ["👤 استفاده از ربات" if fa else "👤 Use Bot"],
+        ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
+    ]
+
+    rows=[]
+    for i in range(0,len(visible),2):
+        rows.append(visible[i:i+2])
+
     title=(f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>" if fa else f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>")
     return title,ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
 
