@@ -79,7 +79,7 @@ REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "").strip()
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()
 N8N_TIMEOUT = float(os.environ.get("N8N_TIMEOUT", "12"))
-MYTASKS_BUILD_ID = "2026-08-23-ADMIN-ROOT-UNIFIED-AI-01"
+MYTASKS_BUILD_ID = "2026-08-23-ADMIN-ROOT-UNIFIED-AI-02"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
@@ -5841,18 +5841,27 @@ def _n8n_ai_fallback_sync(prompt):
         req=urllib.request.Request(N8N_WEBHOOK_URL,data=payload,headers=headers,method="POST")
         with urllib.request.urlopen(req,timeout=N8N_TIMEOUT) as resp:
             raw=resp.read().decode("utf-8","replace")
-        data=json.loads(raw)
-        # n8n Webhook responses commonly arrive either as an object or a one-item array.
+        try:
+            data=json.loads(raw)
+        except Exception:
+            data=raw
+        # n8n Webhook responses may be JSON, a one-item array, or plain text.
         if isinstance(data,list):
-            data=data[0] if data and isinstance(data[0],dict) else {}
+            data=data[0] if data and isinstance(data[0],dict) else (data[0] if data else {})
         answer=""
-        if isinstance(data,dict):
+        if isinstance(data,str):
+            answer=data
+        elif isinstance(data,dict):
             answer=(data.get("output_text") or data.get("answer") or data.get("text")
-                    or data.get("output") or data.get("response") or "")
+                    or data.get("output") or data.get("response") or data.get("message") or "")
+            if isinstance(answer,dict):
+                answer=(answer.get("content") or answer.get("text") or answer.get("output") or "")
             if not answer and isinstance(data.get("data"),dict):
                 nested=data["data"]
                 answer=(nested.get("output_text") or nested.get("answer")
-                        or nested.get("text") or nested.get("output") or "")
+                        or nested.get("text") or nested.get("output") or nested.get("response") or "")
+                if isinstance(answer,dict):
+                    answer=(answer.get("content") or answer.get("text") or answer.get("output") or "")
         answer=str(answer).strip()
         if answer:
             _record_service_event("n8n","OK","AI workflow")
@@ -8806,7 +8815,7 @@ async def text_router(update, context):
         await update.message.reply_text(v25_hub_text(uid), parse_mode="HTML", reply_markup=v25_hub_keyboard(uid))
         return
 
-    if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+    if text in ("👤 استفاده از ربات", "👤 Use Bot"):
         clear_flow(context)
         await update.message.reply_text(
             "👤 <b>استفاده از ربات</b>\n\nقابلیت‌های عادی ربات در دسترس تو هستند." if lang(uid)=="fa" else
@@ -8814,17 +8823,17 @@ async def text_router(update, context):
             parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
         )
         return
-    if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+    if text in ("🛡 مدیریت ربات", "🛡 Bot Management"):
         if not admin_guard(uid):
             await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
             return
         clear_flow(context)
         await _show_admin_management(update, context)
         return
-    if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
+    if text in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
         await admin_command(update, context)
         return
-    if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents",
+    if text in ("👥 کاربران و نقش‌ها", "👥 Users & Roles", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents",
                 "💰 مالی و پرداخت", "💰 Finance & Payments", "💎 VIP / XP / Token",
                 "📢 کانال و انتشار", "📢 Channels & Publishing", "🩺 سلامت و Diagnostics",
                 "🩺 Health & Diagnostics", "💾 Backup و Recovery", "💾 Backup & Recovery",
@@ -9023,6 +9032,8 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
+    app.add_handler(CallbackQueryHandler(ai_test_callback, pattern=r"^ai:test$"))
+    app.add_handler(CallbackQueryHandler(ai_panel_callback, pattern=r"^ai:panel$"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
@@ -9109,7 +9120,7 @@ def main():
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
 
-    logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-01")
+    logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-02")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -9453,6 +9464,104 @@ def compact_keyboard(uid):
 keyboard = compact_keyboard
 
 
+async def admin_ai_panel(update, context):
+    """Dedicated AI management panel for the running bot. Secrets are never displayed."""
+    uid = update.effective_user.id
+    if not admin_guard(uid):
+        await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+        return
+    state = ai_provider_diagnostics()
+    providers = [
+        f"OmniRoute: {'🟢 فعال' if state.get('omniroute') else '🔴 غیرفعال'}",
+        f"OpenAI: {'🟢 فعال' if state.get('openai') else '🔴 غیرفعال'}",
+        f"Gemini: {'🟢 فعال' if state.get('gemini') else '🔴 غیرفعال'}",
+        f"n8n: {'🟢 فعال' if state.get('n8n') else '🔴 غیرفعال'}",
+        f"Text AI: {'🟢 آماده' if state.get('text_unified') else '🔴 بدون Provider'}",
+        f"Voice/STT: {'🟢 آماده' if state.get('voice_stt') else '🔴 غیرفعال'}",
+    ]
+    await update.message.reply_text(
+        "🤖 <b>مدیریت AI</b>\n\n" + "\n".join(providers) +
+        "\n\n🔐 کلیدهای API در این پنل نمایش داده نمی‌شوند.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🧪 تست همه مسیرهای AI", callback_data="ai:test")],
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
+        ])
+    )
+
+
+async def ai_test_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer("در حال تست مسیرهای AI...")
+    prompt = "پاسخ بده: OK"
+    results = []
+
+    def add(name, fn, configured):
+        if not configured:
+            results.append(f"⚪ {name}: تنظیم نشده")
+            return
+        try:
+            answer = str(fn() or "").strip()
+            results.append(f"🟢 {name}: OK" if answer else f"🔴 {name}: پاسخ خالی")
+        except Exception as exc:
+            results.append(f"🔴 {name}: {type(exc).__name__}")
+
+    add("OmniRoute", lambda: _omniroute_ai_sync(prompt), omniroute_configured())
+    add("Gemini", lambda: _gemini_generate_text(prompt), bool(GEMINI_API_KEY))
+    add("n8n", lambda: _n8n_ai_fallback_sync(prompt), n8n_configured())
+
+    # OpenAI direct smoke test is intentionally tiny and uses the same Responses API path as chat.
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    def openai_test():
+        payload = json.dumps({"model": OPENAI_MODEL, "input": prompt, "max_output_tokens": 20}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/responses", data=payload,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data.get("output_text") or ""
+    add("OpenAI", openai_test, bool(api_key))
+
+    await q.message.edit_text(
+        "🧪 <b>نتیجه تست AI</b>\n\n" + "\n".join(results) +
+        "\n\n🔐 هیچ کلید API نمایش داده نشد.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 تست دوباره", callback_data="ai:test")],
+            [InlineKeyboardButton("⬅️ مدیریت AI", callback_data="ai:panel")],
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
+        ])
+    )
+
+
+async def ai_panel_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await q.answer()
+    state = ai_provider_diagnostics()
+    await q.message.edit_text(
+        "🤖 <b>مدیریت AI</b>\n\n"
+        f"OmniRoute: {'🟢' if state.get('omniroute') else '🔴'}\n"
+        f"OpenAI: {'🟢' if state.get('openai') else '🔴'}\n"
+        f"Gemini: {'🟢' if state.get('gemini') else '🔴'}\n"
+        f"n8n: {'🟢' if state.get('n8n') else '🔴'}\n"
+        f"Text AI: {'🟢' if state.get('text_unified') else '🔴'}\n"
+        f"Voice/STT: {'🟢' if state.get('voice_stt') else '🔴'}",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🧪 تست همه مسیرهای AI", callback_data="ai:test")],
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
+        ])
+    )
+
+
 _OLD_TEXT_ROUTER_COMPACT = text_router
 async def text_router(update, context):
     if not update.message or not update.message.text:
@@ -9483,7 +9592,11 @@ async def text_router(update, context):
         await admin_command(update, context)
         return
     if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
-        await admin_command(update, context)
+        await admin_ai_panel(update, context)
+        return
+    if txt in ("🤖 چت با AI", "🤖 AI Chat"):
+        clear_flow(context)
+        await ai_chat_start(update, context)
         return
     if txt in ("👥 کاربران", "👥 Users"):
         await admin_command(update, context)
