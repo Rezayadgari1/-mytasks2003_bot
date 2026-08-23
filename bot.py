@@ -9427,6 +9427,343 @@ async def v25_callback(update, context):
     return await _OLD_V25_CALLBACK_COMPACT(update, context)
 
 
+# ===================== MASTER MANAGEMENT CONTROL CENTER =====================
+# Added after the legacy layers so the new management UI is additive and does
+# not replace existing user features, payments, VIP, channel, or customer flows.
+MASTER_RBAC_ROLES = {
+    "owner": "👑 Owner",
+    "senior_manager": "🛡 مدیر ارشد",
+    "general_manager": "👤 مدیر عمومی",
+    "technical_manager": "🧰 مدیر فنی",
+    "finance_manager": "💰 مدیر مالی",
+    "ticket_manager": "🎫 مدیر تیکت",
+    "channel_manager": "📢 مدیر کانال",
+}
+
+MASTER_PERMISSION_KEYS = [
+    "view_dashboard", "manage_users", "manage_roles", "manage_vip", "manage_xp",
+    "manage_tickets", "manage_finance", "manage_channels", "manage_ai", "manage_features",
+    "run_health", "run_diagnostics", "backup", "restore", "view_audit", "run_tests",
+    "manage_system",
+]
+
+MASTER_ROLE_PERMISSIONS = {
+    "owner": set(MASTER_PERMISSION_KEYS),
+    "senior_manager": {"view_dashboard", "manage_users", "manage_vip", "manage_xp", "manage_tickets", "manage_channels", "manage_ai", "manage_features", "run_health", "run_diagnostics", "backup", "view_audit", "run_tests"},
+    "general_manager": {"view_dashboard", "manage_users", "manage_vip", "manage_xp", "manage_tickets", "manage_channels", "manage_features", "run_health", "run_diagnostics", "run_tests"},
+    "technical_manager": {"view_dashboard", "manage_ai", "manage_features", "run_health", "run_diagnostics", "backup", "view_audit", "run_tests"},
+    "finance_manager": {"view_dashboard", "manage_vip", "manage_xp", "manage_finance", "view_audit", "run_tests"},
+    "ticket_manager": {"view_dashboard", "manage_tickets", "run_health", "view_audit", "run_tests"},
+    "channel_manager": {"view_dashboard", "manage_channels", "run_health", "run_tests"},
+}
+
+MASTER_DOMAIN_PERMISSION = {
+    "users": "manage_users", "roles": "manage_roles", "vip": "manage_vip", "xp": "manage_xp",
+    "tickets": "manage_tickets", "finance": "manage_finance", "channels": "manage_channels",
+    "ai": "manage_ai", "features": "manage_features", "health": "run_health",
+    "diagnostics": "run_diagnostics", "backup": "backup", "restore": "restore",
+    "audit": "view_audit", "tests": "run_tests", "system": "manage_system",
+}
+
+def master_owner_id():
+    return min(ADMIN_IDS) if ADMIN_IDS else 0
+
+def master_rbac_init_db():
+    c=db()
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS management_roles(
+        user_id INTEGER PRIMARY KEY,
+        role TEXT NOT NULL DEFAULT 'general_manager',
+        domain TEXT NOT NULL DEFAULT 'general',
+        permissions_json TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS management_requests(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        requested_by INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        target_user INTEGER,
+        payload TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_by INTEGER,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_management_requests_status ON management_requests(status, created_at);
+    CREATE TABLE IF NOT EXISTS incident_tickets(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fingerprint TEXT NOT NULL,
+        module TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'error',
+        details TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        occurrences INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(fingerprint, status)
+    );
+    CREATE INDEX IF NOT EXISTS idx_incident_tickets_status ON incident_tickets(status, last_seen_at);
+    CREATE TABLE IF NOT EXISTS system_test_runs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER NOT NULL,
+        passed INTEGER NOT NULL DEFAULT 0,
+        total INTEGER NOT NULL DEFAULT 0,
+        details TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    );
+    """)
+    now=datetime.now(TZ).isoformat()
+    owner=master_owner_id()
+    if owner:
+        c.execute("INSERT OR IGNORE INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",(owner,"owner","all",json.dumps(sorted(MASTER_ROLE_PERMISSIONS["owner"])),now,now))
+    for admin_id in ADMIN_IDS:
+        c.execute("INSERT OR IGNORE INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",(admin_id,"general_manager","general",json.dumps(sorted(MASTER_ROLE_PERMISSIONS["general_manager"])),now,now))
+    c.commit(); c.close()
+
+_OLD_INIT_DB_MASTER=init_db
+def init_db():
+    _OLD_INIT_DB_MASTER()
+    try:
+        master_rbac_init_db()
+    except Exception:
+        logger.exception("Master RBAC initialization failed")
+
+
+def master_role(uid):
+    if uid == master_owner_id() and uid:
+        return "owner"
+    try:
+        c=db(); r=c.execute("SELECT role FROM management_roles WHERE user_id=? AND active=1",(int(uid),)).fetchone(); c.close()
+        return r["role"] if r else ("owner" if uid in ADMIN_IDS else "")
+    except Exception:
+        return "owner" if uid in ADMIN_IDS else ""
+
+
+def master_has_permission(uid, permission):
+    if uid == master_owner_id() and uid:
+        return True
+    role=master_role(uid)
+    if not role:
+        return False
+    if role == "owner":
+        return True
+    return permission in MASTER_ROLE_PERMISSIONS.get(role,set())
+
+
+def master_guard(uid, permission=None):
+    if uid not in ADMIN_IDS:
+        return False
+    return True if permission is None else master_has_permission(uid, permission)
+
+
+def master_log(uid, action, target=None, details=""):
+    try:
+        admin_log(uid, f"master:{action}", target, details)
+    except Exception:
+        logger.exception("Master audit log failed")
+
+
+def master_incident(module, details, severity="error"):
+    """Create one open incident per fingerprint. Repeated failures increment a counter."""
+    try:
+        now=datetime.now(TZ).isoformat()
+        fingerprint=hashlib.sha256(f"{module}|{details}".encode("utf-8","ignore")).hexdigest()[:32]
+        c=db()
+        row=c.execute("SELECT id,occurrences FROM incident_tickets WHERE fingerprint=? AND status='open'",(fingerprint,)).fetchone()
+        if row:
+            c.execute("UPDATE incident_tickets SET last_seen_at=?,occurrences=occurrences+1,details=?,severity=? WHERE id=?",(now,details,severity,row["id"]))
+        else:
+            c.execute("INSERT INTO incident_tickets(fingerprint,module,severity,details,status,first_seen_at,last_seen_at,occurrences) VALUES(?,?,?,?,?,?,?,1)",(fingerprint,module,severity,details,"open",now,now))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("Incident ticket creation failed")
+
+
+def master_dashboard_text():
+    s=admin_stats()
+    c=db()
+    incidents=int(c.execute("SELECT COUNT(*) n FROM incident_tickets WHERE status='open'").fetchone()["n"])
+    managers=int(c.execute("SELECT COUNT(*) n FROM management_roles WHERE active=1").fetchone()["n"])
+    tests=int(c.execute("SELECT COUNT(*) n FROM system_test_runs").fetchone()["n"])
+    ai_errors=int(c.execute("SELECT COUNT(*) n FROM service_events WHERE service LIKE '%ai%' AND status IN ('ERROR','error')").fetchone()["n"])
+    c.close()
+    return ("📊 <b>داشبورد مرکزی مدیریت</b>\n\n"
+            f"👥 کاربران: <b>{s['users']}</b>\n🟢 فعال امروز: <b>{s['active_today']}</b>\n🆕 جدید امروز: <b>{s['new_today']}</b>\n"
+            f"💎 VIP فعال: <b>{s['vip_users']}</b>\n🎫 تیکت باز: <b>{s['open_tickets']}</b>\n"
+            f"🚨 Incident باز: <b>{incidents}</b>\n👤 مدیر فعال: <b>{managers}</b>\n"
+            f"🤖 خطای ثبت‌شده AI: <b>{ai_errors}</b>\n🧪 تست‌های اجراشده: <b>{tests}</b>")
+
+
+def master_root_keyboard(uid):
+    fa=lang(uid)=="fa"
+    items=[
+        ("📊 داشبورد و Analytics","📊 Dashboard & Analytics","dashboard"),
+        ("👥 کاربران و نقش‌ها","👥 Users & Roles","users"),
+        ("🎫 تیکت و Incident","🎫 Tickets & Incidents","tickets"),
+        ("💰 مالی و پرداخت","💰 Finance & Payments","finance"),
+        ("💎 VIP / XP / Token","💎 VIP / XP / Token","vip"),
+        ("📢 کانال و انتشار","📢 Channels & Publishing","channels"),
+        ("🤖 AI و Voice","🤖 AI & Voice","ai"),
+        ("🩺 سلامت و Diagnostics","🩺 Health & Diagnostics","health"),
+        ("💾 Backup و Recovery","💾 Backup & Recovery","backup"),
+        ("🧩 قابلیت‌ها و Feature Flags","🧩 Features & Flags","features"),
+        ("🔐 امنیت و Audit","🔐 Security & Audit","audit"),
+        ("🧪 مرکز تست و Regression","🧪 Test & Regression","tests"),
+        ("⚙️ تنظیمات سیستم","⚙️ System Settings","system"),
+        ("📦 سایر ماژول‌های مدیریتی","📦 Other Admin Modules","other"),
+    ]
+    rows=[]
+    for ft,et,key in items:
+        perm=MASTER_DOMAIN_PERMISSION.get(key)
+        if perm and not master_has_permission(uid,perm):
+            continue
+        rows.append([InlineKeyboardButton(ft if fa else et,callback_data=f"v25:master:{key}")])
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="v25:master:main")])
+    return InlineKeyboardMarkup(rows)
+
+
+def master_back_keyboard(uid):
+    fa=lang(uid)=="fa"
+    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",callback_data="v25:master:home"),main_menu_button(uid)]])
+
+
+def master_feature_text():
+    c=db(); rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall(); c.close()
+    lines=["🧩 <b>Feature Flags</b>",""]
+    for r in rows:
+        lines.append(f"{'🟢' if r['enabled'] else '🔴'} {html.escape(r['key'])}")
+    return "\n".join(lines)
+
+
+def master_finance_text():
+    c=db()
+    revenue=int(c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()["n"])
+    payments=int(c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"])
+    vip=int(c.execute("SELECT COUNT(*) n FROM subscription_history").fetchone()["n"])
+    c.close()
+    return f"💰 <b>مالی و پرداخت</b>\n\n💳 تراکنش‌ها: <b>{payments}</b>\n💵 مبلغ ثبت‌شده: <b>{revenue:,}</b>\n💎 سوابق اشتراک: <b>{vip}</b>\n\n🔐 اطلاعات حساس مالی فقط برای Owner نمایش داده می‌شود."
+
+
+def master_users_text():
+    c=db(); rows=c.execute("SELECT user_id,first_name,blocked,vip_until FROM users ORDER BY created_at DESC LIMIT 15").fetchall(); roles=c.execute("SELECT role,COUNT(*) n FROM management_roles WHERE active=1 GROUP BY role ORDER BY n DESC").fetchall(); c.close()
+    lines=["👥 <b>کاربران و نقش‌ها</b>","", "<b>نقش‌های مدیریتی</b>"]
+    lines += [f"• {MASTER_RBAC_ROLES.get(r['role'],r['role'])}: {r['n']}" for r in roles]
+    lines += ["","<b>آخرین کاربران</b>"]
+    for r in rows:
+        vip="💎" if r["vip_until"] else ""
+        blocked="⛔" if r["blocked"] else "🟢"
+        lines.append(f"{blocked} {html.escape(r['first_name'] or 'بدون نام')} | <code>{r['user_id']}</code> {vip}")
+    return "\n".join(lines)
+
+
+def master_ai_text():
+    state=ai_provider_diagnostics()
+    return ("🤖 <b>AI و Voice</b>\n\n"
+            f"OmniRoute: {'🟢' if state.get('omniroute') else '🔴'}\n"
+            f"OpenAI: {'🟢' if state.get('openai') else '🔴'}\n"
+            f"n8n: {'🟢' if state.get('n8n') else '🔴'}\n\n"
+            "AI مجاز به اجرای مستقیم عملیات حساس نیست. خروجی باید از مسیر اعتبارسنجی عبور کند.")
+
+
+def master_tests():
+    results=[]
+    def check(name, fn):
+        try:
+            ok=bool(fn()); results.append((name,ok,"OK" if ok else "FAIL"))
+        except Exception as exc:
+            results.append((name,False,type(exc).__name__))
+    check("Time parser", lambda: parse_time("۱۸:۳۰")=="18:30" and parse_time("2360") is None)
+    check("Admin isolation", lambda: (not master_guard(0)) and master_guard(master_owner_id()))
+    check("RBAC default deny", lambda: not master_has_permission(999999999,"manage_finance"))
+    check("DB integrity", lambda: db().execute("PRAGMA integrity_check").fetchone()[0]=="ok")
+    check("Feature table", lambda: db().execute("SELECT 1 FROM feature_flags LIMIT 1").fetchone() is not None)
+    check("Audit table", lambda: db().execute("SELECT 1 FROM admin_logs LIMIT 1").fetchone() is not None)
+    check("Incident table", lambda: db().execute("SELECT 1 FROM incident_tickets LIMIT 1").fetchone() is not None)
+    return results
+
+
+def master_test_text(uid):
+    results=master_tests(); passed=sum(1 for _,ok,_ in results if ok); total=len(results)
+    details="\n".join(f"{'🟢' if ok else '🔴'} {html.escape(name)}: {html.escape(detail)}" for name,ok,detail in results)
+    c=db(); c.execute("INSERT INTO system_test_runs(admin_id,passed,total,details,created_at) VALUES(?,?,?,?,?)",(uid,passed,total,details,datetime.now(TZ).isoformat())); c.commit(); c.close()
+    return f"🧪 <b>Regression Test</b>\n\n{details}\n\nنتیجه: <b>{passed}/{total}</b>"
+
+
+async def master_management_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id; data=q.data
+    if not master_guard(uid):
+        await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    action=data.split(":",2)[2] if data.count(":")>=2 else "home"
+    if action in {"home","dashboard"}:
+        await q.answer(); await q.message.edit_text(master_dashboard_text(),parse_mode="HTML",reply_markup=master_root_keyboard(uid)); return
+    if action=="main":
+        await q.answer(); clear_flow(context); await q.message.edit_text("🏠 منوی اصلی",reply_markup=None); await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+    perm=MASTER_DOMAIN_PERMISSION.get(action)
+    if perm and not master_has_permission(uid,perm):
+        await q.answer("⛔ این بخش برای نقش شما مجاز نیست.",show_alert=True); return
+    await q.answer()
+    if action=="users":
+        await q.message.edit_text(master_users_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+    if action=="tickets":
+        c=db(); rows=c.execute("SELECT id,module,severity,occurrences,last_seen_at FROM incident_tickets WHERE status='open' ORDER BY last_seen_at DESC LIMIT 15").fetchall(); open_t=c.execute("SELECT COUNT(*) n FROM tickets WHERE status='open'").fetchone()["n"]; c.close()
+        text="🎫 <b>تیکت و Incident</b>\n\n"+f"تیکت‌های باز: <b>{open_t}</b>\nIncidentهای باز: <b>{len(rows)}</b>\n\n"+"\n".join(f"🚨 #{r['id']} | {html.escape(r['module'])} | {r['severity']} | x{r['occurrences']}" for r in rows) or "مورد بازی نیست."
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+    if action=="finance":
+        if uid!=master_owner_id():
+            await q.message.edit_text("💰 <b>مالی</b>\n\nاطلاعات حساس مالی فقط برای Owner قابل مشاهده است.\nگزارش‌های غیرحساس سیستم از داشبورد در دسترس نقش‌های مجاز است.",parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+        await q.message.edit_text(master_finance_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+    if action=="vip":
+        text="💎 <b>VIP / XP / Token</b>\n\nاین بخش به مرکز فعلی VIP، XP و Token متصل است.\n\nمدیریت پلن VIP و Token از پنل فعلی انجام می‌شود."
+        kb=InlineKeyboardMarkup([[InlineKeyboardButton("💎 مرکز VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("🎟️ مدیریت Token",callback_data="v25:tokens_admin")], [InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=kb); return
+    if action=="channels":
+        await q.message.edit_text("📢 <b>کانال و انتشار</b>\n\nمدیریت کانال، پست‌گذاری، زمان‌بندی، انتشار خودکار، تأیید قبل از انتشار و بررسی عضویت در این بخش‌های موجود ربات فعال هستند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 مدیریت کانال",callback_data="adm:channel")],[InlineKeyboardButton("🤖 انتشار خودکار",callback_data="auto:menu")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="ai":
+        await q.message.edit_text(master_ai_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎙️ تنظیمات Voice",callback_data="v25:adminvoice")],[InlineKeyboardButton("🔧 وضعیت قابلیت‌ها",callback_data="v25:adminfeatures")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="health":
+        await run_health_checks(context.bot,uid); text=health_text();
+        await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🩺 اجرای دوباره",callback_data="v25:master:health")],[InlineKeyboardButton("🔎 Diagnostics",callback_data="v25:master:diagnostics")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="diagnostics":
+        await q.message.edit_text(_admin_diagnostics_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+    if action=="backup":
+        ok=backup_database_snapshot(keep=20); master_log(uid,"backup",details="success" if ok else "failed");
+        await q.message.edit_text("💾 بکاپ با موفقیت ساخته شد." if ok else "❌ ساخت بکاپ ناموفق بود.",reply_markup=master_back_keyboard(uid)); return
+    if action=="features":
+        await q.message.edit_text(master_feature_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧩 مرکز قابلیت‌های فعلی",callback_data="adm:features")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="audit":
+        c=db(); rows=c.execute("SELECT admin_id,action,target_user,details,created_at FROM admin_logs ORDER BY id DESC LIMIT 30").fetchall(); c.close();
+        text="🔐 <b>Security / Audit</b>\n\n"+"\n".join(f"• {r['created_at'][:16]} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'}" for r in rows) or "لاگی ثبت نشده."
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+    if action=="tests":
+        await q.message.edit_text(master_test_text(uid),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 اجرای دوباره",callback_data="v25:master:tests")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="other":
+        await q.message.edit_text("📦 <b>سایر ماژول‌های مدیریتی</b>\n\nدر این بخش، ماژول‌های موجود نسخه فعلی را بدون حذف مسیرهای قدیمی کنترل می‌کنی.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 پلن‌های VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("💳 پرداخت",callback_data="v25:adminpayment")],[InlineKeyboardButton("📱 پیامک",callback_data="v25:adminsms")],[InlineKeyboardButton("⭐ نظرسنجی",callback_data="v25:adminsurvey")],[InlineKeyboardButton("☀️ صبح/شب",callback_data="v25:adminmorning")],[InlineKeyboardButton("📈 قیمت بازار",callback_data="v25:adminprices")],[InlineKeyboardButton("👥 مشتری و نوبت",callback_data="adm:customers")],[InlineKeyboardButton("📋 گزارش مدیریت",callback_data="adm:report")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    if action=="system":
+        paused=get_system_setting("bot_paused_until","")
+        maintenance=feature_enabled("maintenance")
+        text=f"⚙️ <b>تنظیمات سیستم</b>\n\n🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n🗄 Schema: {DB_SCHEMA_VERSION}\n\nمالک اصلی: <code>{master_owner_id() or '-'}</code>"
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧩 تغییر قابلیت‌ها",callback_data="adm:features")],[InlineKeyboardButton("⏸ مدیریت توقف",callback_data="adm:pause")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+    await q.message.edit_text("این بخش هنوز به عملیات اختصاصی متصل نشده است.",reply_markup=master_back_keyboard(uid))
+
+_OLD_V25_CALLBACK_MASTER=v25_callback
+async def v25_callback(update,context):
+    data=update.callback_query.data if update.callback_query else ""
+    if data.startswith("v25:master:"):
+        return await master_management_callback(update,context)
+    return await _OLD_V25_CALLBACK_MASTER(update,context)
+
+# Make the complete management center visible from the existing admin panel.
+_OLD_FINAL_ADMIN_KEYBOARD_MASTER=final_admin_keyboard
+def final_admin_keyboard():
+    base=_OLD_FINAL_ADMIN_KEYBOARD_MASTER().inline_keyboard
+    rows=[list(r) for r in base]
+    rows.append([InlineKeyboardButton("🧭 کنترل کامل سیستم",callback_data="v25:master:home")])
+    return InlineKeyboardMarkup(rows)
+admin_keyboard=final_admin_keyboard
+
+
 # Final callback handler for the compact section buttons.
 
 if __name__ == "__main__":
