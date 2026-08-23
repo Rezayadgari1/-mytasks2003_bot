@@ -11937,8 +11937,7 @@ async def text_router(update,context):
         return await ready_detail_text_save(update,context)
     return await _OLD_TEXT_ROUTER_GOALS_UPGRADE(update,context)
 
-if __name__ == "__main__":
-    main()
+
 
 
 # ===================== FINAL GOALS / NAVIGATION STABILITY PATCH =====================
@@ -12053,14 +12052,12 @@ async def text_router(update, context):
 
     # Reply-keyboard Main Menu / Back are always navigation commands. They must
     # never be consumed by a stale pending input flow.
-    if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
         clear_flow(context)
         try:
             await update.message.delete()
         except Exception:
             pass
-        # The persistent ReplyKeyboard is already active. For a visual root screen
-        # use one compact bot message only when there is no callback message to edit.
         fa = lang(uid) == "fa"
         await update.message.reply_text(
             "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
@@ -12069,8 +12066,28 @@ async def text_router(update, context):
         )
         return
 
+    if txt in ("⬅️ برگشت", "⬅️ Back"):
+        clear_flow(context)
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        # This recovery keyboard is used by the Goals/Plan flow in the failing
+        # path. Back therefore returns to that section, while Main Menu above
+        # always returns to the root.
+        fa = lang(uid) == "fa"
+        await update.message.reply_text(
+            "🎯 <b>برنامه و اهداف</b>" if fa else "🎯 <b>Goals & Plan</b>",
+            parse_mode="HTML",
+            reply_markup=_compact_menu_keyboard(uid, "goals"),
+        )
+        return
+
     return await _OLD_TEXT_ROUTER_STABLE_NAV(update, context)
 
 
 # Explicit callback registration is normally already present, but this final
 # assignment guarantees the dispatcher uses the repaired functions above.
+
+if __name__ == "__main__":
+    main()
