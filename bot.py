@@ -9583,6 +9583,53 @@ async def general_guide(update, context):
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
 
 
+class _SectionProxyMessage:
+    """Render section screens IN PLACE: edit_text instead of sending new bubbles,
+    and guarantee a Back + Main Menu row on every section keyboard."""
+
+    def __init__(self, qmsg, uid, back_cb):
+        self._m = qmsg
+        self._uid = uid
+        self._back = back_cb
+
+    def _decorated(self, reply_markup):
+        fa = lang(self._uid) == "fa"
+        back_btn = InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data=self._back)
+        main_btn = main_menu_button(self._uid)
+        rows = []
+        if reply_markup is not None and getattr(reply_markup, "inline_keyboard", None):
+            for r in reply_markup.inline_keyboard:
+                texts = {b.text for b in r}
+                cbs = {b.callback_data for b in r}
+                # skip existing nav rows so we never duplicate them
+                if back_btn.callback_data in cbs or main_btn.callback_data in cbs:
+                    continue
+                rows.append(list(r))
+            # drop trailing empty-ish nav rows duplication guard done above
+        rows.append([back_btn, main_btn])
+        return InlineKeyboardMarkup(rows)
+
+    async def reply_text(self, text, parse_mode=None, reply_markup=None, **kwargs):
+        # Reply-keyboard (bottom bar) cannot be attached to an edit; send as-is.
+        if reply_markup is not None and not hasattr(reply_markup, "inline_keyboard"):
+            await self._m.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, **kwargs)
+            return
+        markup = self._decorated(reply_markup)
+        try:
+            await self._m.edit_text(text, parse_mode=parse_mode, reply_markup=markup)
+        except Exception:
+            try:
+                await self._m.edit_reply_markup(reply_markup=markup)
+            except Exception:
+                await self._m.reply_text(text, parse_mode=parse_mode, reply_markup=markup, **kwargs)
+
+    async def reply_markdown(self, text, *a, **k):
+        await self.reply_text(text, *a, **k)
+
+    def __getattr__(self, item):
+        return getattr(self._m, item)
+
+
 async def compact_menu_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -9625,7 +9672,10 @@ async def compact_menu_callback(update, context):
             "🎙️ <b>دستیار صوتی</b>\n\nویس خودت را در پیام بعدی بفرست." if lang(uid) == "fa"
             else "🎙️ <b>Voice Assistant</b>\n\nSend your voice message next.",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("⬅️ بازگشت" if lang(uid) == "fa" else "⬅️ Back", callback_data="cm:tools"),
+                main_menu_button(uid),
+            ]])
         )
         context.user_data["v25_voice_mode"] = True
         return
@@ -9643,12 +9693,13 @@ async def compact_menu_callback(update, context):
         return
     fn = routes.get(data)
     if fn:
+        back_cb = context.user_data.get("_last_section") or "cm:home"
         clear_flow(context)
         # Adapt the callback query into a minimal update object so existing
         # message-based handlers can be reused without duplicating business logic.
         proxy = type("_MenuUpdate", (), {
             "effective_user": q.from_user,
-            "message": q.message,
+            "message": _SectionProxyMessage(q.message, uid, back_cb),
             "callback_query": None,
         })()
         try:
@@ -9704,6 +9755,7 @@ def _compact_root_inline(uid):
 async def compact_section_callback(update, context):
     q = update.callback_query
     section = q.data.split(":", 1)[1]
+    context.user_data["_last_section"] = ("menu:" + section)
     await _compact_menu_show(update, context, section)
 
 
