@@ -29,7 +29,6 @@ except ImportError:
 
 from telegram import (
     Update,
-    Message,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -54,47 +53,6 @@ except ImportError:
 
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-
-
-# ===================== SINGLE MENU MESSAGE UX =====================
-# Keep only one bot-sent ReplyKeyboard menu message per private chat. When a
-# navigation action opens another top-level menu, the previous bot menu is
-# removed before the new one is sent. Inline menus continue to use edit_text()
-# and therefore stay in the same Telegram message naturally.
-_SINGLE_MENU_MESSAGE_IDS = {}
-_SINGLE_MENU_LOCK = asyncio.Lock()
-_SINGLE_MENU_ENABLED = True
-_SINGLE_MENU_BLANK = "\u200b"  # visually empty; carries the ReplyKeyboardMarkup
-
-_original_message_reply_text_single_menu = Message.reply_text
-
-async def _single_menu_reply_text(self, text, *args, **kwargs):
-    reply_markup = kwargs.get("reply_markup")
-    is_reply_menu = isinstance(reply_markup, ReplyKeyboardMarkup)
-    if not is_reply_menu or not _SINGLE_MENU_ENABLED:
-        return await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
-
-    chat_id = getattr(self, "chat_id", None)
-    if chat_id is not None:
-        async with _SINGLE_MENU_LOCK:
-            old_id = _SINGLE_MENU_MESSAGE_IDS.get(int(chat_id))
-            if old_id and old_id != getattr(self, "message_id", None):
-                try:
-                    await self.get_bot().delete_message(chat_id=int(chat_id), message_id=int(old_id))
-                except Exception:
-                    pass
-            # Navigation messages carrying the main reply keyboard should not
-            # add another visible "🏠 منوی اصلی" bubble to the conversation.
-            if isinstance(text, str) and text.strip() in {"🏠 منوی اصلی", "🏠 Main Menu", "🏠"}:
-                text = _SINGLE_MENU_BLANK
-            result = await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
-            if result is not None:
-                _SINGLE_MENU_MESSAGE_IDS[int(chat_id)] = int(result.message_id)
-            return result
-
-    return await _original_message_reply_text_single_menu(self, text, *args, **kwargs)
-
-Message.reply_text = _single_menu_reply_text
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "goals.db")
 # IMPORTANT: In Railway, set DB_PATH to a path on a persistent Volume.
@@ -1672,7 +1630,7 @@ async def goals_navigation_callback(update, context):
         context.user_data.clear()
         try: await q.message.delete()
         except Exception: pass
-        await context.bot.send_message(uid,"🏠",reply_markup=keyboard(uid))
+        await context.bot.send_message(uid,"🏠 منوی اصلی",reply_markup=keyboard(uid))
         return
     await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
 
@@ -1724,10 +1682,8 @@ async def settings_callback(update, context):
         await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
         if action=="main":
-            context.user_data.clear()
-            try: await q.message.delete()
-            except Exception: pass
-            await q.message.chat.send_message("🏠",reply_markup=keyboard(uid))
+            await q.message.edit_text("🏠 منوی اصلی")
+            await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
         else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
@@ -2364,6 +2320,24 @@ async def stats(update, context):
 
 
 
+def _safe_channel_enabled(value, default=1):
+    """Normalize legacy channel enabled values without allowing a malformed DB value to abort /start."""
+    if value is None:
+        return int(default)
+    if isinstance(value, bool):
+        return int(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "enabled", "active"}:
+        return 1
+    if text in {"0", "false", "no", "off", "disabled", "inactive", ""}:
+        return 0
+    try:
+        return 1 if int(float(text)) != 0 else 0
+    except (TypeError, ValueError):
+        logger.warning("Invalid channel enabled value %r; using default=%s", value, default)
+        return int(default)
+
+
 def get_channel_config():
     """Return the currently selected channel, while preserving legacy channel_config."""
     c=db()
@@ -2374,7 +2348,8 @@ def get_channel_config():
             if r: return r
         r=c.execute("SELECT * FROM channel_config WHERE id=1").fetchone()
         if r and r["channel_id"]:
-            c.execute("INSERT OR IGNORE INTO managed_channels(channel_id,title,enabled,created_at,updated_at) VALUES(?,?,?,?,?)",(str(r["channel_id"]),str(r["channel_id"]),int(r["enabled"]),r["updated_at"],r["updated_at"]))
+            enabled = _safe_channel_enabled(r["enabled"], 1)
+            c.execute("INSERT OR IGNORE INTO managed_channels(channel_id,title,enabled,created_at,updated_at) VALUES(?,?,?,?,?)",(str(r["channel_id"]),str(r["channel_id"]),enabled,r["updated_at"],r["updated_at"]))
             c.commit()
         return r
     finally:
@@ -11081,10 +11056,8 @@ async def v25_show_price(update,context,asset):
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
     if asset=='main':
-        context.user_data.clear()
-        try: await q.message.delete()
+        try: await q.message.edit_text("🏠 منوی اصلی",reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
         except Exception: pass
-        await q.message.chat.send_message("🏠",reply_markup=keyboard(uid))
         return
     await v25_show_price(update,context,asset)
 
@@ -11209,12 +11182,6 @@ async def text_router(update,context):
     if update.message and update.effective_user:
         _targeted_record_username(update.effective_user)
     uid=update.effective_user.id if update.effective_user else 0; txt=(update.message.text or '').strip() if update.message else ''; fa=lang(uid)=='fa'
-    # Normal navigation always wins over stale manager add/disable input states.
-    # This prevents messages such as 'تنظیمات سیستم' or 'استفاده از ربات' from
-    # being misread as an @username/Telegram ID.
-    if txt in ('🏠 منوی اصلی','🏠 Main Menu','👤 استفاده از ربات','👤 Use Bot','⚙️ تنظیمات سیستم','⚙️ System Settings'):
-        clear_flow(context)
-        return await _OLD_TEXT_ROUTER_TARGETED(update,context)
     if context.user_data.get('targeted_add_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
@@ -11273,12 +11240,6 @@ async def v25_callback(update,context):
     if data=='v25:targeted:prices':
         if not master_has_permission(uid,'manage_features'): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
         rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-        known=[('usd',1),('eur',1),('gold18',1),('coin',1),('silver',1),('copper',1),('aluminum',1),('nickel',1),('zinc',1),('lead',1)]
-        dbmap={r['asset']:int(r['enabled']) for r in all_rows}
-        for asset0,default0 in known:
-            if asset0 not in dbmap:
-                dbmap[asset0]=default0
-        all_rows=[{'asset':a,'enabled':e} for a,e in dbmap.items()]
         for r in all_rows:
             rows.append([InlineKeyboardButton(('🟢 ' if r['enabled'] else '🔴 ')+labels.get(r['asset'],r['asset']),callback_data=f"v25:targeted:price_toggle:{r['asset']}")])
         rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.answer(); await q.message.edit_text('📈 <b>مدیریت قیمت‌های آنلاین</b>\n\nسبز = نمایش در ربات\nقرمز = مخفی از کاربران',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows)); return
@@ -11286,11 +11247,7 @@ async def v25_callback(update,context):
         if not master_has_permission(uid,'manage_features'): await q.answer('⛔',show_alert=True); return
         asset=data.rsplit(':',1)[1]; c=db(); r=c.execute('SELECT enabled FROM price_asset_settings WHERE asset=?',(asset,)).fetchone(); new=0 if r and r['enabled'] else 1; c.execute('UPDATE price_asset_settings SET enabled=?,updated_at=? WHERE asset=?',(new,datetime.now(TZ).isoformat(),asset)); c.commit(); c.close(); await q.answer('روشن شد' if new else 'خاموش شد');
         rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-        known=[('usd',1),('eur',1),('gold18',1),('coin',1),('silver',1),('copper',1),('aluminum',1),('nickel',1),('zinc',1),('lead',1)]
-        dbmap={r['asset']:int(r['enabled']) for r in all_rows}
-        for asset0,default0 in known:
-            if asset0 not in dbmap: dbmap[asset0]=default0
-        for asset0,enabled0 in dbmap.items(): rows.append([InlineKeyboardButton(('🟢 ' if enabled0 else '🔴 ')+labels.get(asset0,asset0),callback_data=f"v25:targeted:price_toggle:{asset0}")])
+        for rr in all_rows: rows.append([InlineKeyboardButton(('🟢 ' if rr['enabled'] else '🔴 ')+labels.get(rr['asset'],rr['asset']),callback_data=f"v25:targeted:price_toggle:{rr['asset']}")])
         rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(rows)); return
     return await _PREV_V25_CALLBACK_PRICE_PANEL(update,context)
 
@@ -11326,24 +11283,146 @@ def _manager_main_keyboard(uid):
         ("manage_system",["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"]),
         ("manage_roles",["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"]),
     ]
-    # Compact two-column layout so the manager menu fits on screen without
-    # changing any callback labels, permissions, or navigation behavior.
-    visible = [["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
+    rows=[["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
     for perm,labels in specs:
-        if master_has_permission(uid,perm):
-            visible.append(labels)
-
-    visible += [
-        ["👤 استفاده از ربات" if fa else "👤 Use Bot"],
-        ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
-    ]
-
-    rows=[]
-    for i in range(0,len(visible),2):
-        rows.append(visible[i:i+2])
-
+        if master_has_permission(uid,perm): rows.append(labels)
+    rows += [["👤 استفاده از ربات" if fa else "👤 Use Bot"],["🏠 منوی اصلی" if fa else "🏠 Main Menu"]]
     title=(f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>" if fa else f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>")
     return title,ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
+# ===================== FINAL NAVIGATION / VALUEERROR REPAIR =====================
+# This layer is intentionally last. It only repairs navigation presentation and
+# protects the two manager/user entry buttons from stale legacy routing.
+# Persistent data and existing business logic are unchanged.
+
+async def navigation_callback(update, context):
+    """Return to the persistent reply-keyboard menu without creating a Home text bubble."""
+    q = update.callback_query
+    uid = q.from_user.id
+    await q.answer()
+    clear_flow(context)
+    if (q.data or "") == "nav:main":
+        # The reply keyboard is already persistent in Telegram. There is no need
+        # to send another "🏠 منوی اصلی" message; simply remove the old inline page.
+        try:
+            await q.message.delete()
+        except Exception:
+            # Some Telegram messages cannot be deleted; leave the current page intact.
+            pass
+        return
+
+# Keep the settings callback on the same message and never emit a duplicate
+# "🏠 منوی اصلی" message when the user chooses Main Menu.
+_OLD_SETTINGS_CALLBACK_FINAL_NAV_REPAIR = settings_callback
+async def settings_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
+    if action == "main":
+        await q.answer()
+        clear_flow(context)
+        try:
+            await q.message.delete()
+        except Exception:
+            try:
+                await q.message.edit_text("‎")
+            except Exception:
+                pass
+        return
+    return await _OLD_SETTINGS_CALLBACK_FINAL_NAV_REPAIR(update, context)
+
+# The manager's reply-keyboard labels must never fall through to old text-input
+# parsers. This wrapper handles the two navigation labels explicitly first.
+_OLD_TEXT_ROUTER_FINAL_NAV_REPAIR = text_router
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return await _OLD_TEXT_ROUTER_FINAL_NAV_REPAIR(update, context)
+    txt = update.message.text.strip()
+    uid = update.effective_user.id
+
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+        clear_flow(context)
+        # The reply keyboard itself is persistent; do not create another Home bubble.
+        return
+
+    if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+        clear_flow(context)
+        fa = lang(uid) == "fa"
+        await update.message.reply_text(
+            "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+            if fa else
+            "👤 <b>User Area</b>\n\nNormal user features are available here.",
+            parse_mode="HTML",
+            reply_markup=_compact_user_keyboard(uid),
+        )
+        return
+
+    if txt in ("⚙️ تنظیمات سیستم", "⚙️ System Settings"):
+        clear_flow(context)
+        if _is_active_manager(uid):
+            fa = lang(uid) == "fa"
+            paused = get_system_setting("bot_paused_until", "")
+            maintenance = feature_enabled("maintenance")
+            text = (
+                f"⚙️ <b>تنظیمات سیستم</b>\n\n"
+                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
+                f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
+                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"مالک اصلی: <code>{master_owner_id() or '-'}</code>"
+            ) if fa else (
+                f"⚙️ <b>System Settings</b>\n\n"
+                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
+                f"⏸ Temporary pause: {html.escape(paused or 'Not active')}\n"
+                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"Owner: <code>{master_owner_id() or '-'}</code>"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
+                [InlineKeyboardButton("⏸ مدیریت توقف" if fa else "⏸ Pause Management", callback_data="adm:pause")],
+                [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")],
+            ])
+            await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+            return
+
+    return await _OLD_TEXT_ROUTER_FINAL_NAV_REPAIR(update, context)
+
+# If a stale legacy handler still raises ValueError for one of the two top-level
+# manager navigation buttons, recover directly instead of exposing the exception
+# to the user. Other exceptions continue through the normal error handler.
+_OLD_ERROR_HANDLER_FINAL_NAV_REPAIR = error_handler
+async def error_handler(update, context):
+    err = context.error
+    uid = update.effective_user.id if update and update.effective_user else None
+    txt = (update.message.text or "").strip() if update and update.message else ""
+    if isinstance(err, ValueError) and uid and txt in (
+        "👤 استفاده از ربات", "👤 Use Bot", "⚙️ تنظیمات سیستم", "⚙️ System Settings"
+    ):
+        try:
+            clear_flow(context)
+            if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+                fa = lang(uid) == "fa"
+                await update.message.reply_text(
+                    "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+                    if fa else
+                    "👤 <b>User Area</b>\n\nNormal user features are available here.",
+                    parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
+                )
+            else:
+                fa = lang(uid) == "fa"
+                await update.message.reply_text(
+                    "⚙️ <b>تنظیمات سیستم</b>\n\nوضعیت تنظیمات سیستم را از این بخش مدیریت کن."
+                    if fa else
+                    "⚙️ <b>System Settings</b>\n\nManage the system settings from this section.",
+                    parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
+                        [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")],
+                    ])
+                )
+            logger.warning("Recovered stale ValueError route for uid=%s text=%r", uid, txt)
+            return
+        except Exception:
+            logger.exception("ValueError route recovery failed")
+    return await _OLD_ERROR_HANDLER_FINAL_NAV_REPAIR(update, context)
+
 
 if __name__ == "__main__":
     main()
