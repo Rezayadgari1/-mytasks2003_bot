@@ -9578,12 +9578,16 @@ async def compact_section_callback(update, context):
 
 
 def _compact_user_keyboard(uid):
+    # Compact user area: two columns so the main capabilities are visible
+    # without a long vertical keyboard. Keep customer/booking tools available.
     fa = lang(uid) == "fa"
     rows = [
         ["🎯 برنامه من" if fa else "🎯 My Plan", "📊 گزارش و پیشرفت" if fa else "📊 Reports"],
         ["🤖 ابزارهای هوشمند" if fa else "🤖 Smart Tools", "💎 VIP و XP" if fa else "💎 VIP & XP"],
         ["👤 حساب من" if fa else "👤 My Account", "🎫 پشتیبانی" if fa else "🎫 Support"],
-        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["👥 مدیریت مشتری و نوبت‌دهی" if fa else "👥 Customer & Appointments", "📅 رزروهای من" if fa else "📅 My Bookings"],
+        ["⚙️ تنظیمات" if fa else "⚙️ Settings", "📈 قیمت آنلاین" if fa else "📈 Online Prices"],
+        ["🤝 دعوت دوستان" if fa else "🤝 Invite Friends", "🎟️ توکن‌های من" if fa else "🎟️ My Tokens"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -10538,33 +10542,13 @@ def _manager_main_keyboard(uid):
     role_label = _manager_role_label(role, fa)
 
     rows = [
-        ["🛡 مدیریت ربات" if fa else "🛡 Bot Management"],
-        ["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
-        [
-            "👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles",
-            "🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"
-        ],
-        [
-            "🤖 مدیریت AI" if fa else "🤖 AI Management",
-            "📢 کانال و انتشار" if fa else "📢 Channels & Publishing"
-        ],
-        [
-            "💰 مالی و پرداخت" if fa else "💰 Finance & Payments",
-            "💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"
-        ],
-        [
-            "🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics",
-            "⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"
-        ],
-        [
-            "🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"
-        ],
-        [
-            "👤 استفاده از ربات" if fa else "👤 Use Bot"
-        ],
-        [
-            "🏠 منوی اصلی" if fa else "🏠 Main Menu"
-        ],
+        ["🛡 مدیریت ربات" if fa else "🛡 Bot Management", "📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
+        ["👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles", "🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"],
+        ["🤖 مدیریت AI" if fa else "🤖 AI Management", "📢 کانال و انتشار" if fa else "📢 Channels & Publishing"],
+        ["💰 مالی و پرداخت" if fa else "💰 Finance & Payments", "💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"],
+        ["🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics", "⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"],
+        ["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management", "👤 استفاده از ربات" if fa else "👤 Use Bot"],
+        ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
     ]
 
     # Respect RBAC: remove management entries the role cannot access.
@@ -11295,23 +11279,21 @@ def _manager_main_keyboard(uid):
 # Persistent data and existing business logic are unchanged.
 
 async def _set_root_keyboard_silently(update, uid):
-    """Apply the correct root ReplyKeyboard without leaving a visible bot message.
+    """Restore the persistent root ReplyKeyboard and KEEP its carrier message.
 
-    Telegram does not allow editing a ReplyKeyboardMarkup onto an existing message.
-    The only reliable way to switch the persistent reply keyboard is to send a tiny
-    invisible message with the new keyboard and immediately delete that message.
-    The keyboard remains active on the client, while no extra visible chat bubble is
-    left behind.
+    Telegram ReplyKeyboardMarkup is attached to a message; deleting that message
+    can make the keyboard disappear on the client.  Therefore the old invisible-
+    message-and-delete trick is deliberately not used here.  We keep exactly one
+    root-menu message so the keyboard remains functional.
     """
     try:
         chat = update.effective_chat
-        m = await chat.send_message("\u2063", reply_markup=compact_keyboard(uid))
-        try:
-            await m.delete()
-        except Exception:
-            pass
+        fa = lang(uid) == "fa"
+        text = "🏠 منوی اصلی" if fa else "🏠 Main Menu"
+        return await chat.send_message(text, reply_markup=compact_keyboard(uid))
     except Exception:
-        logger.exception("Failed to silently apply root keyboard for uid=%s", uid)
+        logger.exception("Failed to apply root keyboard for uid=%s", uid)
+        return None
 
 
 async def navigation_callback(update, context):
@@ -11321,11 +11303,14 @@ async def navigation_callback(update, context):
     await q.answer()
     clear_flow(context)
     if (q.data or "") == "nav:main":
-        await _set_root_keyboard_silently(update, uid)
+        # Delete the old inline screen FIRST, then send the message that carries
+        # the persistent ReplyKeyboard. This prevents the keyboard carrier from
+        # being removed/flickering on Telegram clients.
         try:
             await q.message.delete()
         except Exception:
             pass
+        await _set_root_keyboard_silently(update, uid)
         return
 
 # Keep the settings callback on the same message and never emit a duplicate
@@ -11359,13 +11344,13 @@ async def text_router(update, context):
 
     if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
         clear_flow(context)
-        # Restore the actual root keyboard (admin root for managers, user root for
-        # ordinary users) without creating a visible "🏠 منوی اصلی" bot message.
-        await _set_root_keyboard_silently(update, uid)
+        # Delete only the user's navigation command, never the new keyboard
+        # carrier message. Then restore the actual root keyboard.
         try:
             await update.message.delete()
         except Exception:
             pass
+        await _set_root_keyboard_silently(update, uid)
         return
 
     if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
