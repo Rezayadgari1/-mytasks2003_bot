@@ -11908,7 +11908,9 @@ def _compact_menu_keyboard(uid,section):
             [InlineKeyboardButton('🎯 اهداف من' if fa else '🎯 My Goals',callback_data='cm:my_goals'),InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders')],
             [InlineKeyboardButton('📅 تقویم شمسی' if fa else '📅 Jalali Calendar',callback_data='goalcalendar:today')],
         ]
-        kb.inline_keyboard[1:1]=extra
+        rows = [list(row) for row in kb.inline_keyboard]
+        rows[1:1] = extra
+        kb = InlineKeyboardMarkup(rows)
     return kb
 
 async def my_goals_callback(update,context):
