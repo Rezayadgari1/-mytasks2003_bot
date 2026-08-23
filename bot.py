@@ -55,6 +55,11 @@ except ImportError:
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "goals.db")
+# IMPORTANT: In Railway, set DB_PATH to a path on a persistent Volume.
+# Example only (choose the actual mounted Volume path in your project):
+# DB_PATH=/data/goals.db
+# Do not store the live DB only inside an ephemeral deploy filesystem.
+
 DB_SCHEMA_VERSION = 25
 
 # DATA PERSISTENCE CONTRACT
@@ -6026,8 +6031,15 @@ async def ai_chat_text(update,context):
         logger.error("AI chat failed: %s",e)
         clear_flow(context)
         await update.message.reply_text(
-            "⚠️ متأسفانه در حال حاضر پاسخ هوش مصنوعی دریافت نشد. "
-            "لطفاً اگر تمایل دارید، کمی بعد دوباره تلاش بفرمایید.",
+            (
+                "⚠️ متأسفانه در حال حاضر پاسخ هوش مصنوعی دریافت نشد. "
+                "لطفاً کمی بعد دوباره تلاش بفرمایید."
+            )
+            if lang(uid) == "fa" else
+            (
+                "⚠️ The AI provider did not return a response right now. "
+                "Please try again in a little while."
+            ),
             reply_markup=keyboard(uid)
         )
     return True
@@ -10026,6 +10038,767 @@ admin_keyboard=final_admin_keyboard
 
 
 # Final callback handler for the compact section buttons.
+
+
+# ===================== FINAL ADMIN / MANAGER MANAGEMENT REPAIR =====================
+# Adds:
+#   - Add/manage managers from the management center
+#   - Admin manager controls inside Settings
+#   - Categorized/arrow-style management settings
+#   - Language-correct AI error messages (handled above)
+#
+# Existing database is preserved. New manager records use management_roles only.
+
+def _manager_is_owner(uid):
+    return bool(uid and uid == master_owner_id())
+
+def _manager_role_label(role, fa=True):
+    labels = {
+        "owner": ("👑 مالک", "👑 Owner"),
+        "senior_manager": ("🛡 مدیر ارشد", "🛡 Senior Manager"),
+        "general_manager": ("👤 مدیر عمومی", "👤 General Manager"),
+        "technical_manager": ("🧰 مدیر فنی", "🧰 Technical Manager"),
+        "finance_manager": ("💰 مدیر مالی", "💰 Finance Manager"),
+        "ticket_manager": ("🎫 مدیر تیکت", "🎫 Ticket Manager"),
+        "channel_manager": ("📢 مدیر کانال", "📢 Channel Manager"),
+    }
+    fa_label, en_label = labels.get(role, (role, role))
+    return fa_label if fa else en_label
+
+def _master_managers_text(uid):
+    fa = lang(uid) == "fa"
+    c = db()
+    rows = c.execute(
+        "SELECT user_id, role, domain, active, created_at "
+        "FROM management_roles ORDER BY active DESC, user_id"
+    ).fetchall()
+    c.close()
+    lines = [
+        "🧑‍💼 <b>مدیریت مدیران</b>" if fa else "🧑‍💼 <b>Manager Management</b>",
+        "",
+    ]
+    if not rows:
+        lines.append("مدیری ثبت نشده است." if fa else "No managers are registered.")
+    for r in rows:
+        state = "🟢 فعال" if r["active"] else "🔴 غیرفعال"
+        if not fa:
+            state = "🟢 Active" if r["active"] else "🔴 Disabled"
+        lines.append(
+            f"{state}  <code>{r['user_id']}</code>  "
+            f"{html.escape(_manager_role_label(r['role'], fa))}"
+        )
+    return "\n".join(lines)
+
+def _master_manager_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        [InlineKeyboardButton(
+            "➕ افزودن مدیر" if fa else "➕ Add Manager",
+            callback_data="v25:master:manager_add"
+        )],
+        [InlineKeyboardButton(
+            "🔄 به‌روزرسانی فهرست" if fa else "🔄 Refresh Managers",
+            callback_data="v25:master:manager_list"
+        )],
+    ]
+    # Only Owner can deactivate managers.
+    if _manager_is_owner(uid):
+        rows.append([InlineKeyboardButton(
+            "🗑️ غیرفعال‌سازی مدیر" if fa else "🗑️ Disable Manager",
+            callback_data="v25:master:manager_disable_help"
+        )])
+    rows.append([InlineKeyboardButton(
+        "⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",
+        callback_data="v25:master:home"
+    )])
+    return InlineKeyboardMarkup(rows)
+
+def _master_add_role_keyboard(uid):
+    fa = lang(uid) == "fa"
+    roles = [
+        ("general_manager", "👤 مدیر عمومی", "👤 General Manager"),
+        ("senior_manager", "🛡 مدیر ارشد", "🛡 Senior Manager"),
+        ("technical_manager", "🧰 مدیر فنی", "🧰 Technical Manager"),
+        ("finance_manager", "💰 مدیر مالی", "💰 Finance Manager"),
+        ("ticket_manager", "🎫 مدیر تیکت", "🎫 Ticket Manager"),
+        ("channel_manager", "📢 مدیر کانال", "📢 Channel Manager"),
+    ]
+    rows = []
+    for role, fa_label, en_label in roles:
+        rows.append([InlineKeyboardButton(
+            fa_label if fa else en_label,
+            callback_data=f"v25:master:manager_role:{role}"
+        )])
+    rows.append([InlineKeyboardButton(
+        "⬅️ مدیریت مدیران" if fa else "⬅️ Manager Management",
+        callback_data="v25:master:manager_list"
+    )])
+    return InlineKeyboardMarkup(rows)
+
+def _master_settings_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        [InlineKeyboardButton(
+            "🧑‍💼 مدیریت مدیران  ›" if fa else "🧑‍💼 Manager Management  ›",
+            callback_data="settings:managers"
+        )],
+        [InlineKeyboardButton(
+            "🤖 تنظیمات AI  ›" if fa else "🤖 AI Settings  ›",
+            callback_data="settings:ai"
+        )],
+        [InlineKeyboardButton(
+            "📢 تنظیمات کانال  ›" if fa else "📢 Channel Settings  ›",
+            callback_data="settings:channel"
+        )],
+        [InlineKeyboardButton(
+            "🔔 اعلان‌ها  ›" if fa else "🔔 Notifications  ›",
+            callback_data="settings:notifications"
+        )],
+        [InlineKeyboardButton(
+            "🎯 اهداف  ›" if fa else "🎯 Goals  ›",
+            callback_data="settings:goals"
+        )],
+        [InlineKeyboardButton(
+            "🌐 زبان  ›" if fa else "🌐 Language  ›",
+            callback_data="settings:language"
+        )],
+        [InlineKeyboardButton(
+            "🏠 منوی اصلی" if fa else "🏠 Main Menu",
+            callback_data="settings:main"
+        )],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+def _manager_settings_text(uid):
+    fa = lang(uid) == "fa"
+    if fa:
+        return (
+            "🛡️ <b>تنظیمات مدیریتی</b>\n\n"
+            "از این بخش می‌توانی تنظیمات مدیریت را دسته‌بندی‌شده کنترل کنی.\n\n"
+            "🧑‍💼 مدیریت مدیران › افزودن، مشاهده و کنترل نقش مدیران\n"
+            "🤖 تنظیمات AI › وضعیت سرویس‌های هوشمند\n"
+            "📢 تنظیمات کانال › اتصال و انتشار\n"
+            "🔔 اعلان‌ها › تنظیمات اعلان‌های حساب"
+        )
+    return (
+        "🛡️ <b>Management Settings</b>\n\n"
+        "Use this categorized menu to manage administration settings.\n\n"
+        "🧑‍💼 Manager Management › Add, view and control manager roles\n"
+        "🤖 AI Settings › Smart service status\n"
+        "📢 Channel Settings › Connection and publishing\n"
+        "🔔 Notifications › Account notifications"
+    )
+
+# New manager access must not depend on the static ADMIN_IDS list.
+_OLD_MASTER_GUARD_FINAL = master_guard
+def master_guard(uid, permission=None):
+    if uid == master_owner_id() and uid:
+        return True if permission is None else master_has_permission(uid, permission)
+    try:
+        c = db()
+        r = c.execute(
+            "SELECT active FROM management_roles WHERE user_id=? LIMIT 1",
+            (int(uid),)
+        ).fetchone()
+        c.close()
+        if r and int(r["active"] or 0) == 1:
+            return True if permission is None else master_has_permission(uid, permission)
+    except Exception:
+        pass
+    return _OLD_MASTER_GUARD_FINAL(uid, permission)
+
+# Settings callback wrapper: add the missing manager section and a categorized menu.
+_OLD_SETTINGS_CALLBACK_MANAGER = settings_callback
+async def settings_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    action = q.data.split(":", 1)[1] if ":" in q.data else ""
+    fa = lang(uid) == "fa"
+
+    if action == "admin":
+        await q.answer()
+        if not admin_is_allowed(uid):
+            await q.message.edit_text(
+                "⛔ دسترسی ندارید." if fa else "⛔ Access denied."
+            )
+            return
+        await q.message.edit_text(
+            _manager_settings_text(uid),
+            parse_mode="HTML",
+            reply_markup=_master_settings_keyboard(uid)
+        )
+        return
+
+    if action == "managers":
+        await q.answer()
+        if not master_guard(uid, "manage_roles"):
+            await q.message.edit_text(
+                "⛔ این بخش فقط برای مدیر مجاز است."
+                if fa else
+                "⛔ This section is restricted to authorized managers."
+            )
+            return
+        await q.message.edit_text(
+            _master_managers_text(uid),
+            parse_mode="HTML",
+            reply_markup=_master_manager_keyboard(uid)
+        )
+        return
+
+    return await _OLD_SETTINGS_CALLBACK_MANAGER(update, context)
+
+# Settings keyboard: add a visible management category for admins.
+_OLD_SETTINGS_KEYBOARD_MANAGER = settings_keyboard
+def settings_keyboard(uid):
+    base = _OLD_SETTINGS_KEYBOARD_MANAGER(uid)
+    rows = [list(r) for r in base.inline_keyboard]
+    fa = lang(uid) == "fa"
+    # Keep management entry directly above the Main Menu row.
+    main_index = len(rows) - 1
+    if master_guard(uid, "manage_roles"):
+        rows.insert(main_index, [InlineKeyboardButton(
+            "🛡️ تنظیمات مدیریتی  ›" if fa else "🛡️ Management Settings  ›",
+            callback_data="settings:admin"
+        )])
+    return InlineKeyboardMarkup(rows)
+
+# Master callback wrapper for manager operations.
+_OLD_MASTER_MANAGEMENT_CALLBACK_FINAL = master_management_callback
+async def master_management_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    data = q.data or ""
+    fa = lang(uid) == "fa"
+
+    if not master_guard(uid):
+        await q.answer(
+            "⛔ دسترسی ندارید." if fa else "⛔ Access denied.",
+            show_alert=True
+        )
+        return
+
+    # Manager list.
+    if data == "v25:master:manager_list":
+        if not master_has_permission(uid, "manage_roles"):
+            await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+            return
+        await q.answer()
+        await q.message.edit_text(
+            _master_managers_text(uid),
+            parse_mode="HTML",
+            reply_markup=_master_manager_keyboard(uid)
+        )
+        return
+
+    # Start add-manager flow. Owner only.
+    if data == "v25:master:manager_add":
+        if not _manager_is_owner(uid):
+            await q.answer(
+                "⛔ فقط Owner می‌تواند مدیر اضافه کند."
+                if fa else
+                "⛔ Only the Owner can add managers.",
+                show_alert=True
+            )
+            return
+        context.user_data.clear()
+        context.user_data["_flow_started_at"] = datetime.now(TZ).timestamp()
+        context.user_data["master_add_manager"] = True
+        await q.answer()
+        await q.message.edit_text(
+            "🆔 آیدی عددی تلگرام مدیر جدید را ارسال کن.\n\n"
+            "مثال: <code>123456789</code>"
+            if fa else
+            "🆔 Send the new manager's numeric Telegram ID.\n\n"
+            "Example: <code>123456789</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "❌ لغو" if fa else "❌ Cancel",
+                    callback_data="v25:master:manager_list"
+                )
+            ]])
+        )
+        return
+
+    # Role selection after the ID is received.
+    if data.startswith("v25:master:manager_role:"):
+        if not _manager_is_owner(uid):
+            await q.answer("⛔ Owner only.", show_alert=True)
+            return
+        role = data.split(":", 3)[3].strip()
+        if role not in MASTER_RBAC_ROLES or role == "owner":
+            await q.answer(
+                "❌ نقش نامعتبر است." if fa else "❌ Invalid role.",
+                show_alert=True
+            )
+            return
+        target = int(context.user_data.get("master_pending_manager_id") or 0)
+        if not target:
+            await q.answer(
+                "❌ آیدی مدیر پیدا نشد. دوباره شروع کن."
+                if fa else
+                "❌ Manager ID was not found. Please start again.",
+                show_alert=True
+            )
+            return
+        now = datetime.now(TZ).isoformat()
+        c = db()
+        c.execute(
+            "INSERT INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) "
+            "VALUES(?,?,?,?,1,?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,domain=excluded.domain,"
+            "permissions_json=excluded.permissions_json,active=1,updated_at=excluded.updated_at",
+            (
+                target, role, "general",
+                json.dumps(sorted(MASTER_ROLE_PERMISSIONS.get(role, set()))),
+                now, now
+            )
+        )
+        c.commit()
+        c.close()
+        master_log(uid, "manager_added", target, role)
+        clear_flow(context)
+        await q.answer()
+        await q.message.edit_text(
+            (
+                f"✅ مدیر <code>{target}</code> با نقش "
+                f"<b>{html.escape(_manager_role_label(role, True))}</b> اضافه شد."
+            )
+            if fa else
+            (
+                f"✅ Manager <code>{target}</code> added as "
+                f"<b>{html.escape(_manager_role_label(role, False))}</b>."
+            ),
+            parse_mode="HTML",
+            reply_markup=_master_manager_keyboard(uid)
+        )
+        return
+
+    # Disable manager help: keep it deliberate to avoid accidental lockouts.
+    if data == "v25:master:manager_disable_help":
+        if not _manager_is_owner(uid):
+            await q.answer("⛔ Owner only.", show_alert=True)
+            return
+        await q.answer()
+        await q.message.edit_text(
+            "🗑️ <b>غیرفعال‌سازی مدیر</b>\n\n"
+            "برای جلوگیری از حذف اشتباهی، در این مرحله آیدی مدیر را به صورت پیام ارسال کن."
+            if fa else
+            "🗑️ <b>Disable Manager</b>\n\n"
+            "To avoid accidental lockouts, send the manager's numeric ID as a message.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "⬅️ مدیریت مدیران" if fa else "⬅️ Manager Management",
+                    callback_data="v25:master:manager_list"
+                )
+            ]])
+        )
+        context.user_data.clear()
+        context.user_data["_flow_started_at"] = datetime.now(TZ).timestamp()
+        context.user_data["master_disable_manager"] = True
+        return
+
+    return await _OLD_MASTER_MANAGEMENT_CALLBACK_FINAL(update, context)
+
+# Text router wrapper for the add/disable manager flows.
+_OLD_TEXT_ROUTER_MANAGER_FINAL = text_router
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return await _OLD_TEXT_ROUTER_MANAGER_FINAL(update, context)
+    uid = update.effective_user.id
+    txt = update.message.text.strip()
+    fa = lang(uid) == "fa"
+
+    if context.user_data.get("master_add_manager"):
+        if not _manager_is_owner(uid):
+            clear_flow(context)
+            await update.message.reply_text(
+                "⛔ فقط Owner می‌تواند مدیر اضافه کند."
+                if fa else "⛔ Only the Owner can add managers."
+            )
+            return
+        if not txt.isdigit():
+            await update.message.reply_text(
+                "❌ فقط آیدی عددی تلگرام را بفرست."
+                if fa else "❌ Send a numeric Telegram ID."
+            )
+            return
+        target = int(txt)
+        context.user_data["master_add_manager"] = False
+        context.user_data["master_pending_manager_id"] = target
+        await update.message.reply_text(
+            "🎯 نقش مدیر را انتخاب کن:"
+            if fa else "🎯 Choose the manager role:",
+            reply_markup=_master_add_role_keyboard(uid)
+        )
+        return
+
+    if context.user_data.get("master_disable_manager"):
+        if not _manager_is_owner(uid):
+            clear_flow(context)
+            await update.message.reply_text(
+                "⛔ فقط Owner مجاز است." if fa else "⛔ Owner only."
+            )
+            return
+        if not txt.isdigit():
+            await update.message.reply_text(
+                "❌ فقط آیدی عددی را بفرست."
+                if fa else "❌ Send a numeric ID."
+            )
+            return
+        target = int(txt)
+        if target == master_owner_id():
+            await update.message.reply_text(
+                "❌ مالک اصلی قابل غیرفعال‌سازی نیست."
+                if fa else "❌ The Owner cannot be disabled."
+            )
+            return
+        c = db()
+        c.execute(
+            "UPDATE management_roles SET active=0, updated_at=? WHERE user_id=?",
+            (datetime.now(TZ).isoformat(), target)
+        )
+        changed = c.rowcount
+        c.commit()
+        c.close()
+        clear_flow(context)
+        master_log(uid, "manager_disabled", target)
+        await update.message.reply_text(
+            (
+                f"✅ مدیر <code>{target}</code> غیرفعال شد."
+                if changed else
+                f"ℹ️ مدیری با آیدی <code>{target}</code> پیدا نشد."
+            )
+            if fa else
+            (
+                f"✅ Manager <code>{target}</code> disabled."
+                if changed else
+                f"ℹ️ No manager found for <code>{target}</code>."
+            ),
+            parse_mode="HTML",
+            reply_markup=keyboard(uid)
+        )
+        return
+
+    return await _OLD_TEXT_ROUTER_MANAGER_FINAL(update, context)
+
+# Final admin keyboard: make the manager section obvious.
+_OLD_FINAL_ADMIN_KEYBOARD_MANAGERS = final_admin_keyboard
+def final_admin_keyboard():
+    base = _OLD_FINAL_ADMIN_KEYBOARD_MANAGERS().inline_keyboard
+    rows = [list(r) for r in base]
+    fa = True  # Existing admin keyboard is Persian-first; English is handled inside master UI.
+    # Avoid duplicates if this patch is applied to an already patched source.
+    if not any(
+        any("مدیر" in getattr(btn, "text", "") for btn in row)
+        for row in rows
+    ):
+        insert_at = max(0, len(rows) - 1)
+        rows.insert(insert_at, [
+            InlineKeyboardButton(
+                "🧑‍💼 مدیریت مدیران",
+                callback_data="v25:master:manager_list"
+            )
+        ])
+    return InlineKeyboardMarkup(rows)
+
+admin_keyboard = final_admin_keyboard
+
+
+
+# ===================== MANAGER-SPECIFIC MAIN MENU =====================
+# Managers must never receive the ordinary new-user main menu as their primary menu.
+# They get a dedicated management keyboard, while retaining a clear entry to user features.
+
+def _is_active_manager(uid):
+    try:
+        if not uid:
+            return False
+        if uid == master_owner_id():
+            return True
+        c = db()
+        r = c.execute(
+            "SELECT 1 FROM management_roles WHERE user_id=? AND active=1 LIMIT 1",
+            (int(uid),)
+        ).fetchone()
+        c.close()
+        return bool(r)
+    except Exception:
+        return uid in ADMIN_IDS if uid else False
+
+def _manager_main_keyboard(uid):
+    fa = lang(uid) == "fa"
+    role = master_role(uid)
+    role_label = _manager_role_label(role, fa)
+
+    rows = [
+        ["🛡 مدیریت ربات" if fa else "🛡 Bot Management"],
+        ["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
+        [
+            "👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles",
+            "🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"
+        ],
+        [
+            "🤖 مدیریت AI" if fa else "🤖 AI Management",
+            "📢 کانال و انتشار" if fa else "📢 Channels & Publishing"
+        ],
+        [
+            "💰 مالی و پرداخت" if fa else "💰 Finance & Payments",
+            "💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"
+        ],
+        [
+            "🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics",
+            "⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"
+        ],
+        [
+            "🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"
+        ],
+        [
+            "👤 استفاده از ربات" if fa else "👤 Use Bot"
+        ],
+        [
+            "🏠 منوی اصلی" if fa else "🏠 Main Menu"
+        ],
+    ]
+
+    # Respect RBAC: remove management entries the role cannot access.
+    if not master_has_permission(uid, "manage_roles"):
+        rows = [
+            r for r in rows
+            if not any(
+                ("مدیریت مدیران" in str(x)) or ("Manager Management" in str(x))
+                for x in r
+            )
+        ]
+
+    # Keep the role visible as the first informational row.
+    title = (
+        f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>"
+        if fa else
+        f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>"
+    )
+    return title, ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
+
+async def _show_manager_main(update, context):
+    uid = update.effective_user.id
+    title, markup = _manager_main_keyboard(uid)
+    await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
+
+# A manager is an admin even when not present in the legacy ADMIN_IDS environment variable.
+_OLD_ADMIN_IS_ALLOWED_MANAGER_MENU = admin_is_allowed
+def admin_is_allowed(uid):
+    if _is_active_manager(uid):
+        return True
+    return _OLD_ADMIN_IS_ALLOWED_MANAGER_MENU(uid)
+
+# Make the manager menu the actual primary keyboard for active managers.
+_OLD_COMPACT_KEYBOARD_MANAGER_MENU = compact_keyboard
+def compact_keyboard(uid):
+    if _is_active_manager(uid):
+        _, markup = _manager_main_keyboard(uid)
+        return markup
+    return _OLD_COMPACT_KEYBOARD_MANAGER_MENU(uid)
+
+keyboard = compact_keyboard
+
+# Manager-specific text routing. User area remains available through "Use Bot".
+_OLD_TEXT_ROUTER_MANAGER_MENU = text_router
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return await _OLD_TEXT_ROUTER_MANAGER_MENU(update, context)
+
+    uid = update.effective_user.id
+    txt = update.message.text.strip()
+    fa = lang(uid) == "fa"
+
+    if _is_active_manager(uid):
+        if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+            clear_flow(context)
+            await _show_admin_management(update, context)
+            return
+
+        if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
+            await admin_command(update, context)
+            return
+
+        if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles"):
+            await update.message.reply_text(
+                master_users_text(),
+                parse_mode="HTML",
+                reply_markup=master_back_keyboard(uid)
+            )
+            return
+
+        if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
+            await update.message.reply_text(
+                master_ai_text(),
+                parse_mode="HTML",
+                reply_markup=master_back_keyboard(uid)
+            )
+            return
+
+        if txt in ("🧑‍💼 مدیریت مدیران", "🧑‍💼 Manager Management"):
+            if not master_has_permission(uid, "manage_roles"):
+                await update.message.reply_text(
+                    "⛔ دسترسی ندارید." if fa else "⛔ Access denied.",
+                    reply_markup=compact_keyboard(uid)
+                )
+                return
+            await update.message.reply_text(
+                _master_managers_text(uid),
+                parse_mode="HTML",
+                reply_markup=_master_manager_keyboard(uid)
+            )
+            return
+
+        if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+            clear_flow(context)
+            await update.message.reply_text(
+                "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+                if fa else
+                "👤 <b>User Area</b>\n\nNormal user features are available here.",
+                parse_mode="HTML",
+                reply_markup=_compact_user_keyboard(uid)
+            )
+            return
+
+        if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+            clear_flow(context)
+            title, markup = _manager_main_keyboard(uid)
+            await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
+            return
+
+    return await _OLD_TEXT_ROUTER_MANAGER_MENU(update, context)
+
+# After assigning a manager, notify them with the exact manager-panel behavior.
+_OLD_MASTER_MANAGEMENT_CALLBACK_MANAGER_MENU = master_management_callback
+async def master_management_callback(update, context):
+    q = update.callback_query
+    data = q.data or ""
+    if data.startswith("v25:master:manager_role:"):
+        uid = q.from_user.id
+        fa = lang(uid) == "fa"
+        # Let the previous implementation persist the role first.
+        result = await _OLD_MASTER_MANAGEMENT_CALLBACK_MANAGER_MENU(update, context)
+
+        target = None
+        try:
+            # The previous handler clears user_data after successful insert, so
+            # recover the target from the most recent audit row.
+            c = db()
+            r = c.execute(
+                "SELECT target_user FROM admin_logs "
+                "WHERE admin_id=? AND action='manager_added' "
+                "ORDER BY id DESC LIMIT 1",
+                (int(uid),)
+            ).fetchone()
+            c.close()
+            target = int(r["target_user"]) if r and r["target_user"] else None
+        except Exception:
+            target = None
+
+        if target:
+            try:
+                target_fa = lang(target) == "fa"
+                role = master_role(target)
+                title = (
+                    f"🛡️ <b>پنل مدیریت برای شما فعال شد</b>\n\n"
+                    f"نقش شما: <b>{html.escape(_manager_role_label(role, True))}</b>\n\n"
+                    "از این به بعد با ورود به ربات، منوی مدیریتی اختصاصی خودت را می‌بینی."
+                    if target_fa else
+                    f"🛡️ <b>Your manager panel is active</b>\n\n"
+                    f"Role: <b>{html.escape(_manager_role_label(role, False))}</b>\n\n"
+                    "From now on, your bot entry will use the dedicated manager menu."
+                )
+                _, target_markup = _manager_main_keyboard(target)
+                await context.bot.send_message(
+                    target, title, parse_mode="HTML", reply_markup=target_markup
+                )
+            except Exception as exc:
+                logger.info("Manager welcome message skipped: %s", exc)
+        return result
+
+    return await _OLD_MASTER_MANAGEMENT_CALLBACK_MANAGER_MENU(update, context)
+
+
+# ===================== PERSISTENCE + DATA ISOLATION SAFETY LAYER =====================
+# This layer is intentionally additive. It does NOT migrate existing records away,
+# rename the database, or delete/recreate tables.
+#
+# Production rule:
+#   - Keep DB_PATH stable (prefer a Railway Volume path or PostgreSQL in the future).
+#   - Never use an ephemeral deployment directory for the live database.
+#   - Every user-owned query must include user_id/owner_user_id.
+#   - Admin access must be permission-gated; UI hiding is not a security boundary.
+
+def persistent_db_health():
+    """Return basic persistence information without exposing user data."""
+    try:
+        exists = os.path.exists(DB_PATH)
+        size = os.path.getsize(DB_PATH) if exists else 0
+        backup_exists = os.path.exists(DB_BACKUP_PATH)
+        return {
+            "path": DB_PATH,
+            "exists": exists,
+            "size": size,
+            "backup_exists": backup_exists,
+        }
+    except Exception as exc:
+        logger.exception("Persistent DB health check failed: %s", exc)
+        return {"path": DB_PATH, "exists": False, "size": 0, "backup_exists": False}
+
+def require_user_ownership(uid, owner_uid):
+    """Hard authorization check for user-owned records."""
+    try:
+        return int(uid) == int(owner_uid)
+    except (TypeError, ValueError):
+        return False
+
+def get_customer_for_owner(uid, customer_id):
+    c = db()
+    row = c.execute(
+        "SELECT * FROM customers WHERE id=? AND owner_user_id=?",
+        (int(customer_id), int(uid))
+    ).fetchone()
+    c.close()
+    return row
+
+def get_appointment_for_owner(uid, appointment_id):
+    c = db()
+    row = c.execute(
+        "SELECT * FROM appointments WHERE id=? AND owner_user_id=?",
+        (int(appointment_id), int(uid))
+    ).fetchone()
+    c.close()
+    return row
+
+def get_business_profile_for_owner(uid):
+    c = db()
+    row = c.execute(
+        "SELECT * FROM business_profiles WHERE user_id=?",
+        (int(uid),)
+    ).fetchone()
+    c.close()
+    return row
+
+def persistent_backup_now():
+    """Create a backup on demand; never modifies/deletes the live DB."""
+    return backup_database_snapshot(keep=10)
+
+# Wrap init_db once more so every normal startup performs a safe backup after
+# migrations. No destructive reset is introduced.
+_ORIGINAL_INIT_DB_PERSISTENCE_SAFE = init_db
+def init_db():
+    _ORIGINAL_INIT_DB_PERSISTENCE_SAFE()
+    try:
+        backup_database()
+        backup_database_snapshot(keep=10)
+    except Exception:
+        logger.exception("Post-init persistent backup failed")
+
+# Keep the original keyboard and authorization logic intact. This layer only
+# supplies hard ownership helpers for handlers that need them.
 
 if __name__ == "__main__":
     main()
