@@ -6030,11 +6030,15 @@ async def ai_chat_start(update,context):
         )
         return
     clear_flow(context)
-    context.user_data["ai_chat"]=True
+    context.user_data["ai_chat"] = True
+    # AI is entered from Smart Tools, so Back must return there; Main Menu
+    # always goes to the root. Keep this state for both inline and legacy
+    # reply-keyboard navigation paths.
+    context.user_data["_nav_parent_section"] = "tools"
     await update.message.reply_text(
-        "🤖 آماده‌ام. سوالت را بفرست؛ پاسخ را از سرویس هوشمند در دسترس دریافت می‌کنم."
+        "🤖 آماده‌ام. سوالت را بفرست."
         if lang(uid)=="fa" else
-        "🤖 Ready. Send your question and I will use the available AI provider.",
+        "🤖 Ready. Send your question.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back", callback_data="aichat:back"),
             InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="nav:main"),
@@ -6045,12 +6049,21 @@ async def ai_chat_navigation_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     action = (q.data or "").split(":", 1)[1] if ":" in (q.data or "") else ""
-    clear_flow(context)
     try:
         await q.answer()
     except Exception:
         pass
+    clear_flow(context)
     fa = lang(uid) == "fa"
+    if action == "back":
+        await q.message.edit_text(
+            "🤖 <b>ابزارهای هوشمند</b>" if fa else
+            "🤖 <b>Smart Tools</b>",
+            parse_mode="HTML",
+            reply_markup=_compact_menu_keyboard(uid, "tools"),
+        )
+        return
+    # Main Menu (and any unknown legacy AI navigation action) is a hard root.
     await q.message.edit_text(
         "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
         "🏠 <b>Main Menu</b>\n\nChoose a section.",
@@ -12011,7 +12024,23 @@ async def goals_navigation_callback(update, context):
     action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
     if action == "main":
         clear_flow(context)
-        return await _render_compact_root_inline_safe(update, context)
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        fa = lang(uid) == "fa"
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=compact_keyboard(uid),
+        )
+        return
     try:
         await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
     except Exception:
@@ -12024,7 +12053,23 @@ async def navigation_callback(update, context):
     uid = q.from_user.id
     clear_flow(context)
     if (q.data or "") == "nav:main":
-        return await _render_compact_root_inline_safe(update, context)
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        fa = lang(uid) == "fa"
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=compact_keyboard(uid),
+        )
+        return
     try:
         await q.answer()
     except Exception:
@@ -12038,7 +12083,23 @@ async def settings_callback(update, context):
     action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
     if action == "main":
         clear_flow(context)
-        return await _render_compact_root_inline_safe(update, context)
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        fa = lang(uid) == "fa"
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=compact_keyboard(uid),
+        )
+        return
     return await _OLD_SETTINGS_CALLBACK_STABLE_NAV(update, context)
 
 
@@ -12070,12 +12131,11 @@ async def text_router(update, context):
     txt = update.message.text.strip()
     uid = update.effective_user.id
 
-    # The Goals button is a top-level navigation action, not a text-input value.
     if txt in ("🎯 برنامه من", "🎯 My Plan"):
         return await _render_goals_section_direct(update, context)
 
-    # Reply-keyboard Main Menu / Back are always navigation commands. They must
-    # never be consumed by a stale pending input flow.
+    # Main Menu is absolute: clear every transient flow and show exactly one
+    # root screen. Never allow a pending form/AI state to consume this label.
     if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
         clear_flow(context)
         try:
@@ -12084,28 +12144,51 @@ async def text_router(update, context):
             pass
         fa = lang(uid) == "fa"
         await update.message.reply_text(
-            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+            "🏠 <b>Main Menu</b>\n\nChoose a section.",
             parse_mode="HTML",
-            reply_markup=_compact_root_inline(uid),
+            reply_markup=compact_keyboard(uid),
         )
-        return
+        return True
 
+    # Back is relative. Use the section recorded when the current flow was
+    # entered; if no parent exists, fall back safely to the root rather than
+    # incorrectly jumping to Goals.
     if txt in ("⬅️ برگشت", "⬅️ Back"):
-        clear_flow(context)
+        parent = context.user_data.get("_nav_parent_section") or "root"
         try:
             await update.message.delete()
         except Exception:
             pass
-        # This recovery keyboard is used by the Goals/Plan flow in the failing
-        # path. Back therefore returns to that section, while Main Menu above
-        # always returns to the root.
+        clear_flow(context)
         fa = lang(uid) == "fa"
-        await update.message.reply_text(
-            "🎯 <b>برنامه و اهداف</b>" if fa else "🎯 <b>Goals & Plan</b>",
-            parse_mode="HTML",
-            reply_markup=_compact_menu_keyboard(uid, "goals"),
-        )
-        return
+        if parent == "tools":
+            await update.message.reply_text(
+                "🤖 <b>ابزارهای هوشمند</b>" if fa else "🤖 <b>Smart Tools</b>",
+                parse_mode="HTML",
+                reply_markup=_compact_menu_keyboard(uid, "tools"),
+            )
+        elif parent in {"goals", "reports", "vip", "account", "support"}:
+            titles = {
+                "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
+                "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
+                "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
+                "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
+                "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+            }
+            await update.message.reply_text(
+                titles[parent][0 if fa else 1],
+                parse_mode="HTML",
+                reply_markup=_compact_menu_keyboard(uid, parent),
+            )
+        else:
+            await update.message.reply_text(
+                "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+                "🏠 <b>Main Menu</b>\n\nChoose a section.",
+                parse_mode="HTML",
+                reply_markup=compact_keyboard(uid),
+            )
+        return True
 
     return await _OLD_TEXT_ROUTER_STABLE_NAV(update, context)
 
