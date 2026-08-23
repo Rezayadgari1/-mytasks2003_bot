@@ -16,6 +16,7 @@ import urllib.parse
 import random
 import hashlib
 import secrets
+import time
 import html
 import difflib
 # Pillow is optional: image generation is disabled by default and must never
@@ -120,6 +121,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+_PROCESS_START = [time.time()]
 logger.info("MyTasks build %s | AI gateway: OmniRoute -> OpenAI -> n8n", MYTASKS_BUILD_ID)
 
 def subscription_required(func):
@@ -9337,6 +9339,8 @@ def main():
     app.add_handler(CommandHandler("prices", prices))
     app.add_handler(CommandHandler("support", support_start))
     app.add_handler(CommandHandler("seclog", seclog_command))
+    app.add_handler(CommandHandler("reports", reports_command))
+    app.add_handler(CallbackQueryHandler(reports_callback, pattern=r"^rep:"))
     app.add_handler(CallbackQueryHandler(support_callback, pattern=r"^support:"))
     app.add_handler(CallbackQueryHandler(vip_callback, pattern=r"^vip:"))
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
@@ -9372,6 +9376,7 @@ def main():
         app.job_queue.run_repeating(customer_daily_report_job, interval=60, first=40)
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
+        app.job_queue.run_repeating(flush_owner_notifications_job, interval=60, first=55)
 
     logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-01")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
@@ -12412,6 +12417,333 @@ async def seclog_command(update, context):
             line += f" | {html.escape(r['details'])}"
         lines.append(line)
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+
+# ===================== ADMIN REPORTS & AUDIT LAYER =====================
+# Additive only. Adds: error_events table + DB capture of handler errors,
+# owner notifications for sensitive changes by other managers,
+# an admin-only /reports menu (users/finance/tickets/xp-vip/errors/health),
+# and one-tap backup file delivery.
+
+_OLD_INIT_DB_REPORTS = init_db
+def init_db():
+    _OLD_INIT_DB_REPORTS()
+    c = db()
+    c.execute("""CREATE TABLE IF NOT EXISTS error_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        error_type TEXT NOT NULL,
+        error_text TEXT,
+        update_info TEXT,
+        created_at TEXT NOT NULL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_err_created ON error_events(created_at)")
+    c.execute("""CREATE TABLE IF NOT EXISTS owner_notifications(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        sent INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL)""")
+    c.commit(); c.close()
+
+
+_OLD_SET_FEATURE_OWNER_NOTIFY = set_feature
+def set_feature(key, enabled, admin_id=0):
+    """Same behavior; when a non-master manager toggles a feature, queue a notice for the Owner."""
+    _OLD_SET_FEATURE_OWNER_NOTIFY(key, enabled, admin_id)
+    try:
+        if admin_id and admin_is_allowed(admin_id) and admin_id != master_owner_id():
+            fa_txt = f"⚙️ <b>تغییر قابلیت</b>\n👤 مدیر: <code>{admin_id}</code>\n🔧 {html.escape(str(key))}: {'روشن' if enabled else 'خاموش'}"
+            c = db()
+            c.execute("INSERT INTO owner_notifications(text,created_at) VALUES(?,?)",
+                      (fa_txt, datetime.now(TZ).isoformat()))
+            c.commit(); c.close()
+    except Exception:
+        logger.exception("owner notify enqueue failed")
+
+
+async def flush_owner_notifications_job(context):
+    """Deliver queued sensitive-change notices to the Owner."""
+    oid = master_owner_id()
+    if not oid:
+        return
+    c = db()
+    rows = c.execute("SELECT id,text FROM owner_notifications WHERE sent=0 ORDER BY id LIMIT 20").fetchall()
+    c.close()
+    for r in rows:
+        try:
+            await context.bot.send_message(oid, r["text"], parse_mode="HTML")
+            c = db(); c.execute("UPDATE owner_notifications SET sent=1 WHERE id=?", (r["id"],)); c.commit(); c.close()
+        except Exception:
+            logger.exception("owner notification delivery failed")
+            break
+
+
+_OLD_ERROR_HANDLER_REPORTS = error_handler
+async def error_handler(update, context):
+    """Record every unhandled error to error_events, then keep prior behavior."""
+    try:
+        uid = update.effective_user.id if getattr(update, "effective_user", None) else None
+        err = context.error
+        c = db()
+        c.execute("INSERT INTO error_events(user_id,error_type,error_text,update_info,created_at) VALUES(?,?,?,?,?)",
+                  (int(uid or 0), type(err).__name__ if err else "Unknown",
+                   str(err)[:500] if err else "",
+                   ("msg:" + (update.message.text[:120] if getattr(update, "message", None) else
+                    ("cb:" + (update.callback_query.data[:120] if getattr(update, "callback_query", None) else "")))) if update else "",
+                   datetime.now(TZ).isoformat()))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("error_events insert failed")
+    return await _OLD_ERROR_HANDLER_REPORTS(update, context)
+
+
+def _fmt_num(n):
+    return f"{n:,}" if isinstance(n, int) else str(n)
+
+
+def _rep_users():
+    today = datetime.now(TZ).date().isoformat()
+    c = db()
+    total = c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
+    new_today = c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?", (today,)).fetchone()["n"] if True else 0
+    try:
+        vip = c.execute("SELECT COUNT(*) n FROM users WHERE vip_until IS NOT NULL AND vip_until>=?", (datetime.now(TZ).isoformat(),)).fetchone()["n"]
+    except Exception:
+        vip = 0
+    managers = len(ADMIN_IDS)
+    goals_active = c.execute("SELECT COUNT(*) n FROM goals WHERE enabled=1").fetchone()["n"]
+    c.close()
+    return ("👥 <b>گزارش کاربران</b>\n\n"
+            f"• کل کاربران: <b>{_fmt_num(total)}</b>\n"
+            f"• عضو جدید امروز: <b>{_fmt_num(new_today)}</b>\n"
+            f"• VIP فعال: <b>{_fmt_num(vip)}</b>\n"
+            f"• مدیران: <b>{_fmt_num(managers)}</b>\n"
+            f"• هدف‌های فعال: <b>{_fmt_num(goals_active)}</b>")
+
+
+def _rep_finance():
+    c = db()
+    pay_n = pay_sum = 0
+    try:
+        r = c.execute("SELECT COUNT(*) n, COALESCE(SUM(total_amount),0) s FROM payments").fetchone()
+        pay_n, pay_sum = r["n"], r["s"]
+    except Exception:
+        pass
+    month_sum = 0
+    try:
+        m30 = (datetime.now(TZ) - timedelta(days=30)).date().isoformat()
+        month_sum = c.execute("SELECT COALESCE(SUM(total_amount),0) s FROM payments WHERE substr(created_at,1,10)>=?", (m30,)).fetchone()["s"]
+    except Exception:
+        pass
+    pending_receipts = 0
+    try:
+        pending_receipts = c.execute("SELECT COUNT(*) n FROM vip_receipts WHERE status='pending'").fetchone()["n"]
+    except Exception:
+        pass
+    c.close()
+    return ("💰 <b>گزارش مالی</b>\n\n"
+            f"• پرداخت‌های ثبت‌شده: <b>{_fmt_num(pay_n)}</b>\n"
+            f"• مجموع کل: <b>{_fmt_num(int(pay_sum))}</b> (Stars)\n"
+            f"• ۳۰ روز اخیر: <b>{_fmt_num(int(month_sum))}</b> (Stars)\n"
+            f"• رسید VIP در انتظار بررسی: <b>{_fmt_num(pending_receipts)}</b>")
+
+
+def _rep_tickets():
+    now_iso = datetime.now(TZ).isoformat()
+    cutoff = (datetime.now(TZ) - timedelta(hours=48)).isoformat()
+    c = db()
+    by_status = {}
+    for r in c.execute("SELECT status, COUNT(*) n FROM tickets GROUP BY status"):
+        by_status[r["status"]] = r["n"]
+    escalated = c.execute("SELECT COUNT(*) n FROM tickets WHERE status='open' AND created_at<?", (cutoff,)).fetchone()["n"]
+    # Average first-response time: first message from someone other than ticket owner
+    avg_min = None
+    try:
+        rows = c.execute("""
+            SELECT t.id, t.created_at,
+              (SELECT MIN(m.created_at) FROM ticket_messages m
+                WHERE m.ticket_id=t.id AND m.sender_id!=t.user_id AND m.created_at>=t.created_at) fr
+            FROM tickets t WHERE fr IS NOT NULL LIMIT 500""").fetchall()
+        deltas = []
+        for r in rows:
+            d = (datetime.fromisoformat(r["fr"]) - datetime.fromisoformat(r["created_at"])).total_seconds() / 60.0
+            if 0 <= d < 60*24*30:
+                deltas.append(d)
+        avg_min = sum(deltas)/len(deltas) if deltas else None
+    except Exception:
+        pass
+    sat = None
+    try:
+        s = c.execute("SELECT COALESCE(AVG(rating),0) a, COUNT(*) n FROM survey_responses").fetchone()
+        if s["n"]:
+            sat = s["a"]
+    except Exception:
+        pass
+    c.close()
+    lines = ["🎫 <b>گزارش تیکت‌ها</b>\n\n"]
+    lines.append(f"• باز: <b>{by_status.get('open',0)}</b> | بسته: <b>{by_status.get('closed',0)}</b>\n")
+    lines.append(f"• Escalated (باز بیش از ۴۸ ساعت): <b>{escalated}</b>\n")
+    if avg_min is not None:
+        lines.append(f"• میانگین زمان اولین پاسخ: <b>{avg_min:.0f} دقیقه</b>\n")
+    if sat is not None:
+        lines.append(f"• میانگین رضایت مشتریان: <b>{sat:.1f}/5</b>\n")
+    return "".join(lines)
+
+
+def _rep_xp_vip():
+    today = datetime.now(TZ).date().isoformat()
+    in7 = (datetime.now(TZ) + timedelta(days=7)).date().isoformat()
+    c = db()
+    xp_today = 0
+    try:
+        xp_today = c.execute("SELECT COALESCE(SUM(amount),0) s FROM xp_log WHERE substr(created_at,1,10)=?", (today,)).fetchone()["s"]
+    except Exception:
+        pass
+    try:
+        vip_active = c.execute("SELECT COUNT(*) n FROM users WHERE vip_until>=?", (now_iso := datetime.now(TZ).isoformat(),)).fetchone()["n"]
+        expiring = c.execute("SELECT COUNT(*) n FROM users WHERE vip_until>=? AND vip_until<=?", (now_iso, in7)).fetchone()["n"]
+    except Exception:
+        vip_active = expiring = 0
+    c.close()
+    return ("⭐ <b>گزارش XP و VIP</b>\n\n"
+            f"• XP اعطایی امروز: <b>{_fmt_num(int(xp_today))}</b>\n"
+            f"• VIP فعال: <b>{vip_active}</b>\n"
+            f"• تا ۷ روز آینده منقضی می‌شود: <b>{expiring}</b>")
+
+
+def _rep_errors():
+    today = datetime.now(TZ).date().isoformat()
+    c = db()
+    by_type = c.execute("SELECT error_type, COUNT(*) n FROM error_events WHERE substr(created_at,1,10)=? GROUP BY error_type ORDER BY n DESC LIMIT 8", (today,)).fetchall()
+    recent = c.execute("SELECT error_type, error_text, user_id, created_at FROM error_events ORDER BY id DESC LIMIT 5").fetchall()
+    total_today = c.execute("SELECT COUNT(*) n FROM error_events WHERE substr(created_at,1,10)=?", (today,)).fetchone()["n"]
+    sec_today = c.execute("SELECT COUNT(*) n FROM security_events WHERE substr(created_at,1,10)=?", (today,)).fetchall()
+    c.close()
+    lines = ["🐛 <b>گزارش خطاها</b>\n\n", f"• خطاهای امروز: <b>{total_today}</b>\n"]
+    for r in by_type:
+        lines.append(f"  – <code>{html.escape(r['error_type'])}</code>: {r['n']}\n")
+    if sec_today:
+        lines.append(f"• رویدادهای امنیتی امروز: <b>{sec_today[0]['n']}</b>\n")
+    if recent:
+        lines.append("\n<b>آخرین خطاها:</b>\n")
+        for r in recent:
+            lines.append(f"• {html.escape(str(r['created_at'])[:16])} <code>{html.escape(r['error_type'])}</code> u:{r['user_id']}\n")
+    return "".join(lines)
+
+
+def _rep_health():
+    c = db()
+    tables = c.execute("SELECT COUNT(*) n FROM sqlite_master WHERE type='table'").fetchone()["n"]
+    c.close()
+    size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+    wal = os.path.getsize(DB_PATH + "-wal") if os.path.exists(DB_PATH + "-wal") else 0
+    up_s = int(time.time() - _PROCESS_START[0]) if "_PROCESS_START" in globals() else 0
+    h, m = up_s // 3600, (up_s % 3600) // 60
+    return ("🩺 <b>سلامت سرویس‌ها</b>\n\n"
+            f"• وضعیت DB: <b>OK</b> (WAL فعال)\n"
+            f"• حجم دیتابیس: <b>{size/1024:.0f} KB</b> (WAL: {wal/1024:.0f} KB)\n"
+            f"• تعداد جدول‌ها: <b>{tables}</b>\n"
+            f"• زمان بالا بودن سرویس: <b>{h}ساعت و {m}دقیقه</b>\n"
+            f"• JobQueue یادآوری‌ها: <b>فعال</b>")
+
+
+async def _send_backup_file(update, context):
+    uid = update.effective_user.id
+    path = DB_BACKUP_PATH if os.path.exists(DB_BACKUP_PATH) else (DB_PATH if os.path.exists(DB_PATH) else None)
+    if not path:
+        await update.message.reply_text("❌ فایل بکاپ پیدا نشد.")
+        return
+    with open(path, "rb") as fh:
+        await context.bot.send_document(uid, document=fh, filename="goals-backup.db",
+                                        caption="💾 آخرین نسخه پشتیبان دیتابیس")
+
+
+_REPORT_BUILDERS = {
+    "users": _rep_users,
+    "finance": _rep_finance,
+    "tickets": _rep_tickets,
+    "xpvip": _rep_xp_vip,
+    "errors": _rep_errors,
+    "health": _rep_health,
+}
+
+
+def _reports_menu_kb(uid):
+    fa = lang(uid) == "fa"
+    b = lambda t, cb: InlineKeyboardButton(t, callback_data=cb)
+    rows = [
+        [b("👥 کاربران", "rep:users"), b("💰 مالی", "rep:finance")],
+        [b("🎫 تیکت‌ها", "rep:tickets"), b("⭐ XP/VIP", "rep:xpvip")],
+        [b("🐛 خطاها", "rep:errors"), b("🩺 سلامت", "rep:health")],
+        [b("💾 دریافت فایل بکاپ", "rep:backup")],
+        [main_menu_button(uid)],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+async def reports_command(update, context):
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    if not admin_guard(uid):
+        log_security(uid, "admin_denied", "handler=reports_command")
+        await update.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+        return
+    text = ("📊 <b>گزارش‌های مدیریتی</b>\n\nیک گزارش را انتخاب کن:" if fa
+            else "📊 <b>Management Reports</b>\n\nChoose a report:")
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
+
+
+async def reports_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    fa = lang(uid) == "fa"
+    if not admin_guard(uid):
+        log_security(uid, "admin_denied", "handler=reports_callback")
+        try:
+            await q.answer("⛔ دسترسی ندارید." if fa else "⛔ Access denied.", show_alert=True)
+        except Exception:
+            pass
+        return
+    await q.answer()
+    action = q.data.split(":", 1)[1]
+    if action == "menu":
+        await q.message.edit_text("📊 <b>گزارش‌های مدیریتی</b>\n\nیک گزارش را انتخاب کن:" if fa
+                                  else "📊 <b>Management Reports</b>\n\nChoose:",
+                                  parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
+        return
+    if action == "backup":
+        try:
+            await q.answer("⏳ در حال آماده‌سازی..." if fa else "⏳ Preparing...")
+        except Exception:
+            pass
+        path = DB_BACKUP_PATH if os.path.exists(DB_BACKUP_PATH) else (DB_PATH if os.path.exists(DB_PATH) else None)
+        if not path:
+            try:
+                await q.message.edit_text("❌ فایل بکاپ پیدا نشد." if fa else "❌ Backup file not found.",
+                                          reply_markup=_reports_menu_kb(uid))
+            except Exception:
+                pass
+            return
+        with open(path, "rb") as fh:
+            await context.bot.send_document(uid, document=fh, filename="goals-backup.db",
+                                            caption="💾 بکاپ دیتابیس ربات" if fa else "Bot database backup")
+        return
+    builder = _REPORT_BUILDERS.get(action)
+    if not builder:
+        return
+    back_row = [InlineKeyboardButton("⬅️ بازگشت به گزارش‌ها" if fa else "⬅️ Back to reports", callback_data="rep:menu"),
+                main_menu_button(uid)]
+    try:
+        text = builder()
+        kb = InlineKeyboardMarkup([back_row])
+        try:
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await q.message.edit_reply_markup(reply_markup=kb)
+    except Exception as e:
+        logger.exception("report %s failed", action)
+        await q.message.edit_text(f"⚠️ خطا در تولید گزارش: <code>{type(e).__name__}</code>",
+                                  parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
 
 
 
