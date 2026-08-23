@@ -809,7 +809,7 @@ def init_db():
         "auto_publish":"free", "images":"free", "feedback":"free", "referrals":"free",
         "mini_app":"free", "support":"free", "price_data":"free", "approval":"free",
         "goals":"free", "weekly":"free", "stats":"free", "profile":"free", "achievements":"free",
-        "settings":"free", "xp":"free", "payments":"free", "maintenance":"free", "test_mode":"free",
+        "settings":"free", "xp":"free", "payments":"off", "maintenance":"off", "test_mode":"free",
         # Customer sub-options
         "customer_today":"free", "customer_new_appointment":"free", "customer_customers":"free",
         "customer_calendar":"free", "customer_hours":"free", "customer_reminders":"free",
@@ -7582,7 +7582,7 @@ async def v25_callback(update,context):
             'از گزینه «تلاش دوباره» استفاده کن؛ برای خروج هم منوی اصلی در دسترس است.',
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=data)],
+                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=q.data)],
                 [InlineKeyboardButton('⬅️ مرکز من',callback_data='v25:hub'),main_menu_button(uid)]
             ])
         )
@@ -8496,7 +8496,7 @@ async def v25_callback(update,context):
             f'⚠️ این عملیات با خطا روبه‌رو شد.\n\nکد خطا: <code>{type(e).__name__}</code>',
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=data)],
+                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=q.data)],
                 [InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:hub'),main_menu_button(uid)]
             ])
         )
@@ -12113,6 +12113,7 @@ async def navigation_callback(update, context):
 _OLD_SETTINGS_CALLBACK_STABLE_NAV = settings_callback
 async def settings_callback(update, context):
     q = update.callback_query
+    uid = q.from_user.id
     action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
     if action == "main":
         clear_flow(context)
