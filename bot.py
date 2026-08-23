@@ -11294,19 +11294,37 @@ def _manager_main_keyboard(uid):
 # protects the two manager/user entry buttons from stale legacy routing.
 # Persistent data and existing business logic are unchanged.
 
+async def _set_root_keyboard_silently(update, uid):
+    """Apply the correct root ReplyKeyboard without leaving a visible bot message.
+
+    Telegram does not allow editing a ReplyKeyboardMarkup onto an existing message.
+    The only reliable way to switch the persistent reply keyboard is to send a tiny
+    invisible message with the new keyboard and immediately delete that message.
+    The keyboard remains active on the client, while no extra visible chat bubble is
+    left behind.
+    """
+    try:
+        chat = update.effective_chat
+        m = await chat.send_message("\u2063", reply_markup=compact_keyboard(uid))
+        try:
+            await m.delete()
+        except Exception:
+            pass
+    except Exception:
+        logger.exception("Failed to silently apply root keyboard for uid=%s", uid)
+
+
 async def navigation_callback(update, context):
-    """Return to the persistent reply-keyboard menu without creating a Home text bubble."""
+    """Return to the persistent root menu without leaving a visible Home message."""
     q = update.callback_query
     uid = q.from_user.id
     await q.answer()
     clear_flow(context)
     if (q.data or "") == "nav:main":
-        # The reply keyboard is already persistent in Telegram. There is no need
-        # to send another "🏠 منوی اصلی" message; simply remove the old inline page.
+        await _set_root_keyboard_silently(update, uid)
         try:
             await q.message.delete()
         except Exception:
-            # Some Telegram messages cannot be deleted; leave the current page intact.
             pass
         return
 
@@ -11339,9 +11357,15 @@ async def text_router(update, context):
     txt = update.message.text.strip()
     uid = update.effective_user.id
 
-    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
         clear_flow(context)
-        # The reply keyboard itself is persistent; do not create another Home bubble.
+        # Restore the actual root keyboard (admin root for managers, user root for
+        # ordinary users) without creating a visible "🏠 منوی اصلی" bot message.
+        await _set_root_keyboard_silently(update, uid)
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
         return
 
     if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
