@@ -151,6 +151,16 @@ def subscription_required(func):
 
 
 
+def _safe_cb_parts(data, sep=':', n=3):
+    """Return exactly n parts from callback data, or None on failure."""
+    try:
+        parts = str(data or '').split(sep, n - 1)
+        return parts if len(parts) == n else None
+    except Exception:
+        return None
+
+
+
 GOALS_FA = {
     "🩺 سلامتی": [
         "💧 نوشیدن ۸ لیوان آب",
@@ -831,7 +841,7 @@ def register_user(uid, first_name):
            last_active_at=excluded.last_active_at""",
         (uid, first_name or "", now, now),
     )
-    c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(hashlib.sha256(str(uid).encode()).hexdigest()[:10],uid))
+    c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(secrets.token_urlsafe(12),uid))
     c.commit()
     c.close()
 
@@ -1185,7 +1195,10 @@ def goal_reminder_keyboard(uid,gid):
     ])
 
 async def goal_reminder_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer(); _,gid_s,mode=q.data.split(":"); gid=int(gid_s); g=get_goal(uid,gid)
+    q=update.callback_query; uid=q.from_user.id; await q.answer()
+    parts=_safe_cb_parts(q.data)
+    if not parts: return
+    _,gid_s,mode=parts; gid=int(gid_s); g=get_goal(uid,gid)
     if not g: await q.answer("هدف پیدا نشد",show_alert=True); return
     if mode=="menu":
         await q.message.edit_text("⏰ <b>یادآوری دوباره</b>\n\nبرای فردا همان ساعت، ساعت جدید یا بعداً را انتخاب کن.",parse_mode="HTML",reply_markup=goal_reminder_keyboard(uid,gid)); return
@@ -1210,7 +1223,9 @@ async def snooze_callback(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
-    _, gid_s, mins_s = q.data.split(":")
+    parts = _safe_cb_parts(q.data)
+    if not parts: return
+    _, gid_s, mins_s = parts
     gid, minutes = int(gid_s), int(mins_s)
     g = get_goal(uid, gid)
     if not g:
@@ -1329,7 +1344,9 @@ async def step_toggle(update, context):
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
-    _, step_id, gid = q.data.split(":")
+    parts = _safe_cb_parts(q.data)
+    if not parts: return
+    _, step_id, gid = parts
     toggle_step(uid, int(step_id))
     log_activity(uid, "step_toggled")
     await steps_menu(update, context)
@@ -2694,8 +2711,8 @@ def _gemini_generate_text(prompt):
             "contents":[{"parts":[{"text":prompt}]}],
             "generationConfig":{"temperature":0.8,"maxOutputTokens":360}
         },ensure_ascii=False).encode("utf-8")
-        url=f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(GEMINI_MODEL)}:generateContent?key={urllib.parse.quote(GEMINI_API_KEY)}"
-        req=urllib.request.Request(url,data=payload,headers={"Content-Type":"application/json"},method="POST")
+        url=f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(GEMINI_MODEL)}:generateContent"
+        req=urllib.request.Request(url,data=payload,headers={"Content-Type":"application/json","x-goog-api-key":GEMINI_API_KEY},method="POST")
         with urllib.request.urlopen(req,timeout=35) as resp:
             data=json.loads(resp.read().decode("utf-8"))
         parts=data.get("candidates",[{}])[0].get("content",{}).get("parts",[])
@@ -2835,7 +2852,9 @@ def content_feedback_keyboard(topic):
 
 async def feedback_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer("ثبت شد")
-    _,rating,topic=q.data.split(":",2); score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
+    parts = _safe_cb_parts(q.data, ":", 3)
+    if not parts: return
+    _,rating,topic=parts; score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
 
 
 async def send_auto_channel_post(context, channel, topic, category=None):
@@ -3158,7 +3177,9 @@ async def auto_subcategory_callback(update, context):
         await q.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
     await q.answer()
-    _, cat_idx, sub_idx = q.data.split(":")
+    parts = _safe_cb_parts(q.data)
+    if not parts: return
+    _, cat_idx, sub_idx = parts
     cat_idx = int(cat_idx)
     category = list(AUTO_TOPIC_TREE_FA.keys())[cat_idx]
     if sub_idx == "random":
@@ -3762,14 +3783,18 @@ async def admin_broadcast_save(update, context):
     context.user_data.clear()
 
     c = db()
-    rows = c.execute("SELECT user_id FROM users").fetchall()
-    c.close()
+    try:
+        rows = c.execute("SELECT user_id FROM users").fetchall()
+    finally:
+        c.close()
 
     sent = 0
     for row in rows:
         try:
             await context.bot.send_message(row["user_id"], f"📢 {text}")
             sent += 1
+            if sent % 30 == 0:
+                await asyncio.sleep(1)
         except Exception as e:
             logger.warning("Broadcast failed for %s: %s", row["user_id"], e)
 
@@ -5683,8 +5708,11 @@ async def successful_payment_callback(update,context):
 
 async def referral(update,context):
     uid=update.effective_user.id
-    c=db(); r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]; c.close()
-    code=r["referral_code"] if r and r["referral_code"] else hashlib.sha256(str(uid).encode()).hexdigest()[:10]
+    c=db()
+    try:
+        r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]
+    finally: c.close()
+    code=r["referral_code"] if r and r["referral_code"] else secrets.token_urlsafe(12)
     c=db(); c.execute("UPDATE users SET referral_code=? WHERE user_id=?",(code,uid)); c.commit(); c.close()
     # Referral VIP rewards are idempotent: viewing the referral page must never
     # grant the same 10-referral milestone more than once.
@@ -11701,7 +11729,9 @@ async def new_category(update, context):
 
 async def ready_subcategory_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id
-    _,catidx,subidx=q.data.split(':'); category=category_by_index(uid,int(catidx)); sub=list(_goal_catalog_data(uid)[category].keys())[int(subidx)]
+    parts = _safe_cb_parts(q.data)
+    if not parts: return
+    _,catidx,subidx=parts; category=category_by_index(uid,int(catidx)); sub=list(_goal_catalog_data(uid)[category].keys())[int(subidx)]
     context.user_data['ready_category']=category; context.user_data['ready_subcategory']=sub
     goals=_goal_catalog_data(uid)[category][sub]
     rows=[]
@@ -11918,6 +11948,9 @@ async def custom_time_save(update,context):
     return await _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE(update,context)
 
 _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE=globals().get('custom_time_save')
+if _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE is None:
+    async def _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE(update, context):
+        return False
 
 # Reminder completion: keep the DB row/history, disable only the active schedule and notify once.
 _OLD_UNIFIED_REMINDER_GOALS_UPGRADE=v25_unified_reminder_job
