@@ -1630,7 +1630,7 @@ async def goals_navigation_callback(update, context):
         context.user_data.clear()
         try: await q.message.delete()
         except Exception: pass
-        await context.bot.send_message(uid,"🏠 منوی اصلی",reply_markup=keyboard(uid))
+        await context.bot.send_message(uid,"🏠",reply_markup=keyboard(uid))
         return
     await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
 
@@ -1682,8 +1682,10 @@ async def settings_callback(update, context):
         await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
         if action=="main":
-            await q.message.edit_text("🏠 منوی اصلی")
-            await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+            context.user_data.clear()
+            try: await q.message.delete()
+            except Exception: pass
+            await q.message.chat.send_message("🏠",reply_markup=keyboard(uid))
         else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
@@ -9201,6 +9203,9 @@ def main():
     app.add_handler(CallbackQueryHandler(compact_section_callback, pattern=r"^menu:"))
     app.add_handler(CallbackQueryHandler(compact_menu_callback, pattern=r"^cm:"))
     app.add_handler(CallbackQueryHandler(v25_callback, pattern=r"^v25:"))
+    # Recurring goal-duration buttons use the separate goalrepeat: callback namespace.
+    # Register it explicitly; otherwise Telegram sends the callback but no handler receives it.
+    app.add_handler(CallbackQueryHandler(targeted_goalrepeat_callback, pattern=r"^goalrepeat:"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, v25_receipt_handler))
     app.add_handler(MessageHandler(filters.VOICE, v25_voice_handler))
     app.add_handler(MessageHandler(filters.CONTACT, customer_contact_save))
@@ -10090,28 +10095,11 @@ def _master_managers_text(uid):
     return "\n".join(lines)
 
 def _master_manager_keyboard(uid):
-    fa = lang(uid) == "fa"
-    rows = [
-        [InlineKeyboardButton(
-            "➕ افزودن مدیر" if fa else "➕ Add Manager",
-            callback_data="v25:master:manager_add"
-        )],
-        [InlineKeyboardButton(
-            "🔄 به‌روزرسانی فهرست" if fa else "🔄 Refresh Managers",
-            callback_data="v25:master:manager_list"
-        )],
-    ]
-    # Only Owner can deactivate managers.
-    if _manager_is_owner(uid):
-        rows.append([InlineKeyboardButton(
-            "🗑️ غیرفعال‌سازی مدیر" if fa else "🗑️ Disable Manager",
-            callback_data="v25:master:manager_disable_help"
-        )])
-    rows.append([InlineKeyboardButton(
-        "⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",
-        callback_data="v25:master:home"
-    )])
-    return InlineKeyboardMarkup(rows)
+    # Use the interactive manager directory defined below so every manager
+    # appears as a selectable item with status, role and permissions.
+    # The targeted callbacks also provide the disable confirmation (Yes/No)
+    # and the per-manager permission controls.
+    return _targeted_manager_keyboard(uid)
 
 def _master_add_role_keyboard(uid):
     fa = lang(uid) == "fa"
@@ -10613,6 +10601,55 @@ async def text_router(update, context):
     fa = lang(uid) == "fa"
 
     if _is_active_manager(uid):
+        # Navigation buttons must always win over any pending text-input state
+        # (for example waiting for an admin ID/username).  Otherwise a stale
+        # manager-add/disable state can incorrectly consume normal menu taps.
+        if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+            clear_flow(context)
+            title, markup = _manager_main_keyboard(uid)
+            await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
+            return
+
+        if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+            clear_flow(context)
+            await update.message.reply_text(
+                "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+                if fa else
+                "👤 <b>User Area</b>\n\nNormal user features are available here.",
+                parse_mode="HTML",
+                reply_markup=_compact_user_keyboard(uid)
+            )
+            return
+
+        if txt in ("⚙️ تنظیمات سیستم", "⚙️ System Settings"):
+            # Entering settings must also cancel any pending admin ID/username
+            # input mode.  Show the same system-settings view as the management
+            # center callback, without routing the label through the legacy
+            # ID/username parser.
+            clear_flow(context)
+            paused = get_system_setting("bot_paused_until", "")
+            maintenance = feature_enabled("maintenance")
+            text = (
+                f"⚙️ <b>تنظیمات سیستم</b>\n\n"
+                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
+                f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
+                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"مالک اصلی: <code>{master_owner_id() or '-'}</code>"
+            ) if fa else (
+                f"⚙️ <b>System Settings</b>\n\n"
+                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
+                f"⏸ Temporary pause: {html.escape(paused or 'Not active')}\n"
+                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"Owner: <code>{master_owner_id() or '-'}</code>"
+            )
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
+                [InlineKeyboardButton("⏸ مدیریت توقف" if fa else "⏸ Pause Management", callback_data="adm:pause")],
+                [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")]
+            ])
+            await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+            return
+
         if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
             clear_flow(context)
             await _show_admin_management(update, context)
@@ -10650,23 +10687,6 @@ async def text_router(update, context):
                 parse_mode="HTML",
                 reply_markup=_master_manager_keyboard(uid)
             )
-            return
-
-        if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
-            clear_flow(context)
-            await update.message.reply_text(
-                "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
-                if fa else
-                "👤 <b>User Area</b>\n\nNormal user features are available here.",
-                parse_mode="HTML",
-                reply_markup=_compact_user_keyboard(uid)
-            )
-            return
-
-        if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
-            clear_flow(context)
-            title, markup = _manager_main_keyboard(uid)
-            await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
             return
 
     return await _OLD_TEXT_ROUTER_MANAGER_MENU(update, context)
@@ -11019,8 +11039,10 @@ async def v25_show_price(update,context,asset):
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
     if asset=='main':
-        try: await q.message.edit_text("🏠 منوی اصلی",reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+        context.user_data.clear()
+        try: await q.message.delete()
         except Exception: pass
+        await q.message.chat.send_message("🏠",reply_markup=keyboard(uid))
         return
     await v25_show_price(update,context,asset)
 
@@ -11145,6 +11167,12 @@ async def text_router(update,context):
     if update.message and update.effective_user:
         _targeted_record_username(update.effective_user)
     uid=update.effective_user.id if update.effective_user else 0; txt=(update.message.text or '').strip() if update.message else ''; fa=lang(uid)=='fa'
+    # Normal navigation always wins over stale manager add/disable input states.
+    # This prevents messages such as 'تنظیمات سیستم' or 'استفاده از ربات' from
+    # being misread as an @username/Telegram ID.
+    if txt in ('🏠 منوی اصلی','🏠 Main Menu','👤 استفاده از ربات','👤 Use Bot','⚙️ تنظیمات سیستم','⚙️ System Settings'):
+        clear_flow(context)
+        return await _OLD_TEXT_ROUTER_TARGETED(update,context)
     if context.user_data.get('targeted_add_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
@@ -11203,6 +11231,12 @@ async def v25_callback(update,context):
     if data=='v25:targeted:prices':
         if not master_has_permission(uid,'manage_features'): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
         rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+        known=[('usd',1),('eur',1),('gold18',1),('coin',1),('silver',1),('copper',1),('aluminum',1),('nickel',1),('zinc',1),('lead',1)]
+        dbmap={r['asset']:int(r['enabled']) for r in all_rows}
+        for asset0,default0 in known:
+            if asset0 not in dbmap:
+                dbmap[asset0]=default0
+        all_rows=[{'asset':a,'enabled':e} for a,e in dbmap.items()]
         for r in all_rows:
             rows.append([InlineKeyboardButton(('🟢 ' if r['enabled'] else '🔴 ')+labels.get(r['asset'],r['asset']),callback_data=f"v25:targeted:price_toggle:{r['asset']}")])
         rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.answer(); await q.message.edit_text('📈 <b>مدیریت قیمت‌های آنلاین</b>\n\nسبز = نمایش در ربات\nقرمز = مخفی از کاربران',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows)); return
@@ -11210,7 +11244,11 @@ async def v25_callback(update,context):
         if not master_has_permission(uid,'manage_features'): await q.answer('⛔',show_alert=True); return
         asset=data.rsplit(':',1)[1]; c=db(); r=c.execute('SELECT enabled FROM price_asset_settings WHERE asset=?',(asset,)).fetchone(); new=0 if r and r['enabled'] else 1; c.execute('UPDATE price_asset_settings SET enabled=?,updated_at=? WHERE asset=?',(new,datetime.now(TZ).isoformat(),asset)); c.commit(); c.close(); await q.answer('روشن شد' if new else 'خاموش شد');
         rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-        for rr in all_rows: rows.append([InlineKeyboardButton(('🟢 ' if rr['enabled'] else '🔴 ')+labels.get(rr['asset'],rr['asset']),callback_data=f"v25:targeted:price_toggle:{rr['asset']}")])
+        known=[('usd',1),('eur',1),('gold18',1),('coin',1),('silver',1),('copper',1),('aluminum',1),('nickel',1),('zinc',1),('lead',1)]
+        dbmap={r['asset']:int(r['enabled']) for r in all_rows}
+        for asset0,default0 in known:
+            if asset0 not in dbmap: dbmap[asset0]=default0
+        for asset0,enabled0 in dbmap.items(): rows.append([InlineKeyboardButton(('🟢 ' if enabled0 else '🔴 ')+labels.get(asset0,asset0),callback_data=f"v25:targeted:price_toggle:{asset0}")])
         rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(rows)); return
     return await _PREV_V25_CALLBACK_PRICE_PANEL(update,context)
 
