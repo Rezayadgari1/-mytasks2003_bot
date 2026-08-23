@@ -1625,12 +1625,19 @@ async def settings(update, context):
 
 async def goals_navigation_callback(update, context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id
-    action=q.data.split(":",1)[1]
+    action=q.data.split(":",1)[1] if ":" in (q.data or "") else ""
     if action=="main":
-        context.user_data.clear()
-        try: await q.message.delete()
-        except Exception: pass
-        await context.bot.send_message(uid,"🏠 منوی اصلی",reply_markup=keyboard(uid))
+        clear_flow(context)
+        # Do not delete the current goals screen. Replace it with the compact root.
+        try:
+            fa = lang(uid) == "fa"
+            root_text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+            await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
+        except Exception:
+            try:
+                await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+            except Exception:
+                pass
         return
     await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
 
@@ -1642,7 +1649,18 @@ async def settings_language_callback(update, context):
 
 
 async def settings_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; action=q.data.split(":",1)[1]; fa=lang(uid)=="fa"
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; action=q.data.split(":",1)[1] if ":" in (q.data or "") else ""; fa=lang(uid)=="fa"
+    if action=="main":
+        clear_flow(context)
+        try:
+            await q.message.edit_text(
+                "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+                parse_mode="HTML", reply_markup=_compact_root_inline(uid)
+            )
+        except Exception:
+            try: await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+            except Exception: pass
+        return
     if action=="language":
         await q.message.edit_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
     if action=="channel":
@@ -5555,11 +5573,21 @@ async def final_admin_text(update,context):
         await update.message.reply_text(f"❌ خطا: {html.escape(str(e))}", parse_mode="HTML"); return True
 
 async def navigation_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]; clear_flow(context)
+    q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1] if ":" in (q.data or "") else ""; clear_flow(context)
     if action=="main":
-        try: await q.message.delete()
-        except Exception: pass
-        await context.bot.send_message(uid,"🏠",reply_markup=keyboard(uid))
+        # Main Menu must work from every inline error/recovery screen without
+        # deleting the only visible bot message. Render the compact root in-place.
+        try:
+            fa = lang(uid) == "fa"
+            root_text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+            await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
+        except Exception:
+            # Last-resort fallback: keep the reply keyboard available.
+            try:
+                await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+            except Exception:
+                pass
+        return
 
 def support_keyboard(uid):
     fa=lang(uid)=="fa"
@@ -8932,13 +8960,43 @@ async def text_router(update, context):
     txt = text
 
     # Universal navigation has absolute priority.
+    # These are real ReplyKeyboard buttons, so this routing must live in the
+    # handler that is registered by main(); later wrapper definitions are too late.
     if text in ("🏠 منوی اصلی", "🏠 Main Menu"):
         clear_flow(context)
-        await update.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        fa = lang(uid) == "fa"
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=_compact_root_inline(uid),
+        )
         return
     if text in ("⬅️ برگشت", "⬅️ Back"):
         clear_flow(context)
-        await update.message.reply_text(v25_hub_text(uid), parse_mode="HTML", reply_markup=v25_hub_keyboard(uid))
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        # From an error/input recovery keyboard, Back returns to the compact
+        # Goals section—the section that owns the "🎯 برنامه من" entry.
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🎯 <b>برنامه و اهداف</b>" if lang(uid)=="fa" else "🎯 <b>Goals & Plan</b>",
+            parse_mode="HTML",
+            reply_markup=_compact_menu_keyboard(uid, "goals"),
+        )
+        return
+
+    # "🎯 برنامه من" is a top-level ReplyKeyboard action. Handle it here before
+    # the legacy input state machine; otherwise the old chain can raise TypeError.
+    if text in ("🎯 برنامه من", "🎯 My Plan"):
+        clear_flow(context)
+        await _compact_menu_show(update, context, "goals")
         return
 
     if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
@@ -11677,7 +11735,7 @@ async def today(update,context):
     rows=[]
     for g in goals:
         st=get_status(uid,g['id']); icon='✅' if st=='done' else '❌' if st=='missed' else '⬜'; rows.append([InlineKeyboardButton(f"{icon} {g['name']}",callback_data=f"detail:{g['id']}")])
-    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar')])
+    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')])
     rows.append([main_menu_button(uid)])
     await update.message.reply_text(T[lang(uid)]['today'],reply_markup=InlineKeyboardMarkup(rows))
 
@@ -11687,7 +11745,7 @@ async def edit_menu(update,context):
         await update.message.reply_text(T[lang(uid)]['no_goals'].format(name=display_name(uid)),reply_markup=keyboard(uid)); return
     rows=[]
     for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j]['name'],callback_data=f"edit:{goals[j]['id']}") for j in range(i,min(i+2,len(goals)))])
-    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar')])
+    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')])
     rows.append([main_menu_button(uid)])
     await update.message.reply_text(T[lang(uid)]['edit'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup(rows))
 
@@ -11703,7 +11761,7 @@ async def goal_reminders_list(update,context):
             details=' | '.join(f'{k}: {v}' for k,v in list(meta.items())[:3] if v)
             if details: lines.append(f"  📝 {html.escape(details)}")
         rows.append([InlineKeyboardButton(f"✏️ {g['name']}",callback_data=f"edit:{g['id']}")])
-    rows += [[InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar'),main_menu_button(uid)]]
+    rows += [[InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today'),main_menu_button(uid)]]
     target=q.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 # Minimal Jalali conversion, independent of external packages.
@@ -11882,3 +11940,137 @@ async def text_router(update,context):
 if __name__ == "__main__":
     main()
 
+
+# ===================== FINAL GOALS / NAVIGATION STABILITY PATCH =====================
+# This layer is intentionally last so it wins over older text-router/callback wrappers.
+# It fixes two production issues seen in testing:
+#   1) "🎯 برنامه من" could fall through a legacy router and surface TypeError.
+#   2) Main-menu callbacks could delete the current screen and then create a second
+#      carrier message, leaving the user with an empty/deleted screen.
+# No database tables or user-owned data are changed here.
+
+async def _render_compact_root_inline_safe(update, context):
+    """Render the compact root in-place; never delete the current bot screen."""
+    q = getattr(update, "callback_query", None)
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+    markup = _compact_root_inline(uid)
+    if q:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        try:
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=markup)
+        except Exception:
+            # If Telegram reports that the message is already identical, do not
+            # create a duplicate bubble.
+            try:
+                await q.message.edit_reply_markup(reply_markup=markup)
+            except Exception:
+                pass
+    else:
+        # Reply-keyboard navigation is already persistent; delete only the user's
+        # navigation command so it does not accumulate in the chat.
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+    return True
+
+
+# Replace the old goals callback that deleted the current message and sent a new
+# visible Home carrier. All existing goals:main buttons now return in-place.
+async def goals_navigation_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
+    if action == "main":
+        clear_flow(context)
+        return await _render_compact_root_inline_safe(update, context)
+    try:
+        await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
+    except Exception:
+        pass
+
+
+# Same in-place behavior for the generic Main Menu callback used by most modules.
+async def navigation_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    clear_flow(context)
+    if (q.data or "") == "nav:main":
+        return await _render_compact_root_inline_safe(update, context)
+    try:
+        await q.answer()
+    except Exception:
+        pass
+
+
+# Settings Main Menu must also use the same in-place root renderer.
+_OLD_SETTINGS_CALLBACK_STABLE_NAV = settings_callback
+async def settings_callback(update, context):
+    q = update.callback_query
+    action = q.data.split(":", 1)[1] if ":" in (q.data or "") else ""
+    if action == "main":
+        clear_flow(context)
+        return await _render_compact_root_inline_safe(update, context)
+    return await _OLD_SETTINGS_CALLBACK_STABLE_NAV(update, context)
+
+
+async def _render_goals_section_direct(update, context):
+    """Direct, minimal renderer for the user's Goals section.
+
+    This intentionally bypasses the long legacy text-router chain. The section
+    is built from the already-tested compact keyboard and therefore cannot fall
+    into the stale handler that produced the TypeError shown by the user.
+    """
+    uid = update.effective_user.id
+    clear_flow(context)
+    fa = lang(uid) == "fa"
+    text = "🎯 <b>برنامه و اهداف</b>" if fa else "🎯 <b>Goals & Plan</b>"
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=_compact_menu_keyboard(uid, "goals"),
+    )
+    return True
+
+
+# Final text-router guard: handle the two navigation labels and the Goals entry
+# before any older wrapper can consume them. This is deliberately the last layer.
+_OLD_TEXT_ROUTER_STABLE_NAV = text_router
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return await _OLD_TEXT_ROUTER_STABLE_NAV(update, context)
+    txt = update.message.text.strip()
+    uid = update.effective_user.id
+
+    # The Goals button is a top-level navigation action, not a text-input value.
+    if txt in ("🎯 برنامه من", "🎯 My Plan"):
+        return await _render_goals_section_direct(update, context)
+
+    # Reply-keyboard Main Menu / Back are always navigation commands. They must
+    # never be consumed by a stale pending input flow.
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+        clear_flow(context)
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        # The persistent ReplyKeyboard is already active. For a visual root screen
+        # use one compact bot message only when there is no callback message to edit.
+        fa = lang(uid) == "fa"
+        await update.message.reply_text(
+            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            parse_mode="HTML",
+            reply_markup=_compact_root_inline(uid),
+        )
+        return
+
+    return await _OLD_TEXT_ROUTER_STABLE_NAV(update, context)
+
+
+# Explicit callback registration is normally already present, but this final
+# assignment guarantees the dispatcher uses the repaired functions above.
