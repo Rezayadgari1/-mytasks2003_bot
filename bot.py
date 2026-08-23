@@ -2,7 +2,6 @@
 
 import logging
 from functools import wraps
-import base64
 import io
 import json
 import asyncio
@@ -3790,20 +3789,33 @@ async def admin_broadcast_save(update, context):
     finally:
         c.close()
 
-    sent = 0
+    sent = failed = 0
+    from telegram.error import RetryAfter
     for row in rows:
         try:
             await context.bot.send_message(row["user_id"], f"📢 {text}")
             sent += 1
-            if sent % 30 == 0:
-                await asyncio.sleep(1)
+        except RetryAfter as e:
+            # Telegram asked us to slow down: wait exactly as long as required,
+            # then retry this recipient once before giving up on them.
+            try:
+                await asyncio.sleep(e.retry_after + 1)
+                await context.bot.send_message(row["user_id"], f"📢 {text}")
+                sent += 1
+            except Exception as e2:
+                failed += 1
+                logger.warning("Broadcast failed after retry for %s: %s", row["user_id"], e2)
         except Exception as e:
+            failed += 1
             logger.warning("Broadcast failed for %s: %s", row["user_id"], e)
+        # Stay under Telegram's ~30 msg/s global cap with headroom.
+        await asyncio.sleep(0.05)
 
     log_activity(uid, "broadcast")
-    await update.message.reply_text(
-        T[lang(uid)]["broadcast_done"].format(sent=sent)
-    )
+    done_txt = T[lang(uid)]["broadcast_done"].format(sent=sent)
+    if failed:
+        done_txt += f"\n⚠️ {failed} ناموفق."
+    await update.message.reply_text(done_txt)
     return True
 
 
@@ -4339,7 +4351,6 @@ async def customer_calendar_month(update,context,ym):
     try: jy,jm=map(int,ym.split("-")); gy,gm,gd=jalali_to_gregorian(jy,jm,1)
     except Exception:
         await q.answer("تاریخ نامعتبر است.",show_alert=True); return
-    import calendar as _cal
     today=datetime.now(TZ).date()
     # Number of days in a Jalali month.
     days=31 if jm<=6 else 30 if jm<=11 else 30 if jalali_to_gregorian(jy+1,1,1)[0] else 29
@@ -9261,7 +9272,9 @@ def main():
     c.commit()
     c.close()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Process updates concurrently so one slow handler (e.g. AI chat) cannot
+    # stall responses for everyone. Bounded to keep memory/CPU predictable.
+    app = Application.builder().token(BOT_TOKEN).concurrent_updates(256).build()
     # If the deployment lacks APScheduler, keep scheduled features alive through asyncio
     # instead of silently skipping every reminder/report/health-check job.
     if app.job_queue is None:
@@ -9377,6 +9390,7 @@ def main():
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
         app.job_queue.run_repeating(flush_owner_notifications_job, interval=60, first=55)
+        app.job_queue.run_repeating(weekly_owner_backup_job, interval=3600, first=120)
 
     logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-01")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
@@ -11200,6 +11214,15 @@ def prices_keyboard(uid):
 
 _ORIGINAL_FETCH_PRICE_V25_TARGETED = fetch_price_v25
 async def fetch_price_v25(asset):
+    # Crypto & index assets delegate to the legacy multi-source fetcher
+    # (Nobitex / CoinGecko+TGJU / Yahoo), whose "<value> <unit>" output is
+    # parsed back into the (value, unit, confidence) tuple contract.
+    if asset in ("btc","eth","usdt","bnb","sol","xrp","sp500","nasdaq","dow"):
+        txt = await fetch_price(asset)
+        m = re.match(r"^([\d,.]+)\s*(.+)$", str(txt).strip())
+        if not m:
+            raise ValueError(f"unparsed price for {asset}: {txt!r}")
+        return float(m.group(1).replace(",", "")), m.group(2).strip(), "single"
     # Gold/coin use TGJU's explicit daily/current page. No manual correction is applied.
     if asset in ("gold18","coin"):
         url={"gold18":"https://www.tgju.org/profile/geram18/today","coin":"https://www.tgju.org/profile/sekee/today"}[asset]
@@ -11208,7 +11231,7 @@ async def fetch_price_v25(asset):
     return await _ORIGINAL_FETCH_PRICE_V25(asset)
 
 async def v25_show_price(update,context,asset):
-    uid=update.effective_user.id; fa=lang(uid)=="fa"; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}; names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead'}
+    uid=update.effective_user.id; fa=lang(uid)=="fa"; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب','btc':'BTC (بازار ایران)','eth':'ETH (بازار ایران)','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}; names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead','btc':'BTC','eth':'ETH','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}
     enabled=set(_targeted_enabled_prices())
     assets=_targeted_enabled_prices() if asset=='all' else [asset]
     if asset!='all' and asset not in enabled:
@@ -12744,6 +12767,34 @@ async def reports_callback(update, context):
         logger.exception("report %s failed", action)
         await q.message.edit_text(f"⚠️ خطا در تولید گزارش: <code>{type(e).__name__}</code>",
                                   parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
+
+
+
+# ===================== WEEKLY OWNER BACKUP DELIVERY =====================
+# Sends the latest database backup file to the Owner once a week.
+
+async def weekly_owner_backup_job(context):
+    """Deliver the newest backup file to the Owner, at most once per week."""
+    oid = master_owner_id()
+    if not oid:
+        return
+    today = datetime.now(TZ).date().isoformat()
+    week = today[:8] + str((datetime.now(TZ).isocalendar().week))  # YYYY-MM-W
+    if get_system_setting("last_owner_backup_week", "") == week:
+        return
+    path = DB_BACKUP_PATH if os.path.exists(DB_BACKUP_PATH) else None
+    if not path:
+        logger.warning("Weekly owner backup skipped: no backup file")
+        return
+    try:
+        with open(path, "rb") as fh:
+            await context.bot.send_document(
+                oid, document=fh, filename=f"goals-backup-{today}.db",
+                caption=f"💾 بکاپ هفتگی دیتابیس ربات — {today}")
+        set_system_setting("last_owner_backup_week", week)
+        logger.info("Weekly owner backup delivered (%s)", path)
+    except Exception:
+        logger.exception("Weekly owner backup delivery failed")
 
 
 

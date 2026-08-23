@@ -8,7 +8,7 @@ for f in ("/tmp/rep_goals.db", "/tmp/rep_goals.db.backup"):
     if os.path.exists(f):
         os.remove(f)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bot
 
 print("[1] import OK | ADMIN_IDS:", bot.ADMIN_IDS)

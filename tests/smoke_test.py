@@ -9,7 +9,7 @@ for f in ("/tmp/smoke_goals.db.backup",):
     if os.path.exists(f):
         os.remove(f)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bot  # noqa: E402
 
 print("[1] module import OK | build:", bot.MYTASKS_BUILD_ID)
