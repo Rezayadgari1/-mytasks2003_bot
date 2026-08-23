@@ -60,7 +60,7 @@ DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "go
 # DB_PATH=/data/goals.db
 # Do not store the live DB only inside an ephemeral deploy filesystem.
 
-DB_SCHEMA_VERSION = 25
+DB_SCHEMA_VERSION = 26
 
 # DATA PERSISTENCE CONTRACT
 # -------------------------
@@ -525,6 +525,9 @@ def migrate_database(c):
             created_at TEXT NOT NULL
         )""")
         set_schema_version(c, 25)
+    if version < 26:
+        ensure_column(c, "users", "username", "TEXT NOT NULL DEFAULT ''")
+        set_schema_version(c, 26)
     if version < DB_SCHEMA_VERSION:
         set_schema_version(c, DB_SCHEMA_VERSION)
 
@@ -550,6 +553,7 @@ def init_db():
             first_name TEXT NOT NULL DEFAULT '',
             language TEXT NOT NULL DEFAULT 'fa',
             gender TEXT,
+            username TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             last_active_at TEXT
         )"""
@@ -820,16 +824,18 @@ def init_db():
     c.close()
 
 
-def register_user(uid, first_name):
+def register_user(uid, first_name, username=""):
     now = datetime.now(TZ).isoformat()
+    username = (username or "").strip().lstrip("@")
     c = db()
     c.execute(
-        """INSERT INTO users(user_id, first_name, created_at, last_active_at)
-           VALUES(?,?,?,?)
+        """INSERT INTO users(user_id, first_name, username, created_at, last_active_at)
+           VALUES(?,?,?,?,?)
            ON CONFLICT(user_id) DO UPDATE SET
            first_name=excluded.first_name,
+           username=CASE WHEN excluded.username!='' THEN excluded.username ELSE users.username END,
            last_active_at=excluded.last_active_at""",
-        (uid, first_name or "", now, now),
+        (uid, first_name or "", username, now, now),
     )
     c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(hashlib.sha256(str(uid).encode()).hexdigest()[:10],uid))
     c.commit()
@@ -1457,7 +1463,7 @@ async def subscription_check_callback(update, context):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     name = update.effective_user.first_name or "دوست من"
-    register_user(uid, name)
+    register_user(uid, name, update.effective_user.username or "")
     if context.args:
         arg=context.args[0]
         if arg.startswith("book_"):
@@ -4786,7 +4792,7 @@ async def hide_main_reply_keyboard(update):
 
 async def text_router(update, context):
     uid = update.effective_user.id
-    register_user(uid, update.effective_user.first_name or "")
+    register_user(uid, update.effective_user.first_name or "", update.effective_user.username or "")
 
     # Safety timeout: a stale text-input flow expires after 15 minutes.
     flow_started = context.user_data.get("_flow_started_at")
@@ -9747,6 +9753,7 @@ def master_rbac_init_db():
         domain TEXT NOT NULL DEFAULT 'general',
         permissions_json TEXT NOT NULL DEFAULT '[]',
         active INTEGER NOT NULL DEFAULT 1,
+        username TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
@@ -9784,6 +9791,7 @@ def master_rbac_init_db():
         created_at TEXT NOT NULL
     );
     """)
+    ensure_column(c, "management_roles", "username", "TEXT NOT NULL DEFAULT ''")
     now=datetime.now(TZ).isoformat()
     owner=master_owner_id()
     if owner:
@@ -10069,8 +10077,9 @@ def _master_managers_text(uid):
     fa = lang(uid) == "fa"
     c = db()
     rows = c.execute(
-        "SELECT user_id, role, domain, active, created_at "
-        "FROM management_roles ORDER BY active DESC, user_id"
+        "SELECT mr.user_id, mr.username, u.username AS current_username, mr.role, mr.domain, mr.active, mr.created_at "
+        "FROM management_roles mr LEFT JOIN users u ON u.user_id=mr.user_id "
+        "ORDER BY mr.active DESC, mr.user_id"
     ).fetchall()
     c.close()
     lines = [
@@ -10083,8 +10092,10 @@ def _master_managers_text(uid):
         state = "🟢 فعال" if r["active"] else "🔴 غیرفعال"
         if not fa:
             state = "🟢 Active" if r["active"] else "🔴 Disabled"
+        username = (r["current_username"] or r["username"] or "").strip().lstrip("@")
+        user_part = f"@{html.escape(username)}" if username else "(بدون username)" if fa else "(no username)"
         lines.append(
-            f"{state}  <code>{r['user_id']}</code>  "
+            f"{state}  <code>{r['user_id']}</code>  {user_part}  "
             f"{html.escape(_manager_role_label(r['role'], fa))}"
         )
     return "\n".join(lines)
@@ -10305,11 +10316,15 @@ async def master_management_callback(update, context):
         context.user_data["master_add_manager"] = True
         await q.answer()
         await q.message.edit_text(
-            "🆔 آیدی عددی تلگرام مدیر جدید را ارسال کن.\n\n"
-            "مثال: <code>123456789</code>"
+            "👤 یوزرنیم یا آیدی عددی تلگرام مدیر جدید را ارسال کن.\n\n"
+            "مثال یوزرنیم: <code>@username</code>\n"
+            "مثال آیدی: <code>123456789</code>\n\n"
+            "نکته: برای افزودن با یوزرنیم، آن کاربر باید حداقل یک‌بار ربات را /start کرده باشد."
             if fa else
-            "🆔 Send the new manager's numeric Telegram ID.\n\n"
-            "Example: <code>123456789</code>",
+            "👤 Send the new manager's Telegram username or numeric ID.\n\n"
+            "Username: <code>@username</code>\n"
+            "ID: <code>123456789</code>\n\n"
+            "Note: username lookup works after that user has started the bot at least once.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
@@ -10333,7 +10348,9 @@ async def master_management_callback(update, context):
             )
             return
         target = int(context.user_data.get("master_pending_manager_id") or 0)
+        target_username = (context.user_data.get("master_pending_manager_username") or "").strip().lstrip("@")
         if not target:
+
             await q.answer(
                 "❌ آیدی مدیر پیدا نشد. دوباره شروع کن."
                 if fa else
@@ -10344,14 +10361,14 @@ async def master_management_callback(update, context):
         now = datetime.now(TZ).isoformat()
         c = db()
         c.execute(
-            "INSERT INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) "
-            "VALUES(?,?,?,?,1,?,?) "
+            "INSERT INTO management_roles(user_id,role,domain,permissions_json,active,username,created_at,updated_at) "
+            "VALUES(?,?,?,?,1,?,?,?) "
             "ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,domain=excluded.domain,"
-            "permissions_json=excluded.permissions_json,active=1,updated_at=excluded.updated_at",
+            "permissions_json=excluded.permissions_json,active=1,username=CASE WHEN excluded.username!='' THEN excluded.username ELSE management_roles.username END,updated_at=excluded.updated_at",
             (
                 target, role, "general",
                 json.dumps(sorted(MASTER_ROLE_PERMISSIONS.get(role, set()))),
-                now, now
+                target_username, now, now
             )
         )
         c.commit()
@@ -10361,13 +10378,15 @@ async def master_management_callback(update, context):
         await q.answer()
         await q.message.edit_text(
             (
-                f"✅ مدیر <code>{target}</code> با نقش "
-                f"<b>{html.escape(_manager_role_label(role, True))}</b> اضافه شد."
+                f"✅ مدیر <code>{target}</code>"
+                + (f" (@{html.escape(target_username)})" if target_username else "")
+                + f" با نقش <b>{html.escape(_manager_role_label(role, True))}</b> اضافه شد."
             )
             if fa else
             (
-                f"✅ Manager <code>{target}</code> added as "
-                f"<b>{html.escape(_manager_role_label(role, False))}</b>."
+                f"✅ Manager <code>{target}</code>"
+                + (f" (@{html.escape(target_username)})" if target_username else "")
+                + f" added as <b>{html.escape(_manager_role_label(role, False))}</b>."
             ),
             parse_mode="HTML",
             reply_markup=_master_manager_keyboard(uid)
@@ -10418,18 +10437,73 @@ async def text_router(update, context):
                 if fa else "⛔ Only the Owner can add managers."
             )
             return
-        if not txt.isdigit():
+
+        target = 0
+        target_username = ""
+        if txt.isdigit():
+            target = int(txt)
+            c = db()
+            row = c.execute("SELECT username FROM users WHERE user_id=? LIMIT 1", (target,)).fetchone()
+            c.close()
+            target_username = ((row["username"] if row else "") or "").strip().lstrip("@")
+        else:
+            username = txt.strip()
+            username = username.replace("https://t.me/", "").replace("http://t.me/", "")
+            username = username.split("?", 1)[0].split("/", 1)[0].strip().lstrip("@")
+            if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+                await update.message.reply_text(
+                    "❌ یوزرنیم معتبر نیست. مثل <code>@username</code> بفرست."
+                    if fa else
+                    "❌ Invalid username. Send it like <code>@username</code>.",
+                    parse_mode="HTML"
+                )
+                return
+            c = db()
+            row = c.execute(
+                "SELECT user_id, username FROM users WHERE lower(username)=lower(?) LIMIT 1",
+                (username,)
+            ).fetchone()
+            c.close()
+            if not row:
+                await update.message.reply_text(
+                    "❌ این یوزرنیم در کاربران ربات پیدا نشد. کاربر باید یک‌بار ربات را /start کرده باشد و بعد دوباره تلاش کن."
+                    if fa else
+                    "❌ This username is not known to the bot. The user must start the bot once, then try again.",
+                    parse_mode="HTML"
+                )
+                return
+            target = int(row["user_id"])
+            target_username = (row["username"] or username).strip().lstrip("@")
+
+        if not target:
             await update.message.reply_text(
-                "❌ فقط آیدی عددی تلگرام را بفرست."
-                if fa else "❌ Send a numeric Telegram ID."
+                "❌ کاربر معتبر پیدا نشد." if fa else "❌ A valid user was not found."
             )
             return
-        target = int(txt)
+        if target == master_owner_id():
+            await update.message.reply_text(
+                "ℹ️ این کاربر همین حالا Owner اصلی است." if fa else
+                "ℹ️ This user is already the Owner."
+            )
+            clear_flow(context)
+            return
+
         context.user_data["master_add_manager"] = False
         context.user_data["master_pending_manager_id"] = target
+        context.user_data["master_pending_manager_username"] = target_username
         await update.message.reply_text(
-            "🎯 نقش مدیر را انتخاب کن:"
-            if fa else "🎯 Choose the manager role:",
+            (
+                f"👤 کاربر پیدا شد: <code>{target}</code>"
+                + (f" (@{html.escape(target_username)})" if target_username else "")
+                + "\n\n🎯 نقش مدیر را انتخاب کن:"
+            )
+            if fa else
+            (
+                f"👤 User found: <code>{target}</code>"
+                + (f" (@{html.escape(target_username)})" if target_username else "")
+                + "\n\n🎯 Choose the manager role:"
+            ),
+            parse_mode="HTML",
             reply_markup=_master_add_role_keyboard(uid)
         )
         return
