@@ -1648,7 +1648,7 @@ async def goals_navigation_callback(update, context):
         # Do not delete the current goals screen. Replace it with the compact root.
         try:
             fa = lang(uid) == "fa"
-            root_text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+            root_text = _root_menu_text(uid)
             await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
         except Exception:
             try:
@@ -1671,7 +1671,7 @@ async def settings_callback(update, context):
         clear_flow(context)
         try:
             await q.message.edit_text(
-                "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+                _root_menu_text(uid),
                 parse_mode="HTML", reply_markup=_compact_root_inline(uid)
             )
         except Exception:
@@ -5604,7 +5604,7 @@ async def navigation_callback(update,context):
         # deleting the only visible bot message. Render the compact root in-place.
         try:
             fa = lang(uid) == "fa"
-            root_text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+            root_text = _root_menu_text(uid)
             await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
         except Exception:
             # Last-resort fallback: keep the reply keyboard available.
@@ -6093,8 +6093,7 @@ async def ai_chat_navigation_callback(update, context):
         return
     # Main Menu (and any unknown legacy AI navigation action) is a hard root.
     await q.message.edit_text(
-        "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-        "🏠 <b>Main Menu</b>\n\nChoose a section.",
+        _root_menu_text(uid),
         parse_mode="HTML",
         reply_markup=_compact_root_inline(uid),
     )
@@ -9033,7 +9032,7 @@ async def text_router(update, context):
         fa = lang(uid) == "fa"
         await context.bot.send_message(
             chat_id=uid,
-            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            text=_root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=_compact_root_inline(uid),
         )
@@ -9337,6 +9336,7 @@ def main():
     app.add_handler(CommandHandler("referral", referral))
     app.add_handler(CommandHandler("prices", prices))
     app.add_handler(CommandHandler("support", support_start))
+    app.add_handler(CommandHandler("seclog", seclog_command))
     app.add_handler(CallbackQueryHandler(support_callback, pattern=r"^support:"))
     app.add_handler(CallbackQueryHandler(vip_callback, pattern=r"^vip:"))
     app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
@@ -9526,9 +9526,9 @@ def _compact_menu_keyboard(uid, section):
         }
         rows = [[InlineKeyboardButton(en.get(btn.callback_data, btn.text), callback_data=btn.callback_data) for btn in row] for row in rows]
     rows.append([
-        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home")
+        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home"),
+        main_menu_button(uid),
     ])
-    rows.append([main_menu_button(uid)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -9590,8 +9590,7 @@ async def compact_menu_callback(update, context):
     await q.answer()
     if data == "cm:home":
         await q.message.edit_text(
-            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if lang(uid) == "fa"
-            else "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            _root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=_compact_root_inline(uid),
         )
@@ -9679,21 +9678,26 @@ async def compact_menu_callback(update, context):
 
 
 def _compact_root_inline(uid):
+    """Clean root menu: primary action full-width, related items paired."""
     fa = lang(uid) == "fa"
-    labels = [
-        ("🎯 برنامه من", "menu:goals", "🎯 My Plan"),
-        ("📊 گزارش و پیشرفت", "menu:reports", "📊 Reports"),
-        ("🤖 ابزارهای هوشمند", "menu:tools", "🤖 Smart Tools"),
-        ("💎 VIP و XP", "menu:vip", "💎 VIP & XP"),
-        ("👤 حساب من", "menu:account", "👤 My Account"),
-        ("🎫 پشتیبانی", "menu:support", "🎫 Support"),
-    ]
-    rows = []
-    for i in range(0, len(labels), 2):
-        rows.append([
-            InlineKeyboardButton((a if fa else c), callback_data=b)
-            for a, b, c in labels[i:i+2]
-        ])
+    if fa:
+        rows = [
+            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"),
+             InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
+             InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
+            [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
+        ]
+    else:
+        rows = [
+            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("📊 Reports", callback_data="menu:reports"),
+             InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
+             InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
+            [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
+        ]
     return InlineKeyboardMarkup(rows)
 
 
@@ -12023,7 +12027,7 @@ async def _render_compact_root_inline_safe(update, context):
     q = getattr(update, "callback_query", None)
     uid = update.effective_user.id
     fa = lang(uid) == "fa"
-    text = "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else "🏠 <b>Main Menu</b>\n\nChoose a section."
+    text = _root_menu_text(uid)
     markup = _compact_root_inline(uid)
     if q:
         try:
@@ -12068,8 +12072,7 @@ async def goals_navigation_callback(update, context):
         fa = lang(uid) == "fa"
         await context.bot.send_message(
             chat_id=uid,
-            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            text=_root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=compact_keyboard(uid),
         )
@@ -12097,8 +12100,7 @@ async def navigation_callback(update, context):
         fa = lang(uid) == "fa"
         await context.bot.send_message(
             chat_id=uid,
-            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            text=_root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=compact_keyboard(uid),
         )
@@ -12128,8 +12130,7 @@ async def settings_callback(update, context):
         fa = lang(uid) == "fa"
         await context.bot.send_message(
             chat_id=uid,
-            text="🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-                 "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            text=_root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=compact_keyboard(uid),
         )
@@ -12178,8 +12179,7 @@ async def text_router(update, context):
             pass
         fa = lang(uid) == "fa"
         await update.message.reply_text(
-            "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-            "🏠 <b>Main Menu</b>\n\nChoose a section.",
+            _root_menu_text(uid),
             parse_mode="HTML",
             reply_markup=compact_keyboard(uid),
         )
@@ -12217,8 +12217,7 @@ async def text_router(update, context):
             )
         else:
             await update.message.reply_text(
-                "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
-                "🏠 <b>Main Menu</b>\n\nChoose a section.",
+                _root_menu_text(uid),
                 parse_mode="HTML",
                 reply_markup=compact_keyboard(uid),
             )
@@ -12229,6 +12228,140 @@ async def text_router(update, context):
 
 # Explicit callback registration is normally already present, but this final
 # assignment guarantees the dispatcher uses the repaired functions above.
+
+# ===================== SECURITY AUDIT LAYER =====================
+# Additive only: a new table + logging helpers. Never modifies user-owned data.
+# - Logs every attempt to access/edit/delete a goal the caller does not own.
+# - Logs denied admin-access attempts.
+# - `/seclog` (admin-only) shows the latest events.
+
+
+def _root_menu_text(uid):
+    """Clean, friendly main-menu text with greeting + Jalali date."""
+    fa = lang(uid) == "fa"
+    now = datetime.now(TZ)
+    try:
+        jy, jm, jd = _g2j(now.year, now.month, now.day)
+        months_fa = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+        months_en = ["Farvardin", "Ordibehesht", "Khordad", "Tir", "Mordad", "Shahrivar",
+                     "Mehr", "Aban", "Azar", "Dey", "Bahman", "Esfand"]
+        date_str = f"{jd} {months_fa[jm-1]} {jy}" if fa else f"{jd} {months_en[jm-1]} {jy}"
+    except Exception:
+        date_str = now.strftime("%Y-%m-%d")
+    h = now.hour
+    name = display_name(uid)
+    if fa:
+        greet = "صبح بخیر" if h < 12 else ("بعدظهر بخیر" if h < 18 else "شب بخیر")
+        return (f"🏠 <b>منوی اصلی</b>\n\nسلام {name} عزیز، {greet} 🌷\n"
+                f"📅 {date_str}\n\nیکی از بخش‌های زیر را انتخاب کن:")
+    greet = "Good morning" if h < 12 else ("Good afternoon" if h < 18 else "Good evening")
+    return (f"🏠 <b>Main Menu</b>\n\nHi {name}, {greet}!\n"
+            f"📅 {date_str}\n\nChoose a section:")
+
+
+_OLD_INIT_DB_SECURITY = init_db
+def init_db():
+    _OLD_INIT_DB_SECURITY()
+    c = db()
+    c.execute("""CREATE TABLE IF NOT EXISTS security_events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        details TEXT,
+        created_at TEXT NOT NULL)""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_sec_events_user ON security_events(user_id, id)")
+    c.commit(); c.close()
+
+
+def log_security(uid, event, details=""):
+    """Best-effort security audit log; never raises into caller flow."""
+    try:
+        c = db()
+        c.execute("INSERT INTO security_events(user_id,event,details,created_at) VALUES(?,?,?,?)",
+                  (int(uid or 0), str(event)[:64], str(details or "")[:500], datetime.now(TZ).isoformat()))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("security log failed")
+
+
+def _guard_goal_handler(name):
+    """Wrap an ownership-sensitive callback; deny + log cross-user goal access."""
+    orig = globals()[name]
+    async def guarded(update, context, *args, **kwargs):
+        try:
+            q = getattr(update, "callback_query", None)
+            uid = q.from_user.id if q else update.effective_user.id
+            data = (q.data if q else "") or ""
+            if ":" in data:
+                gid = int(data.split(":", 1)[1])
+                if get_goal(uid, gid) is None:
+                    log_security(uid, "goal_access_denied", f"handler={name} goal={gid}")
+                    try:
+                        if q:
+                            await q.answer("⛔ این مورد در دسترس شما نیست." if lang(uid) == "fa" else
+                                           "⛔ Not available for you.", show_alert=True)
+                    except Exception:
+                        pass
+                    return
+        except Exception:
+            logger.exception("security guard error")
+        return await orig(update, context, *args, **kwargs)
+    guarded.__name__ = name
+    globals()[name] = guarded
+
+for _gh in ("detail", "edit_goal", "rename_start", "change_reminder", "delete_start", "mark"):
+    if callable(globals().get(_gh)):
+        _guard_goal_handler(_gh)
+
+
+def _wrap_admin_denial(name):
+    """Log denied admin-access attempts without changing behavior."""
+    orig = globals()[name]
+    async def guarded(update, context, *args, **kwargs):
+        uid = update.effective_user.id if getattr(update, "effective_user", None) else 0
+        if not admin_is_allowed(uid):
+            log_security(uid, "admin_denied", f"handler={name}")
+        return await orig(update, context, *args, **kwargs)
+    guarded.__name__ = name
+    globals()[name] = guarded
+
+for _an in ("admin_command", "admin_broadcast_start", "admin_panel_callback"):
+    if callable(globals().get(_an)):
+        _wrap_admin_denial(_an)
+
+
+async def seclog_command(update, context):
+    """Admin-only: show recent security events. Usage: /seclog [count]"""
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    if not admin_guard(uid):
+        log_security(uid, "admin_denied", "handler=seclog_command")
+        await update.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+        return
+    limit = 20
+    try:
+        if context.args:
+            limit = max(1, min(50, int(context.args[0])))
+    except Exception:
+        limit = 20
+    c = db()
+    rows = c.execute("SELECT * FROM security_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    c.close()
+    if not rows:
+        await update.message.reply_text("✅ هیچ رویداد امنیتی ثبت نشده است." if fa else
+                                        "✅ No security events recorded.")
+        return
+    lines = ["🔐 <b>رویدادهای امنیتی اخیر</b>\n" if fa else "🔐 <b>Recent security events</b>\n"]
+    for r in rows:
+        line = (f"• <code>{html.escape(str(r['created_at'])[:16])}</code> | "
+                f"{html.escape(r['event'])} | user=<code>{r['user_id']}</code>")
+        if r["details"]:
+            line += f" | {html.escape(r['details'])}"
+        lines.append(line)
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
 
 if __name__ == "__main__":
     main()
