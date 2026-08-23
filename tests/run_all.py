@@ -15,6 +15,7 @@ SUITES = [
     "test_reports_layer.py",
     "test_scale_reliability.py",
     "test_prices_ai.py",
+    "test_access_control.py",
 ]
 
 

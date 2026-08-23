@@ -10046,6 +10046,16 @@ def master_has_permission(uid, permission):
         return False
     if role == "owner":
         return True
+    # Per-manager overrides (edited from the manager permissions UI) win over
+    # the role default. An empty list falls back to the role's defaults.
+    try:
+        c=db(); r=c.execute("SELECT permissions_json FROM management_roles WHERE user_id=? AND active=1",(int(uid),)).fetchone(); c.close()
+        if r is not None:
+            perms=set(json.loads(r["permissions_json"] or "[]"))
+            if perms:
+                return permission in perms
+    except Exception:
+        logger.exception("master_has_permission override lookup failed")
     return permission in MASTER_ROLE_PERMISSIONS.get(role,set())
 
 
