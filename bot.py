@@ -5518,19 +5518,7 @@ async def admin_health_time_save(update, context):
 
 async def final_admin_text(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return False
-    price_asset=context.user_data.pop('admin_price_adjust_asset',None)
-    if price_asset:
-        text=normalize_digits(update.message.text.strip()).replace('٬','').replace(',','').replace('٫','.')
-        try:
-            amount=float(text); _set_price_adjustment(price_asset,amount); admin_log(uid,'price_adjustment',None,f'{price_asset}:{amount}')
-            label=PRICE_ASSET_LABELS.get(price_asset,('',price_asset))[0]
-            await update.message.reply_text(f'✅ اصلاح {label} روی <b>{amount:+,.0f}</b> ریال ذخیره شد.',parse_mode='HTML',reply_markup=final_admin_keyboard())
-        except Exception:
-            context.user_data['admin_price_adjust_asset']=price_asset
-            await update.message.reply_text('❌ عدد نامعتبر است. مثال: +400 یا -400 یا 0')
-        return True
-    if not context.user_data.get("admin_tool_mode"): return False
+    if uid not in ADMIN_IDS or not context.user_data.get("admin_tool_mode"): return False
     mode=context.user_data.pop("admin_tool_mode"); text=update.message.text.strip()
     try:
         if mode=="search":
@@ -7511,48 +7499,9 @@ def keyboard(uid):
     if admin_is_allowed(uid): rows.append(['🛡 پنل مدیریت' if fa else '🛡 Admin Panel'])
     return ReplyKeyboardMarkup(rows,resize_keyboard=True)
 
-# Final online-price menu: visibility is controlled persistently by the administrator.
-PRICE_ASSET_LABELS = {
-    'usd': ('💵 دلار', '💵 USD'), 'eur': ('💶 یورو', '💶 EUR'),
-    'gold18': ('🥇 طلای ۱۸ عیار', '🥇 18K Gold'), 'coin': ('🪙 سکه امامی', '🪙 Emami Coin'),
-    'silver': ('🥈 نقره', '🥈 Silver'), 'copper': ('🟠 مس', '🟠 Copper'),
-    'aluminum': ('⚙️ آلومینیوم', '⚙️ Aluminum'), 'nickel': ('🔩 نیکل', '🔩 Nickel'),
-    'zinc': ('🔘 روی', '🔘 Zinc'), 'lead': ('⛓️ سرب', '⛓️ Lead'),
-}
-
-def _price_config():
-    defaults={k:True for k in PRICE_ASSET_LABELS}
-    try:
-        raw=get_system_setting('price_assets_enabled','')
-        if raw:
-            data=json.loads(raw)
-            for k in defaults:
-                if k in data: defaults[k]=bool(data[k])
-    except Exception: pass
-    return defaults
-
-def _set_price_asset_enabled(asset,enabled):
-    cfg=_price_config(); cfg[asset]=bool(enabled); set_system_setting('price_assets_enabled',json.dumps(cfg,ensure_ascii=False))
-
-def _price_adjustments():
-    out={k:0.0 for k in PRICE_ASSET_LABELS}
-    try:
-        raw=get_system_setting('price_assets_adjustments','')
-        if raw:
-            data=json.loads(raw)
-            for k in out:
-                if k in data: out[k]=float(data[k])
-    except Exception: pass
-    return out
-
-def _set_price_adjustment(asset,amount):
-    data=_price_adjustments(); data[asset]=float(amount); set_system_setting('price_assets_adjustments',json.dumps(data,ensure_ascii=False))
-
-def enabled_price_assets(): return [k for k,v in _price_config().items() if v]
-
+# Improve the online-price menu and remove crypto from the default user-facing list.
 def prices_keyboard(uid):
-    fa=lang(uid)=='fa'; cfg=_price_config()
-    labels=[(k,PRICE_ASSET_LABELS[k][0] if fa else PRICE_ASSET_LABELS[k][1]) for k in PRICE_ASSET_LABELS if cfg.get(k,True)]
+    fa=lang(uid)=='fa'; labels=[('usd','💵 دلار' if fa else '💵 USD'),('eur','💶 یورو' if fa else '💶 EUR'),('gold18','🥇 طلای ۱۸ عیار' if fa else '🥇 18K Gold'),('coin','🪙 سکه امامی' if fa else '🪙 Emami Coin'),('silver','🥈 نقره' if fa else '🥈 Silver'),('copper','🟠 مس' if fa else '🟠 Copper'),('aluminum','⚙️ آلومینیوم' if fa else '⚙️ Aluminum'),('nickel','🔩 نیکل' if fa else '🔩 Nickel'),('zinc','🔘 روی' if fa else '🔘 Zinc'),('lead','⛓️ سرب' if fa else '⛓️ Lead')]
     rows=[[InlineKeyboardButton(a,callback_data=f'price:{k}') for k,a in labels[i:i+2]] for i in range(0,len(labels),2)]
     rows.append([InlineKeyboardButton('🔄 بروزرسانی همه' if fa else '🔄 Refresh all',callback_data='price:all')])
     rows.append([InlineKeyboardButton('💰 سرمایه‌های من' if fa else '💰 My Portfolio',callback_data='v25:portfolio')])
@@ -7579,26 +7528,14 @@ async def fetch_price_v25(asset):
     raise KeyError(asset)
 
 async def v25_show_price(update,context,asset):
-    uid=update.effective_user.id; fa=lang(uid)=='fa'
-    names={k:v[0] for k,v in PRICE_ASSET_LABELS.items()}
-    names_en={k:v[1] for k,v in PRICE_ASSET_LABELS.items()}
-    enabled=set(enabled_price_assets())
-    if asset!='all' and asset not in enabled:
-        if update.callback_query: await update.callback_query.answer('⛔ این قیمت فعلاً توسط مدیر غیرفعال است.',show_alert=True)
-        return
-    assets=enabled_price_assets() if asset=='all' else [asset]
-    lines=[('📈 <b>قیمت بازار</b>' if fa else '📈 <b>Market Prices</b>'),'']
+    uid=update.effective_user.id; fa=lang(uid)=='fa'; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+    assets=list(names) if asset=='all' else [asset]; lines=['📈 <b>قیمت بازار</b>','']; stamp=fa_datetime(datetime.now(TZ), True)
     for a in assets:
         try:
-            val,unit,confidence=await fetch_price_v25(a)
-            if confidence=='multi': conf='🟢 تطبیق دو منبع' if fa else '🟢 Two sources agree'
-            elif confidence=='disputed': conf='🟡 اختلاف قابل‌توجه بین منابع' if fa else '🟡 Source disagreement'
-            else: conf='🟡 یک منبع در دسترس' if fa else '🟡 One source available'
-            label=names[a] if fa else names_en[a]
-            lines.append(f'{label}: <b>{val:,.0f}</b> {unit}\n{conf}')
+            val,unit,confidence=await fetch_price_v25(a); lines.append(f"{names[a]}: <b>{val:,.0f}</b> {unit} | {'🟢 اطمینان بالا' if confidence=='multi' else '🟡 یک منبع در دسترس'}")
         except Exception:
-            label=names[a] if fa else names_en[a]; lines.append(f'{label}: ⚠️ '+('داده قابل‌اعتماد در دسترس نیست' if fa else 'Reliable data unavailable'))
-    lines += ['',('🕐 زمان بررسی: '+fa_datetime(datetime.now(TZ),True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ),True)),('⚠️ قیمت‌ها لحظه‌ای‌اند؛ اصلاح دستی مدیر در صورت وجود اعمال شده است.' if fa else '⚠️ Prices are live; any administrator correction is applied on top of the source price.')]
+            lines.append(f"{names[a]}: ⚠️ در حال حاضر داده قابل‌اعتماد در دسترس نیست")
+    lines += ['',f'🕐 آخرین بررسی: {stamp}', '⚠️ قیمت‌ها لحظه‌ای‌اند و ممکن است با بازار کمی تفاوت داشته باشند.']
     kb=prices_keyboard(uid)
     if update.callback_query: await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
     else: await update.message.reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
@@ -7606,10 +7543,8 @@ async def v25_show_price(update,context,asset):
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
     if asset=='main':
-        clear_flow(context)
-        try: await q.message.delete()
-        except Exception: pass
-        await context.bot.send_message(uid,'🏠',reply_markup=keyboard(uid))
+        await q.message.edit_text('🏠 منوی اصلی')
+        await q.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid))
         return
     await v25_show_price(update,context,asset)
 
@@ -7745,26 +7680,8 @@ def final_admin_keyboard():
 # Preserve original final admin callback and add only the new entry points.
 _LEGACY_FINAL_ADMIN_PANEL_CALLBACK=final_admin_panel_callback
 async def final_admin_panel_callback(update,context):
-    if update.callback_query:
-        data=update.callback_query.data
-        if data=='adm:prices': return await v25_admin_prices(update,context)
-        if data.startswith('adm:price_toggle:'):
-            q=update.callback_query; uid=q.from_user.id
-            if not admin_guard(uid): return await q.answer('⛔ دسترسی ندارید.',show_alert=True)
-            asset=data.split(':',2)[2]
-            if asset not in PRICE_ASSET_LABELS: return await q.answer('❌ قیمت نامعتبر است.',show_alert=True)
-            cfg=_price_config(); new_state=not cfg.get(asset,True); _set_price_asset_enabled(asset,new_state); admin_log(uid,'price_visibility',None,f'{asset}:{int(new_state)}')
-            await q.answer('✅ وضعیت تغییر کرد.')
-            return await v25_admin_prices(update,context)
-        if data.startswith('adm:price_adjust:'):
-            q=update.callback_query; uid=q.from_user.id
-            if not admin_guard(uid): return await q.answer('⛔ دسترسی ندارید.',show_alert=True)
-            asset=data.split(':',2)[2]
-            if asset not in PRICE_ASSET_LABELS: return await q.answer('❌ قیمت نامعتبر است.',show_alert=True)
-            context.user_data['admin_price_adjust_asset']=asset; current=_price_adjustments().get(asset,0); label=PRICE_ASSET_LABELS[asset][0]
-            await q.answer()
-            await q.message.edit_text(f'✏️ <b>اصلاح قیمت {label}</b>\n\nاصلاح فعلی: <b>{current:+,.0f}</b> ریال\n\nعدد جدید را بفرست؛ مثال <code>+400</code> یا <code>-400</code>. برای حذف اصلاح: <code>0</code>.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ مدیریت قیمت‌ها',callback_data='adm:prices')]]))
-            return
+    if update.callback_query and update.callback_query.data=='adm:stats':
+        return await _LEGACY_FINAL_ADMIN_PANEL_CALLBACK(update,context)
     return await _LEGACY_FINAL_ADMIN_PANEL_CALLBACK(update,context)
 
 # Update alias used by main/older code.
@@ -7978,31 +7895,12 @@ async def v25_admin_morning(update,context):
     kb=[[InlineKeyboardButton('☀️ روشن/خاموش صبح',callback_data='v25:toggle_morning')],[InlineKeyboardButton('🌙 روشن/خاموش شب',callback_data='v25:toggle_night')],[InlineKeyboardButton('🗓️ روشن/خاموش جمعه',callback_data='v25:toggle_friday')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]
     await update.callback_query.message.edit_text('☀️ <b>پیام‌های صبح/شب و جمعه</b>\n\n'+txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
-def _price_admin_keyboard(uid):
-    fa=lang(uid)=='fa'; cfg=_price_config(); adj=_price_adjustments(); rows=[]
-    for key,(fa_label,en_label) in PRICE_ASSET_LABELS.items():
-        label=fa_label if fa else en_label; state='🟢' if cfg.get(key,True) else '🔴'; corr=adj.get(key,0)
-        suffix=(f' | اصلاح {corr:+,.0f}' if corr else '') if fa else (f' | adj {corr:+,.0f}' if corr else '')
-        rows.append([InlineKeyboardButton(f'{state} {label}{suffix}',callback_data=f'adm:price_toggle:{key}'),InlineKeyboardButton('✏️ اصلاح' if fa else '✏️ Adjust',callback_data=f'adm:price_adjust:{key}')])
-    rows.append([InlineKeyboardButton('🔄 بازخوانی' if fa else '🔄 Refresh',callback_data='adm:prices')])
-    rows.append([InlineKeyboardButton('⬅️ پنل مدیریت' if fa else '⬅️ Admin Panel',callback_data='adm:stats')])
-    return InlineKeyboardMarkup(rows)
-
 async def v25_admin_prices(update,context):
     uid=update.effective_user.id
     if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
-    status=get_system_setting('price_data_status','auto'); cfg=_price_config(); visible=sum(1 for v in cfg.values() if v)
-    if lang(uid)=='fa':
-        txt=(f'📈 <b>مدیریت قیمت‌های آنلاین</b>\n\nوضعیت سرویس: {"🟢 فعال" if status!="off" else "🔴 خاموش"}\n'
-             f'قیمت‌های قابل نمایش: <b>{visible}</b> از <b>{len(cfg)}</b>\n\n'
-             'هر ردیف: دکمه اول روشن/خاموش کردن قیمت، دکمه دوم اصلاح دستی. اصلاح در دیتابیس ذخیره می‌شود.\n'
-             'واحد اصلاح: همان واحد منبع (ریال).')
-    else:
-        txt=(f'📈 <b>Online Price Management</b>\n\nService: {"🟢 On" if status!="off" else "🔴 Off"}\n'
-             f'Visible assets: <b>{visible}</b> / <b>{len(cfg)}</b>\n\n'
-             'First button toggles visibility; second applies a persistent manual correction.\n'
-             'Adjustment uses the source unit (Rial).')
-    await update.callback_query.message.edit_text(txt,parse_mode='HTML',reply_markup=_price_admin_keyboard(uid))
+    status=get_system_setting('price_data_status','auto')
+    txt='📈 <b>قیمت بازار</b>\n\n🟢 داده‌ها: '+html.escape(status)+'\n💵 واحد اصلی: ریال\n🛡️ اگر منبع ثانویه در Variables فعال باشد، اختلاف منابع نیز بررسی می‌شود.'
+    await update.callback_query.message.edit_text(txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🟢/🔴 قیمت بازار',callback_data='v25:toggle_prices')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]))
 
 # ------------------ Installment due history & notifications ------------------
 async def v25_installment_view(update,context,plan_id):
@@ -8078,27 +7976,17 @@ async def fetch_price_v25(asset):
     except Exception: secondary=None
     if secondary and val:
         diff=abs(secondary-val)/max(abs(val),1)
-        if diff<=0.01:
-            val=(val+secondary)/2; conf='multi'
-        else:
-            unit=unit+' | اختلاف منابع'; conf='disputed'
-    try:
-        correction=_price_adjustments().get(asset,0.0)
-        if correction:
-            val=float(val)+float(correction); unit=unit+' | اصلاح مدیر'
-    except Exception: pass
+        if diff <= 0.01:
+            return (val+secondary)/2, unit, 'multi'
+        # Material disagreement: show the primary but flag uncertainty.
+        return val, unit+' | اختلاف منابع', 'disputed'
     return val,unit,conf
 
 async def v25_show_price(update,context,asset):
     uid=update.effective_user.id; fa=lang(uid)=='fa'
-    names={k:v[0] for k,v in PRICE_ASSET_LABELS.items()}
-    names_en={k:v[1] for k,v in PRICE_ASSET_LABELS.items()}
-    enabled=set(enabled_price_assets())
-    if asset!='all' and asset not in enabled:
-        if update.callback_query: await update.callback_query.answer('⛔ این قیمت فعلاً توسط مدیر غیرفعال است.',show_alert=True)
-        return
-    assets=enabled_price_assets() if asset=='all' else [asset]
-    lines=[('📈 <b>قیمت بازار</b>' if fa else '📈 <b>Market Prices</b>'),'']
+    names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+    names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead'}
+    assets=list(names) if asset=='all' else [asset]; lines=[('📈 <b>قیمت بازار</b>' if fa else '📈 <b>Market Prices</b>'),'']
     for a in assets:
         try:
             val,unit,confidence=await fetch_price_v25(a)
@@ -8109,7 +7997,7 @@ async def v25_show_price(update,context,asset):
             lines.append(f'{label}: <b>{val:,.0f}</b> {unit}\n{conf}')
         except Exception:
             label=names[a] if fa else names_en[a]; lines.append(f'{label}: ⚠️ '+('داده قابل‌اعتماد در دسترس نیست' if fa else 'Reliable data unavailable'))
-    lines += ['',('🕐 زمان بررسی: '+fa_datetime(datetime.now(TZ),True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ),True)),('⚠️ قیمت‌ها لحظه‌ای‌اند؛ اصلاح دستی مدیر در صورت وجود اعمال شده است.' if fa else '⚠️ Prices are live; any administrator correction is applied on top of the source price.')]
+    lines += ['',('🕐 زمان بررسی: '+fa_datetime(datetime.now(TZ), True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ), True)),'⚠️ قیمت بازار قطعیِ مطلق نیست و ممکن است در لحظه تغییر کند.' if fa else '⚠️ Market prices are live indications and can move between updates.']
     kb=prices_keyboard(uid)
     if update.callback_query: await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
     else: await update.message.reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
@@ -8420,10 +8308,10 @@ async def v25_callback(update,context):
         if data=='v25:reports': return await v25_reports(update,context,'day')
         if data=='v25:report_week': return await v25_reports(update,context,'week')
         if data=='v25:report_month': return await v25_reports(update,context,'month')
-        if data=='v25:toggle_morning': set_system_setting('morning_message_enabled','0' if get_system_setting('morning_message_enabled','1')=='1' else '1'); return await v25_admin_morning(update,context)
-        if data=='v25:toggle_night': set_system_setting('night_message_enabled','0' if get_system_setting('night_message_enabled','1')=='1' else '1'); return await v25_admin_morning(update,context)
-        if data=='v25:toggle_friday': set_system_setting('friday_pause','0' if get_system_setting('friday_pause','0')=='1' else '1'); return await v25_admin_morning(update,context)
-        if data=='v25:toggle_prices': set_system_setting('price_data_status','off' if get_system_setting('price_data_status','auto')!='off' else 'auto'); return await v25_admin_prices(update,context)
+        if data=='v25:toggle_morning': set_system_setting('morning_message_enabled','0' if get_system_setting('morning_message_enabled','1')=='1' else '1',uid); return await v25_admin_morning(update,context)
+        if data=='v25:toggle_night': set_system_setting('night_message_enabled','0' if get_system_setting('night_message_enabled','1')=='1' else '1',uid); return await v25_admin_morning(update,context)
+        if data=='v25:toggle_friday': set_system_setting('friday_pause','0' if get_system_setting('friday_pause','0')=='1' else '1',uid); return await v25_admin_morning(update,context)
+        if data=='v25:toggle_prices': set_system_setting('price_data_status','off' if get_system_setting('price_data_status','auto')!='off' else 'auto',uid); return await v25_admin_prices(update,context)
         if action=='vip_receipt':
             if not admin_guard(uid): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
             if len(parts) < 4 or parts[2] not in {'approve','reject'}:
@@ -10602,9 +10490,6 @@ def final_admin_keyboard():
     rows = [list(r) for r in base]
     fa = True  # Existing admin keyboard is Persian-first; English is handled inside master UI.
     # Avoid duplicates if this patch is applied to an already patched source.
-    if not any(any("مدیریت قیمت" in getattr(btn,"text","") for btn in row) for row in rows):
-        insert_at=max(0,len(rows)-1)
-        rows.insert(insert_at,[InlineKeyboardButton("📈 مدیریت قیمت‌ها",callback_data="adm:prices")])
     if not any(
         any("مدیر" in getattr(btn, "text", "") for btn in row)
         for row in rows
@@ -10914,6 +10799,459 @@ def init_db():
 
 # Keep the original keyboard and authorization logic intact. This layer only
 # supplies hard ownership helpers for handlers that need them.
+
+
+# ===================== FINAL TARGETED REPAIR LAYER =====================
+# This layer is intentionally additive: it preserves the existing database,
+# handlers and user data, while fixing only the requested manager, live-price,
+# navigation and recurring-reminder behavior.
+
+# ---------- Persistent username / price / reminder migrations ----------
+_ORIGINAL_INIT_DB_TARGETED = init_db
+
+def _targeted_schema_migrate():
+    c = db()
+    try:
+        user_cols = {r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+        if "username" not in user_cols:
+            c.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        role_cols = {r["name"] for r in c.execute("PRAGMA table_info(management_roles)").fetchall()}
+        if "username" not in role_cols:
+            c.execute("ALTER TABLE management_roles ADD COLUMN username TEXT")
+        goal_cols = {r["name"] for r in c.execute("PRAGMA table_info(goals)").fetchall()}
+        if "reminder_start_date" not in goal_cols:
+            c.execute("ALTER TABLE goals ADD COLUMN reminder_start_date TEXT")
+        if "reminder_end_date" not in goal_cols:
+            c.execute("ALTER TABLE goals ADD COLUMN reminder_end_date TEXT")
+        if "reminder_repeat" not in goal_cols:
+            c.execute("ALTER TABLE goals ADD COLUMN reminder_repeat TEXT NOT NULL DEFAULT 'daily'")
+        c.execute("""CREATE TABLE IF NOT EXISTS price_asset_settings(
+            asset TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        )""")
+        now=datetime.now(TZ).isoformat()
+        for asset in ("usd","eur","gold18","coin","silver","copper","aluminum","nickel","zinc","lead"):
+            c.execute("INSERT OR IGNORE INTO price_asset_settings(asset,enabled,updated_at) VALUES(?,1,?)",(asset,now))
+        c.commit()
+    finally:
+        c.close()
+
+def init_db():
+    _ORIGINAL_INIT_DB_TARGETED()
+    try:
+        _targeted_schema_migrate()
+    except Exception:
+        logger.exception("Targeted schema migration failed")
+
+# ---------- Username tracking ----------
+def _targeted_record_username(user):
+    if not user:
+        return
+    try:
+        uid=int(user.id)
+        uname=(getattr(user,"username",None) or "").strip().lstrip("@").lower() or None
+        first=getattr(user,"first_name",None) or ""
+        c=db()
+        c.execute("UPDATE users SET username=?, first_name=COALESCE(NULLIF(?,''),first_name), last_active_at=? WHERE user_id=?",(uname,first,datetime.now(TZ).isoformat(),uid))
+        c.execute("UPDATE management_roles SET username=?, updated_at=? WHERE user_id=? AND username IS NOT ?",(uname,datetime.now(TZ).isoformat(),uid,uname))
+        c.commit(); c.close()
+    except Exception:
+        logger.exception("Username tracking failed")
+
+# ---------- Manager authorization: disabled managers become ordinary users ----------
+_OLD_TARGETED_ADMIN_ALLOWED = admin_is_allowed
+
+def admin_is_allowed(uid):
+    uid=int(uid or 0)
+    try:
+        if uid == master_owner_id() and uid:
+            return True
+        c=db(); row=c.execute("SELECT active FROM management_roles WHERE user_id=? LIMIT 1",(uid,)).fetchone(); c.close()
+        if row is not None:
+            return bool(int(row["active"] or 0))
+    except Exception:
+        pass
+    return bool(uid in ADMIN_IDS)
+
+# ---------- Manager list / permissions UI ----------
+TARGETED_PERMISSION_LABELS = {
+    "view_dashboard":"📊 داشبورد",
+    "manage_users":"👥 کاربران",
+    "manage_roles":"🧑‍💼 مدیریت مدیران",
+    "manage_vip":"💎 VIP",
+    "manage_xp":"⭐ XP / Token",
+    "manage_tickets":"🎫 تیکت‌ها",
+    "manage_finance":"💰 مالی",
+    "manage_channels":"📢 کانال",
+    "manage_ai":"🤖 هوش مصنوعی",
+    "manage_features":"🧩 قابلیت‌ها",
+    "run_health":"🩺 Health Check",
+    "run_diagnostics":"🔎 عیب‌یابی",
+    "backup":"💾 بکاپ",
+    "restore":"♻️ بازیابی",
+    "view_audit":"📝 لاگ مدیران",
+    "run_tests":"🧪 تست‌ها",
+    "manage_system":"⚙️ سیستم",
+}
+
+def _targeted_manager_rows():
+    c=db()
+    rows=c.execute("SELECT user_id,username,role,domain,permissions_json,active,created_at FROM management_roles ORDER BY active DESC,user_id").fetchall()
+    c.close(); return rows
+
+def _targeted_manager_text(uid):
+    fa=lang(uid)=="fa"; rows=_targeted_manager_rows()
+    lines=["🧑‍💼 <b>مدیریت مدیران</b>" if fa else "🧑‍💼 <b>Manager Management</b>",""]
+    if not rows: lines.append("مدیری ثبت نشده است." if fa else "No managers registered.")
+    for r in rows:
+        uname=("@"+r["username"]) if r["username"] else "—"
+        state="🟢 فعال" if r["active"] else "🔴 غیرفعال"
+        if not fa: state="🟢 Active" if r["active"] else "🔴 Disabled"
+        lines.append(f"{state}  {html.escape(uname)}  <code>{r['user_id']}</code>  {html.escape(_manager_role_label(r['role'],fa))}")
+    return "\n".join(lines)
+
+def _targeted_manager_keyboard(uid):
+    fa=lang(uid)=="fa"; rows=[]
+    if _manager_is_owner(uid):
+        rows.append([InlineKeyboardButton("➕ افزودن مدیر" if fa else "➕ Add Manager",callback_data="v25:targeted:manager_add")])
+        rows.append([InlineKeyboardButton("🗑️ لغو/حذف مدیر از لیست" if fa else "🗑️ Disable Manager",callback_data="v25:targeted:manager_disable_list")])
+    for r in _targeted_manager_rows():
+        uname=("@"+r["username"]) if r["username"] else str(r["user_id"])
+        label=f"{'🟢' if r['active'] else '🔴'} {uname} | {r['user_id']}"
+        rows.append([InlineKeyboardButton(label,callback_data=f"v25:targeted:manager_detail:{r['user_id']}")])
+    rows.append([InlineKeyboardButton("🔄 به‌روزرسانی" if fa else "🔄 Refresh",callback_data="v25:targeted:manager_list")])
+    rows.append([InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",callback_data="v25:master:home")])
+    return InlineKeyboardMarkup(rows)
+
+def _targeted_manager_detail(uid,target):
+    c=db(); r=c.execute("SELECT user_id,username,role,permissions_json,active FROM management_roles WHERE user_id=?",(int(target),)).fetchone(); c.close()
+    if not r: return "مدیر پیدا نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت مدیران",callback_data="v25:targeted:manager_list")]])
+    fa=lang(uid)=="fa"; uname=("@"+r["username"]) if r["username"] else "—"
+    try: perms=set(json.loads(r["permissions_json"] or "[]"))
+    except Exception: perms=set()
+    lines=[f"🧑‍💼 <b>{html.escape(uname)}</b>",f"🆔 <code>{r['user_id']}</code>",f"🎭 {html.escape(_manager_role_label(r['role'],fa))}",f"{'🟢 فعال' if r['active'] else '🔴 غیرفعال'}" if fa else ("🟢 Active" if r['active'] else "🔴 Disabled"),"","🔐 دسترسی‌ها:" if fa else "🔐 Permissions:"]
+    for key in MASTER_PERMISSION_KEYS:
+        lines.append(("🟢 " if key in perms else "🔴 ")+TARGETED_PERMISSION_LABELS.get(key,key))
+    rows=[]
+    if _manager_is_owner(uid) and int(target)!=master_owner_id():
+        rows.append([InlineKeyboardButton("🔄 فعال/غیرفعال مدیر" if fa else "🔄 Toggle Manager",callback_data=f"v25:targeted:manager_toggle:{target}")])
+        rows.append([InlineKeyboardButton("🛡 تغییر نقش" if fa else "🛡 Change Role",callback_data=f"v25:targeted:manager_role:{target}")])
+        rows.append([InlineKeyboardButton("🗑️ لغو مدیریت" if fa else "🗑️ Disable",callback_data=f"v25:targeted:manager_disable_confirm:{target}")])
+    if _manager_is_owner(uid):
+        rows.append([InlineKeyboardButton("🔐 مدیریت دسترسی‌ها" if fa else "🔐 Manage Permissions",callback_data=f"v25:targeted:manager_perms:{target}")])
+    rows.append([InlineKeyboardButton("⬅️ مدیریت مدیران" if fa else "⬅️ Managers",callback_data="v25:targeted:manager_list")])
+    return "\n".join(lines),InlineKeyboardMarkup(rows)
+
+def _targeted_permissions_keyboard(uid,target):
+    c=db(); r=c.execute("SELECT permissions_json FROM management_roles WHERE user_id=?",(int(target),)).fetchone(); c.close()
+    if not r: return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت مدیران",callback_data="v25:targeted:manager_list")]])
+    try: perms=set(json.loads(r["permissions_json"] or "[]"))
+    except Exception: perms=set()
+    fa=lang(uid)=="fa"; rows=[]
+    for key in MASTER_PERMISSION_KEYS:
+        mark="🟢" if key in perms else "🔴"
+        rows.append([InlineKeyboardButton(f"{mark} {TARGETED_PERMISSION_LABELS.get(key,key)}",callback_data=f"v25:targeted:manager_perm:{target}:{key}")])
+    rows.append([InlineKeyboardButton("⬅️ پرونده مدیر" if fa else "⬅️ Manager",callback_data=f"v25:targeted:manager_detail:{target}")])
+    return InlineKeyboardMarkup(rows)
+
+# ---------- Add/disable manager by username OR numeric ID ----------
+async def _targeted_resolve_manager_ref(context,bot,ref):
+    ref=ref.strip();
+    if ref.isdigit(): return int(ref), None
+    uname=ref.lstrip("@").lower()
+    if not uname or not re.fullmatch(r"[A-Za-z0-9_]{3,32}",uname): return None,None
+    c=db(); r=c.execute("SELECT user_id,username FROM users WHERE lower(username)=? LIMIT 1",(uname,)).fetchone(); c.close()
+    if r: return int(r["user_id"]),uname
+    try:
+        chat=await bot.get_chat("@"+uname)
+        return int(chat.id),uname
+    except Exception:
+        return None,uname
+
+# ---------- Live prices: online only, manager controls which assets appear ----------
+def _targeted_enabled_prices():
+    try:
+        c=db(); rows=c.execute("SELECT asset FROM price_asset_settings WHERE enabled=1 ORDER BY rowid").fetchall(); c.close()
+        return [r["asset"] for r in rows]
+    except Exception:
+        return ["usd","eur","gold18","coin","silver","copper","aluminum","nickel","zinc","lead"]
+
+def _targeted_set_price_enabled(asset,enabled):
+    c=db(); c.execute("INSERT INTO price_asset_settings(asset,enabled,updated_at) VALUES(?,?,?) ON CONFLICT(asset) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at",(asset,int(bool(enabled)),datetime.now(TZ).isoformat())); c.commit(); c.close()
+
+def prices_keyboard(uid):
+    fa=lang(uid)=="fa"
+    all_labels=[('usd','💵 دلار','💵 USD'),('eur','💶 یورو','💶 EUR'),('gold18','🥇 طلای ۱۸ عیار','🥇 18K Gold'),('coin','🪙 سکه امامی','🪙 Emami Coin'),('silver','🥈 نقره','🥈 Silver'),('copper','🟠 مس','🟠 Copper'),('aluminum','⚙️ آلومینیوم','⚙️ Aluminum'),('nickel','🔩 نیکل','🔩 Nickel'),('zinc','🔘 روی','🔘 Zinc'),('lead','⛓️ سرب','⛓️ Lead')]
+    enabled=set(_targeted_enabled_prices()); labels=[x for x in all_labels if x[0] in enabled]
+    rows=[[InlineKeyboardButton((x[1] if fa else x[2]),callback_data=f"price:{x[0]}") for x in labels[i:i+2]] for i in range(0,len(labels),2)]
+    rows.append([InlineKeyboardButton("🔄 بروزرسانی همه" if fa else "🔄 Refresh all",callback_data="price:all")])
+    rows.append([InlineKeyboardButton("💰 سرمایه‌های من" if fa else "💰 My Portfolio",callback_data="v25:portfolio")])
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="price:main")])
+    return InlineKeyboardMarkup(rows)
+
+_ORIGINAL_FETCH_PRICE_V25_TARGETED = fetch_price_v25
+async def fetch_price_v25(asset):
+    # Gold/coin use TGJU's explicit daily/current page. No manual correction is applied.
+    if asset in ("gold18","coin"):
+        url={"gold18":"https://www.tgju.org/profile/geram18/today","coin":"https://www.tgju.org/profile/sekee/today"}[asset]
+        raw=await asyncio.to_thread(tgju_value,url)
+        return float(raw.replace(",","").replace("٫",".").replace("٬","")),"ریال","single"
+    return await _ORIGINAL_FETCH_PRICE_V25(asset)
+
+async def v25_show_price(update,context,asset):
+    uid=update.effective_user.id; fa=lang(uid)=="fa"; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}; names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead'}
+    enabled=set(_targeted_enabled_prices())
+    assets=_targeted_enabled_prices() if asset=='all' else [asset]
+    if asset!='all' and asset not in enabled:
+        if update.callback_query: await update.callback_query.answer("⛔ این قیمت فعلاً توسط مدیر غیرفعال است." if fa else "⛔ This price is disabled by the admin.",show_alert=True)
+        return
+    lines=[('📈 <b>قیمت آنلاین</b>' if fa else '📈 <b>Live Prices</b>'),'']
+    for a in assets:
+        try:
+            val,unit,confidence=await fetch_price_v25(a); label=names[a] if fa else names_en[a]; lines.append(f"{label}: <b>{val:,.0f}</b> {unit}")
+        except Exception:
+            label=names[a] if fa else names_en[a]; lines.append(f"{label}: ⚠️ {'داده آنلاین در دسترس نیست' if fa else 'Live data unavailable'}")
+    lines += ['',('🕐 آخرین بررسی: '+fa_datetime(datetime.now(TZ),True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ),True))]
+    if update.callback_query: await update.callback_query.message.edit_text("\n".join(lines),parse_mode='HTML',reply_markup=prices_keyboard(uid))
+    else: await update.message.reply_text("\n".join(lines),parse_mode='HTML',reply_markup=prices_keyboard(uid))
+
+async def price_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
+    if asset=='main':
+        try: await q.message.edit_text("🏠 منوی اصلی",reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+        except Exception: pass
+        return
+    await v25_show_price(update,context,asset)
+
+# ---------- Recurring goal reminders ----------
+def _targeted_repeat_keyboard(uid):
+    fa=lang(uid)=="fa"
+    labels=[("today_tomorrow","📅 امروز و فردا" if fa else "📅 Today + Tomorrow"),("tomorrow","➡️ فقط فردا" if fa else "➡️ Tomorrow only"),("week","📆 یک هفته" if fa else "📆 One week"),("month","🗓️ یک ماه" if fa else "🗓️ One month"),("two_months","🗓️ دو ماه" if fa else "🗓️ Two months"),("daily","🔁 روزانه تا پایان هدف" if fa else "🔁 Daily until goal ends")]
+    rows=[[InlineKeyboardButton(t,callback_data=f"goalrepeat:{k}")] for k,t in labels]
+    rows.append([InlineKeyboardButton("❌ بدون تکرار" if fa else "❌ No repeat",callback_data="goalrepeat:none")])
+    return InlineKeyboardMarkup(rows)
+
+def _targeted_apply_repeat(uid,gid,mode,base_date=None):
+    today=datetime.now(TZ).date(); base=base_date or today
+    if mode=='none': start=end=None; repeat='none'
+    elif mode=='tomorrow': start=today+timedelta(days=1); end=start; repeat='once'
+    elif mode=='today_tomorrow': start=today; end=today+timedelta(days=1); repeat='daily'
+    elif mode=='week': start=today; end=today+timedelta(days=6); repeat='daily'
+    elif mode=='month': start=today; end=today+timedelta(days=29); repeat='daily'
+    elif mode=='two_months': start=today; end=today+timedelta(days=59); repeat='daily'
+    else: start=today; end=None; repeat='daily'
+    c=db(); c.execute("UPDATE goals SET reminder_start_date=?,reminder_end_date=?,reminder_repeat=? WHERE user_id=? AND id=?",(start.isoformat() if start else None,end.isoformat() if end else None,repeat,uid,gid)); c.commit(); c.close()
+
+async def targeted_goalrepeat_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; mode=q.data.split(':',1)[1]
+    gid=int(context.user_data.get('pending_repeat_goal_id') or 0)
+    if not gid or not get_goal(uid,gid): return
+    _targeted_apply_repeat(uid,gid,mode)
+    context.user_data.pop('pending_repeat_goal_id',None)
+    g=get_goal(uid,gid); fa=lang(uid)=='fa'
+    await q.message.edit_text((f"✅ هدف «{html.escape(g['name'])}» ثبت شد.\n⏰ ساعت: {g['reminder_time'] or 'خاموش'}\n🔁 تکرار یادآوری تنظیم شد." if fa else f"✅ Goal '{html.escape(g['name'])}' saved.\n⏰ Time: {g['reminder_time'] or 'Off'}\n🔁 Reminder repetition configured."),parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+
+async def time_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(':',1)[1]
+    if value=='custom':
+        context.user_data['awaiting_custom_time']=True; await q.message.edit_text(T[lang(uid)]['custom_time']); return
+    reminder=None if value=='none' else parse_time(value)
+    name=context.user_data.get('name'); category=context.user_data.get('category')
+    if not name or not category: return
+    priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes')
+    add_goal(uid,name,category,reminder,priority,duration)
+    if reminder:
+        c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close(); context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid)
+        await q.message.edit_text("🔁 چند روز/چه مدت یادآوری شود؟" if lang(uid)=='fa' else "🔁 How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return
+    context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+
+async def custom_time_save(update,context):
+    uid=update.effective_user.id
+    if not context.user_data.get('awaiting_custom_time'): return False
+    reminder=parse_time(update.message.text.strip())
+    if reminder is None: await update.message.reply_text(T[lang(uid)]['bad_time']); return True
+    name=context.user_data.get('name'); category=context.user_data.get('category')
+    if not name or not category: context.user_data.clear(); return False
+    priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes'); add_goal(uid,name,category,reminder,priority,duration)
+    c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close(); context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); context.user_data.pop('awaiting_custom_time',None)
+    await update.message.reply_text("🔁 چند روز/چه مدت یادآوری شود؟" if lang(uid)=='fa' else "🔁 How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return True
+
+async def reminder_job(context):
+    now=datetime.now(TZ); hhmm=now.strftime('%H:%M'); today=now.date().isoformat(); c=db()
+    goals=c.execute("""SELECT g.* FROM goals g JOIN users u ON u.user_id=g.user_id WHERE g.enabled=1 AND COALESCE(u.blocked,0)=0 AND g.reminder_time=? AND (g.reminder_start_date IS NULL OR g.reminder_start_date<=?) AND (g.reminder_end_date IS NULL OR g.reminder_end_date>=?)""",(hhmm,today,today)).fetchall(); c.close()
+    for g in goals:
+        uid=g['user_id']
+        try:
+            sc=db(); rr=sc.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); sc.close()
+            if rr and not rr['reminders_enabled']: continue
+            if get_status(uid,g['id'],today)=='done': continue
+            await context.bot.send_message(uid,T[lang(uid)]['reminder'].format(name=display_name(uid),goal=g['name']),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ انجام دادم' if lang(uid)=='fa' else '✅ Done',callback_data=f"done:{g['id']}"),InlineKeyboardButton('❌ انجام ندادم' if lang(uid)=='fa' else '❌ Not done',callback_data=f"miss:{g['id']}")],[InlineKeyboardButton('⏰ یادآوری فردا' if lang(uid)=='fa' else '⏰ Tomorrow',callback_data=f"goalrem:{g['id']}:menu")]]))
+            log_activity(uid,'reminder_sent')
+        except Exception as e: logger.error('Reminder error: %s',e)
+
+# ---------- Targeted manager callbacks ----------
+_OLD_V25_CALLBACK_TARGETED = v25_callback
+async def v25_callback(update,context):
+    data=update.callback_query.data if update.callback_query else ''; uid=update.effective_user.id; q=update.callback_query
+    if data.startswith('goalrepeat:'):
+        return await targeted_goalrepeat_callback(update,context)
+    if data.startswith('v25:targeted:'):
+        fa=lang(uid)=='fa'
+        if not master_guard(uid,'manage_roles'):
+            await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+        parts=data.split(':'); action=parts[2]
+        if action=='manager_list':
+            await q.answer(); await q.message.edit_text(_targeted_manager_text(uid),parse_mode='HTML',reply_markup=_targeted_manager_keyboard(uid)); return
+        if action=='manager_add':
+            if not _manager_is_owner(uid): await q.answer('⛔ Owner only.',show_alert=True); return
+            context.user_data.clear(); context.user_data['targeted_add_manager']=True; await q.answer(); await q.message.edit_text('🆔 @username یا آیدی عددی مدیر جدید را بفرست.' if fa else '🆔 Send the new manager @username or numeric ID.'); return
+        if action=='manager_disable_list':
+            await q.answer(); rows=[]
+            for r in _targeted_manager_rows():
+                if int(r['user_id'])==master_owner_id() or not r['active']: continue
+                label=(('@'+r['username']) if r['username'] else str(r['user_id']))
+                rows.append([InlineKeyboardButton('🗑️ '+label,callback_data=f'v25:targeted:manager_disable_confirm:{r["user_id"]}')])
+            rows.append([InlineKeyboardButton('⬅️ مدیریت مدیران',callback_data='v25:targeted:manager_list')]); await q.message.edit_text('مدیری را برای لغو مدیریت انتخاب کن:' if fa else 'Choose a manager to disable:',reply_markup=InlineKeyboardMarkup(rows)); return
+        if action=='manager_disable_confirm':
+            target=int(parts[3]); await q.answer(); await q.message.edit_text(f'⚠️ مدیریت این مدیر لغو شود؟\n🆔 <code>{target}</code>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ بله',callback_data=f'v25:targeted:manager_disable:{target}'),InlineKeyboardButton('❌ خیر',callback_data=f'v25:targeted:manager_detail:{target}')]])); return
+        if action=='manager_disable':
+            target=int(parts[3]);
+            if target==master_owner_id(): await q.answer('❌ Owner قابل لغو نیست.',show_alert=True); return
+            c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); master_log(uid,'manager_disabled',target); await q.answer(); await q.message.edit_text(_targeted_manager_text(uid),parse_mode='HTML',reply_markup=_targeted_manager_keyboard(uid)); return
+        if action=='manager_toggle':
+            target=int(parts[3]);
+            if target==master_owner_id(): await q.answer('Owner همیشه فعال است.',show_alert=True); return
+            c=db(); c.execute('UPDATE management_roles SET active=CASE WHEN active=1 THEN 0 ELSE 1 END,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); await q.answer(); text,kb=_targeted_manager_detail(uid,target); await q.message.edit_text(text,parse_mode='HTML',reply_markup=kb); return
+        if action=='manager_detail':
+            target=int(parts[3]); text,kb=_targeted_manager_detail(uid,target); await q.answer(); await q.message.edit_text(text,parse_mode='HTML',reply_markup=kb); return
+        if action=='manager_perms':
+            target=int(parts[3]); await q.answer(); await q.message.edit_text('🔐 دسترسی‌های مدیر را روشن/خاموش کن:',reply_markup=_targeted_permissions_keyboard(uid,target)); return
+        if action=='manager_perm':
+            target=int(parts[3]); perm=parts[4]
+            if perm not in MASTER_PERMISSION_KEYS: await q.answer('Invalid permission',show_alert=True); return
+            c=db(); r=c.execute('SELECT permissions_json FROM management_roles WHERE user_id=?',(target,)).fetchone();
+            try: perms=set(json.loads(r['permissions_json'] or '[]')) if r else set()
+            except Exception: perms=set()
+            if perm in perms: perms.remove(perm)
+            else: perms.add(perm)
+            c.execute('UPDATE management_roles SET permissions_json=?,updated_at=? WHERE user_id=?',(json.dumps(sorted(perms)),datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); await q.answer(); await q.message.edit_reply_markup(reply_markup=_targeted_permissions_keyboard(uid,target)); return
+        return
+    return await _OLD_V25_CALLBACK_TARGETED(update,context)
+
+# ---------- Extend text router for username manager add and track usernames ----------
+_OLD_TEXT_ROUTER_TARGETED = text_router
+async def text_router(update,context):
+    if update.message and update.effective_user:
+        _targeted_record_username(update.effective_user)
+    uid=update.effective_user.id if update.effective_user else 0; txt=(update.message.text or '').strip() if update.message else ''; fa=lang(uid)=='fa'
+    if context.user_data.get('targeted_add_manager'):
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
+        if not target:
+            await update.message.reply_text('❌ کاربر پیدا نشد. @username معتبر یا ID عددی بفرست.'); return
+        context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
+        await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
+    # Fix legacy add-manager flow too: accept username and store it.
+    if context.user_data.get('master_add_manager'):
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
+        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
+        context.user_data['master_add_manager']=False; context.user_data['master_pending_manager_id']=target; context.user_data['master_pending_manager_username']=uname
+        await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
+    # Legacy disable flow: accept username too.
+    if context.user_data.get('master_disable_manager'):
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
+        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
+        if target==master_owner_id(): await update.message.reply_text('❌ Owner قابل لغو نیست.'); return
+        c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('✅ مدیریت این کاربر لغو شد.',reply_markup=keyboard(uid)); return
+    return await _OLD_TEXT_ROUTER_TARGETED(update,context)
+
+# When role is selected after targeted username add, persist username as well.
+_OLD_MASTER_CALLBACK_ROLE_TARGETED=v25_callback
+async def _targeted_role_bridge(update,context):
+    return await _OLD_MASTER_CALLBACK_ROLE_TARGETED(update,context)
+
+# Patch the existing role selection through a small DB hook by wrapping the current callback.
+_ORIGINAL_TARGETED_ROLE_HANDLER = v25_callback
+# The callback above delegates to the previous role handler; intercept its pending username
+# after it runs and write the username to the resulting management row.
+async def v25_callback(update,context):
+    data=update.callback_query.data if update.callback_query else ''; uid=update.effective_user.id
+    pending_id=context.user_data.get('targeted_pending_manager_id') or context.user_data.get('master_pending_manager_id')
+    pending_uname=context.user_data.get('targeted_pending_manager_username') or context.user_data.get('master_pending_manager_username')
+    if data.startswith('v25:master:manager_role:') and pending_id:
+        result=await _ORIGINAL_TARGETED_ROLE_HANDLER(update,context)
+        if pending_uname:
+            c=db(); c.execute('UPDATE management_roles SET username=?,updated_at=? WHERE user_id=?',(pending_uname,datetime.now(TZ).isoformat(),int(pending_id))); c.commit(); c.close()
+        return result
+    return await _ORIGINAL_TARGETED_ROLE_HANDLER(update,context)
+
+# ---------- Manager panel: add a live-price management category ----------
+_ORIGINAL_MASTER_ROOT_KEYBOARD_TARGETED=master_root_keyboard
+def master_root_keyboard(uid):
+    kb=_ORIGINAL_MASTER_ROOT_KEYBOARD_TARGETED(uid); rows=[list(r) for r in kb.inline_keyboard]
+    if master_has_permission(uid,'manage_features'):
+        rows.insert(max(0,len(rows)-1),[InlineKeyboardButton('📈 مدیریت قیمت‌های آنلاین' if lang(uid)=='fa' else '📈 Live Price Management',callback_data='v25:targeted:prices')])
+    return InlineKeyboardMarkup(rows)
+
+# Extend the callback one final time for live-price settings.
+_PREV_V25_CALLBACK_PRICE_PANEL=v25_callback
+async def v25_callback(update,context):
+    data=update.callback_query.data if update.callback_query else ''; uid=update.effective_user.id; q=update.callback_query
+    if data=='v25:targeted:prices':
+        if not master_has_permission(uid,'manage_features'): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+        for r in all_rows:
+            rows.append([InlineKeyboardButton(('🟢 ' if r['enabled'] else '🔴 ')+labels.get(r['asset'],r['asset']),callback_data=f"v25:targeted:price_toggle:{r['asset']}")])
+        rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.answer(); await q.message.edit_text('📈 <b>مدیریت قیمت‌های آنلاین</b>\n\nسبز = نمایش در ربات\nقرمز = مخفی از کاربران',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows)); return
+    if data.startswith('v25:targeted:price_toggle:'):
+        if not master_has_permission(uid,'manage_features'): await q.answer('⛔',show_alert=True); return
+        asset=data.rsplit(':',1)[1]; c=db(); r=c.execute('SELECT enabled FROM price_asset_settings WHERE asset=?',(asset,)).fetchone(); new=0 if r and r['enabled'] else 1; c.execute('UPDATE price_asset_settings SET enabled=?,updated_at=? WHERE asset=?',(new,datetime.now(TZ).isoformat(),asset)); c.commit(); c.close(); await q.answer('روشن شد' if new else 'خاموش شد');
+        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+        for rr in all_rows: rows.append([InlineKeyboardButton(('🟢 ' if rr['enabled'] else '🔴 ')+labels.get(rr['asset'],rr['asset']),callback_data=f"v25:targeted:price_toggle:{rr['asset']}")])
+        rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(rows)); return
+    return await _PREV_V25_CALLBACK_PRICE_PANEL(update,context)
+
+
+# Strict RBAC final override: a manager explicitly disabled in management_roles
+# loses every management permission even if the legacy ADMIN_IDS variable still contains the ID.
+def master_guard(uid, permission=None):
+    uid=int(uid or 0)
+    if uid == master_owner_id() and uid:
+        return True if permission is None else master_has_permission(uid,permission)
+    try:
+        c=db(); row=c.execute("SELECT active FROM management_roles WHERE user_id=? LIMIT 1",(uid,)).fetchone(); c.close()
+        if row is not None:
+            if int(row["active"] or 0) != 1: return False
+            return True if permission is None else master_has_permission(uid,permission)
+    except Exception:
+        return False
+    if uid not in ADMIN_IDS: return False
+    return True if permission is None else master_has_permission(uid,permission)
+
+# Filter the manager home screen by the actual permissions, not just by role existence.
+def _manager_main_keyboard(uid):
+    fa=lang(uid)=="fa"; role=master_role(uid); role_label=_manager_role_label(role,fa)
+    specs=[
+        ("view_dashboard",["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"]),
+        ("manage_users",["👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles"]),
+        ("manage_tickets",["🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"]),
+        ("manage_ai",["🤖 مدیریت AI" if fa else "🤖 AI Management"]),
+        ("manage_channels",["📢 کانال و انتشار" if fa else "📢 Channels & Publishing"]),
+        ("manage_finance",["💰 مالی و پرداخت" if fa else "💰 Finance & Payments"]),
+        ("manage_vip",["💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"]),
+        ("run_health",["🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics"]),
+        ("manage_system",["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"]),
+        ("manage_roles",["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"]),
+    ]
+    rows=[["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
+    for perm,labels in specs:
+        if master_has_permission(uid,perm): rows.append(labels)
+    rows += [["👤 استفاده از ربات" if fa else "👤 Use Bot"],["🏠 منوی اصلی" if fa else "🏠 Main Menu"]]
+    title=(f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>" if fa else f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>")
+    return title,ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
 
 if __name__ == "__main__":
     main()
