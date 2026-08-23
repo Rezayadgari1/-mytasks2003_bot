@@ -11254,46 +11254,63 @@ def master_guard(uid, permission=None):
 
 # Filter the manager home screen by the actual permissions, not just by role existence.
 def _manager_main_keyboard(uid):
-    fa=lang(uid)=="fa"; role=master_role(uid); role_label=_manager_role_label(role,fa)
-    specs=[
-        ("view_dashboard",["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"]),
-        ("manage_users",["👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles"]),
-        ("manage_tickets",["🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"]),
-        ("manage_ai",["🤖 مدیریت AI" if fa else "🤖 AI Management"]),
-        ("manage_channels",["📢 کانال و انتشار" if fa else "📢 Channels & Publishing"]),
-        ("manage_finance",["💰 مالی و پرداخت" if fa else "💰 Finance & Payments"]),
-        ("manage_vip",["💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"]),
-        ("run_health",["🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics"]),
-        ("manage_system",["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"]),
-        ("manage_roles",["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management"]),
+    """Compact manager home: preserve every label/order, change only layout."""
+    fa = lang(uid) == "fa"
+    role = master_role(uid)
+    role_label = _manager_role_label(role, fa)
+
+    specs = [
+        ("manage_bot", "🛡 مدیریت ربات", "🛡 Bot Management"),
+        ("view_dashboard", "📊 داشبورد و گزارش", "📊 Dashboard & Reports"),
+        ("manage_users", "👥 کاربران و نقش‌ها", "👥 Users & Roles"),
+        ("manage_tickets", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents"),
+        ("manage_ai", "🤖 مدیریت AI", "🤖 AI Management"),
+        ("manage_channels", "📢 کانال و انتشار", "📢 Channels & Publishing"),
+        ("manage_finance", "💰 مالی و پرداخت", "💰 Finance & Payments"),
+        ("manage_vip", "💎 VIP / XP / Token", "💎 VIP / XP / Token"),
+        ("run_health", "🩺 سلامت و Diagnostics", "🩺 Health & Diagnostics"),
+        ("manage_system", "⚙️ تنظیمات سیستم", "⚙️ System Settings"),
+        ("manage_roles", "🧑‍💼 مدیریت مدیران", "🧑‍💼 Manager Management"),
+        ("use_bot", "👤 استفاده از ربات", "👤 Use Bot"),
     ]
-    rows=[["🛡 مدیریت ربات" if fa else "🛡 Bot Management"]]
-    for perm,labels in specs:
-        if master_has_permission(uid,perm): rows.append(labels)
-    rows += [["👤 استفاده از ربات" if fa else "👤 Use Bot"],["🏠 منوی اصلی" if fa else "🏠 Main Menu"]]
-    title=(f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>" if fa else f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>")
-    return title,ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
+
+    labels = []
+    for perm, fa_label, en_label in specs:
+        if perm in ("manage_bot", "use_bot") or master_has_permission(uid, perm):
+            labels.append(fa_label if fa else en_label)
+
+    # Two buttons per row, like the requested compact reference layout.
+    rows = [labels[i:i + 2] for i in range(0, len(labels), 2)]
+    rows.append(["🏠 منوی اصلی" if fa else "🏠 Main Menu"])
+
+    title = (
+        f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>"
+        if fa else
+        f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>"
+    )
+    return title, ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 # ===================== FINAL NAVIGATION / VALUEERROR REPAIR =====================
 # This layer is intentionally last. It only repairs navigation presentation and
 # protects the two manager/user entry buttons from stale legacy routing.
 # Persistent data and existing business logic are unchanged.
 
 async def _set_root_keyboard_silently(update, uid):
-    """Restore the persistent root ReplyKeyboard and KEEP its carrier message.
+    """Do not emit a visible Main Menu message.
 
-    Telegram ReplyKeyboardMarkup is attached to a message; deleting that message
-    can make the keyboard disappear on the client.  Therefore the old invisible-
-    message-and-delete trick is deliberately not used here.  We keep exactly one
-    root-menu message so the keyboard remains functional.
+    Reply keyboards are persistent in Telegram. The current keyboard therefore
+    stays visible after the user's navigation message is removed. Sending a new
+    "🏠 منوی اصلی" carrier here was the source of the duplicate text bubbles.
+    No bot message is created by this helper.
+    No message is deleted here.
+    No user data is changed here.
+    No navigation state is changed here.
+    The caller only uses this helper as a compatibility hook.
+    This intentionally avoids creating a second bot bubble.
+    The active ReplyKeyboard remains owned by the existing carrier message.
+    Legacy callers can still invoke the helper safely.
+    This is a navigation-only change; persistence and business logic are untouched.
     """
-    try:
-        chat = update.effective_chat
-        fa = lang(uid) == "fa"
-        text = "🏠 منوی اصلی" if fa else "🏠 Main Menu"
-        return await chat.send_message(text, reply_markup=compact_keyboard(uid))
-    except Exception:
-        logger.exception("Failed to apply root keyboard for uid=%s", uid)
-        return None
+    return None
 
 
 async def navigation_callback(update, context):
@@ -11344,13 +11361,12 @@ async def text_router(update, context):
 
     if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
         clear_flow(context)
-        # Delete only the user's navigation command, never the new keyboard
-        # carrier message. Then restore the actual root keyboard.
+        # The ReplyKeyboard is persistent. Remove only the user's navigation
+        # command and do NOT send another visible "🏠 منوی اصلی" message.
         try:
             await update.message.delete()
         except Exception:
             pass
-        await _set_root_keyboard_silently(update, uid)
         return
 
     if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
@@ -11435,3 +11451,4 @@ async def error_handler(update, context):
 
 if __name__ == "__main__":
     main()
+
