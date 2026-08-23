@@ -79,7 +79,7 @@ REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "").strip()
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()
 N8N_TIMEOUT = float(os.environ.get("N8N_TIMEOUT", "12"))
-MYTASKS_BUILD_ID = "2026-08-23-ADMIN-ROOT-UNIFIED-AI-02"
+MYTASKS_BUILD_ID = "2026-08-23-ADMIN-ROOT-UNIFIED-AI-01"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
@@ -5841,27 +5841,18 @@ def _n8n_ai_fallback_sync(prompt):
         req=urllib.request.Request(N8N_WEBHOOK_URL,data=payload,headers=headers,method="POST")
         with urllib.request.urlopen(req,timeout=N8N_TIMEOUT) as resp:
             raw=resp.read().decode("utf-8","replace")
-        try:
-            data=json.loads(raw)
-        except Exception:
-            data=raw
-        # n8n Webhook responses may be JSON, a one-item array, or plain text.
+        data=json.loads(raw)
+        # n8n Webhook responses commonly arrive either as an object or a one-item array.
         if isinstance(data,list):
-            data=data[0] if data and isinstance(data[0],dict) else (data[0] if data else {})
+            data=data[0] if data and isinstance(data[0],dict) else {}
         answer=""
-        if isinstance(data,str):
-            answer=data
-        elif isinstance(data,dict):
+        if isinstance(data,dict):
             answer=(data.get("output_text") or data.get("answer") or data.get("text")
-                    or data.get("output") or data.get("response") or data.get("message") or "")
-            if isinstance(answer,dict):
-                answer=(answer.get("content") or answer.get("text") or answer.get("output") or "")
+                    or data.get("output") or data.get("response") or "")
             if not answer and isinstance(data.get("data"),dict):
                 nested=data["data"]
                 answer=(nested.get("output_text") or nested.get("answer")
-                        or nested.get("text") or nested.get("output") or nested.get("response") or "")
-                if isinstance(answer,dict):
-                    answer=(answer.get("content") or answer.get("text") or answer.get("output") or "")
+                        or nested.get("text") or nested.get("output") or "")
         answer=str(answer).strip()
         if answer:
             _record_service_event("n8n","OK","AI workflow")
@@ -6549,18 +6540,41 @@ admin_panel_callback=final_admin_panel_callback
 admin_keyboard=final_admin_keyboard
 
 async def error_handler(update, context):
+    """Global recovery must preserve the user's current flow instead of masking errors with Home."""
     logger.error("Bot error", exc_info=context.error)
     try:
         uid = update.effective_user.id if update and update.effective_user else None
-        if uid:
-            clear_flow(context)
-            if update.callback_query:
-                await update.callback_query.answer("❌ این بخش با خطا روبه‌رو شد؛ به منوی اصلی برگشتیم.", show_alert=True)
-                await update.callback_query.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
-            elif update.message:
-                await update.message.reply_text("❌ این بخش با خطا روبه‌رو شد؛ بقیه امکانات همچنان در دسترس‌اند.", reply_markup=keyboard(uid))
+        if not uid:
+            return
+        err = context.error
+        err_name = type(err).__name__ if err else "UnknownError"
+        logger.error("Route failure for uid=%s type=%s", uid, err_name)
+        if update.callback_query:
+            q = update.callback_query
+            try:
+                await q.answer("❌ خطا در همین بخش؛ وضعیتت حفظ شد.", show_alert=True)
+            except Exception:
+                pass
+            data = q.data or ""
+            retry = data if data else "v25:hub"
+            await q.message.reply_text(
+                f"⚠️ اجرای این بخش با خطا متوقف شد.\n\nکد خطا: <code>{err_name}</code>\n"
+                "صفحه فعلی پاک نشد؛ می‌توانی دوباره امتحان کنی.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data=retry)],
+                    [InlineKeyboardButton("⬅️ مرکز من", callback_data="v25:hub"), main_menu_button(uid)],
+                ]),
+            )
+        elif update.message:
+            await update.message.reply_text(
+                f"⚠️ اجرای این بخش با خطا متوقف شد.\nکد خطا: <code>{err_name}</code>\n"
+                "وضعیت فعلی حفظ شد؛ می‌توانی دوباره تلاش کنی.",
+                parse_mode="HTML",
+                reply_markup=nav_keyboard(uid),
+            )
     except Exception:
-        logger.exception("Failed to send recovery menu")
+        logger.exception("Failed to send contextual recovery message")
 
 
 async def my_id(update, context):
@@ -6893,6 +6907,13 @@ def v25_hub_keyboard(uid):
             row.append(InlineKeyboardButton(fa_text if fa else en_text,callback_data=cb))
             if len(row)==2: rows.append(row); row=[]
     if row: rows.append(row)
+    # Customer/appointment management must be directly reachable from My Center.
+    # This uses the existing customer access gate so VIP/off settings are respected.
+    try:
+        if customer_feature_allowed(uid):
+            rows.append([InlineKeyboardButton('👥 مدیریت مشتری و نوبت‌دهی' if fa else '👥 Customer & Appointments', callback_data='v25:customers')])
+    except Exception:
+        logger.exception('Customer menu feature check failed')
     rows.append([main_menu_button(uid)])
     return InlineKeyboardMarkup(rows)
 
@@ -6905,7 +6926,15 @@ def v25_hub_text(uid):
 
 async def v25_hub(update,context):
     uid=update.effective_user.id
-    await update.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid))
+    # Support both normal-message entry and inline-callback entry.
+    q = getattr(update, 'callback_query', None)
+    if q:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+    target = q.message if q else update.message
+    await target.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid))
 
 async def v25_reminders_menu(update,context):
     uid=update.effective_user.id; fa=lang(uid)=="fa"
@@ -6986,7 +7015,7 @@ def v25_rates_keyboard(uid):
 async def v25_business_menu(update,context):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; ensure_business_profile(uid)
     rows=[]
-    items=[('v25:bizprofile','🏪 اطلاعات کسب‌وکار','🏪 Business Info','customer_business_settings'),('v25:services','🛠️ خدمات','🛠️ Services','business_services'),('v25:bizfinance','📒 مالی مشتریان','📒 Customer Finance','business_finance'),('v25:bizpay','💳 پرداخت‌ها','💳 Payments','booking_payments'),('v25:surveyadmin','⭐ نظرسنجی','⭐ Surveys','surveys'),('v25:plans','💎 پلن‌های VIP','💎 VIP Plans','vip_plans'),('v25:sms','📱 پیامک','📱 SMS','sms'),('v25:customermsg','📩 پیام به مشتریان','📩 Message Customers','customer_customers'),('v25:bookinglink','🔗 لینک رزرو','🔗 Booking Link','customer_booking_link')]
+    items=[('v25:bizprofile','🏪 اطلاعات کسب‌وکار','🏪 Business Info','customer_business_settings'),('v25:customers','👥 مدیریت مشتری و نوبت‌دهی','👥 Customer & Appointments','customers'),('v25:services','🛠️ خدمات','🛠️ Services','business_services'),('v25:bizfinance','📒 مالی مشتریان','📒 Customer Finance','business_finance'),('v25:bizpay','💳 پرداخت‌ها','💳 Payments','booking_payments'),('v25:surveyadmin','⭐ نظرسنجی','⭐ Surveys','surveys'),('v25:plans','💎 پلن‌های VIP','💎 VIP Plans','vip_plans'),('v25:sms','📱 پیامک','📱 SMS','sms'),('v25:customermsg','📩 پیام به مشتریان','📩 Message Customers','customer_customers'),('v25:bookinglink','🔗 لینک رزرو','🔗 Booking Link','customer_booking_link')]
     for cb,ft,et,key in items:
         if v25_allowed(uid,key): rows.append([InlineKeyboardButton(ft if fa else et,callback_data=cb)])
     rows.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)])
@@ -7262,8 +7291,14 @@ async def v25_receipt_handler(update,context):
 async def v25_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); p=q.data.split(':'); action=p[1] if len(p)>1 else 'hub'
     try:
-        if action=='hub': await q.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
+        if action=='hub': await q.message.edit_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
         if action=='today': await q.message.edit_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
+        if action=='customers':
+            if not customer_feature_allowed(uid):
+                await q.message.edit_text(customer_feature_message(uid), reply_markup=v25_back(uid)); return
+            ensure_business_profile(uid)
+            await q.message.edit_text('👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\nپنل مستقل مشتریان، نوبت‌ها، تقویم و یادآوری‌ها.', parse_mode='HTML', reply_markup=customer_keyboard(uid))
+            return
         if action=='reminders': await v25_reminders_menu(update,context); return
         if action=='remadd': context.user_data['v25_mode']='rem_title'; await q.message.edit_text('✏️ عنوان یادآوری را بفرست:',reply_markup=v25_back(uid)); return
         if action=='remview':
@@ -7379,7 +7414,16 @@ async def v25_callback(update,context):
         if action=='voice_confirm': await v25_voice_confirm(update,context); return
         if action=='voice': await v25_voice_prompt(update,context); return
     except Exception as e:
-        logger.exception('v25 callback error: %s',e); await q.message.reply_text('❌ این بخش موقتاً با خطا روبه‌رو شد. از منوی اصلی ادامه بده.',reply_markup=keyboard(uid))
+        logger.exception('v25 callback error: %s',e)
+        await q.message.reply_text(
+            f'⚠️ این بخش با خطا روبه‌رو شد.\n\nکد خطا: <code>{type(e).__name__}</code>\n'
+            'از گزینه «تلاش دوباره» استفاده کن؛ برای خروج هم منوی اصلی در دسترس است.',
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=data)],
+                [InlineKeyboardButton('⬅️ مرکز من',callback_data='v25:hub'),main_menu_button(uid)]
+            ])
+        )
 
 # Patch the legacy navigation with a unified menu while retaining every old button.
 _LEGACY_KEYBOARD = keyboard
@@ -8285,7 +8329,14 @@ async def v25_callback(update,context):
         return await _OLD_V25_CALLBACK_FINAL(update,context)
     except Exception as e:
         logger.exception('Final V25 callback error: %s',e)
-        await q.message.reply_text('❌ این عملیات فعلاً در دسترس نیست. از منوی مدیریت/اصلی ادامه بده.',reply_markup=v25_back(uid))
+        await q.message.reply_text(
+            f'⚠️ این عملیات با خطا روبه‌رو شد.\n\nکد خطا: <code>{type(e).__name__}</code>',
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=data)],
+                [InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:hub'),main_menu_button(uid)]
+            ])
+        )
 
 # Intercept a few additional text modes while preserving the legacy router.
 _OLD_V25_INSTALLMENT_TEXT_SAVE=v25_installment_text_save
@@ -8804,6 +8855,8 @@ async def text_router(update, context):
         return
     uid = update.effective_user.id
     text = update.message.text.strip()
+    # Keep the legacy variable name used by older branches in this dispatcher.
+    txt = text
 
     # Universal navigation has absolute priority.
     if text in ("🏠 منوی اصلی", "🏠 Main Menu"):
@@ -8815,7 +8868,7 @@ async def text_router(update, context):
         await update.message.reply_text(v25_hub_text(uid), parse_mode="HTML", reply_markup=v25_hub_keyboard(uid))
         return
 
-    if text in ("👤 استفاده از ربات", "👤 Use Bot"):
+    if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
         clear_flow(context)
         await update.message.reply_text(
             "👤 <b>استفاده از ربات</b>\n\nقابلیت‌های عادی ربات در دسترس تو هستند." if lang(uid)=="fa" else
@@ -8823,17 +8876,17 @@ async def text_router(update, context):
             parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
         )
         return
-    if text in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+    if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
         if not admin_guard(uid):
             await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
             return
         clear_flow(context)
         await _show_admin_management(update, context)
         return
-    if text in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
+    if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
         await admin_command(update, context)
         return
-    if text in ("👥 کاربران و نقش‌ها", "👥 Users & Roles", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents",
+    if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents",
                 "💰 مالی و پرداخت", "💰 Finance & Payments", "💎 VIP / XP / Token",
                 "📢 کانال و انتشار", "📢 Channels & Publishing", "🩺 سلامت و Diagnostics",
                 "🩺 Health & Diagnostics", "💾 Backup و Recovery", "💾 Backup & Recovery",
@@ -9032,8 +9085,6 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
-    app.add_handler(CallbackQueryHandler(ai_test_callback, pattern=r"^ai:test$"))
-    app.add_handler(CallbackQueryHandler(ai_panel_callback, pattern=r"^ai:panel$"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
@@ -9120,7 +9171,7 @@ def main():
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
         app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
 
-    logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-02")
+    logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-01")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -9299,6 +9350,37 @@ async def _compact_menu_show(update, context, section):
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=_compact_menu_keyboard(uid, section))
 
 
+async def general_guide(update, context):
+    """User-facing guide route for the compact Smart Tools menu."""
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    text = (
+        "📚 <b>راهنمای ربات</b>\n\n"
+        "🎯 برنامه و اهداف: ساخت و پیگیری هدف‌ها\n"
+        "📊 گزارش و پیشرفت: مشاهده آمار و گزارش‌ها\n"
+        "🤖 ابزارهای هوشمند: چت AI، دستیار صوتی و قیمت‌ها\n"
+        "🧠 مرکز من: یادآوری، تقویم، سرمایه‌ها، اقساط و پروفایل\n"
+        "👥 مدیریت مشتری و نوبت‌دهی: برای حساب‌های مجاز\n\n"
+        "برای برگشت از دکمه «⬅️ بازگشت» استفاده کن."
+        if fa else
+        "📚 <b>Bot Guide</b>\n\n"
+        "🎯 My Plan: create and track goals\n"
+        "📊 Reports: view progress and statistics\n"
+        "🤖 Smart Tools: AI chat, voice assistant and prices\n"
+        "🧠 My Center: reminders, calendar, portfolio, installments and profile\n"
+        "👥 Customers & Appointments: for eligible accounts\n\n"
+        "Use «⬅️ Back» to return."
+    )
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:tools"),
+        main_menu_button(uid),
+    ]])
+    if update.callback_query:
+        await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
 async def compact_menu_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -9370,13 +9452,26 @@ async def compact_menu_callback(update, context):
         })()
         try:
             await fn(proxy, context)
-        except Exception:
+        except Exception as exc:
             logger.exception("Compact menu route failed: %s", data)
-            await q.message.reply_text(
-                "⚠️ این بخش موقتاً با مشکل روبه‌رو شد. بقیه امکانات ربات همچنان در دسترس است."
+            # Never hide a route failure by resetting the whole bot to the home menu.
+            # Offer a direct retry and a controlled back path instead.
+            retry_text = (
+                "⚠️ این بخش با خطا روبه‌رو شد.\n\n"
+                f"کد خطا: <code>{type(exc).__name__}</code>\n"
+                "می‌توانی دوباره همین بخش را امتحان کنی یا به ابزارهای هوشمند برگردی."
                 if lang(uid) == "fa" else
-                "⚠️ This section is temporarily unavailable. The rest of the bot is still available.",
-                reply_markup=keyboard(uid),
+                "⚠️ This section encountered an error.\n\n"
+                f"Error: <code>{type(exc).__name__}</code>\n"
+                "Retry this section or return to Smart Tools."
+            )
+            await q.message.reply_text(
+                retry_text, parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 تلاش دوباره" if lang(uid)=="fa" else "🔄 Retry", callback_data=data)],
+                    [InlineKeyboardButton("🤖 ابزارهای هوشمند" if lang(uid)=="fa" else "🤖 Smart Tools", callback_data="menu:tools")],
+                    [main_menu_button(uid)],
+                ]),
             )
         return
 
@@ -9464,110 +9559,16 @@ def compact_keyboard(uid):
 keyboard = compact_keyboard
 
 
-async def admin_ai_panel(update, context):
-    """Dedicated AI management panel for the running bot. Secrets are never displayed."""
-    uid = update.effective_user.id
-    if not admin_guard(uid):
-        await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
-        return
-    state = ai_provider_diagnostics()
-    providers = [
-        f"OmniRoute: {'🟢 فعال' if state.get('omniroute') else '🔴 غیرفعال'}",
-        f"OpenAI: {'🟢 فعال' if state.get('openai') else '🔴 غیرفعال'}",
-        f"Gemini: {'🟢 فعال' if state.get('gemini') else '🔴 غیرفعال'}",
-        f"n8n: {'🟢 فعال' if state.get('n8n') else '🔴 غیرفعال'}",
-        f"Text AI: {'🟢 آماده' if state.get('text_unified') else '🔴 بدون Provider'}",
-        f"Voice/STT: {'🟢 آماده' if state.get('voice_stt') else '🔴 غیرفعال'}",
-    ]
-    await update.message.reply_text(
-        "🤖 <b>مدیریت AI</b>\n\n" + "\n".join(providers) +
-        "\n\n🔐 کلیدهای API در این پنل نمایش داده نمی‌شوند.",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧪 تست همه مسیرهای AI", callback_data="ai:test")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
-        ])
-    )
-
-
-async def ai_test_callback(update, context):
-    q = update.callback_query
-    uid = q.from_user.id
-    if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-    await q.answer("در حال تست مسیرهای AI...")
-    prompt = "پاسخ بده: OK"
-    results = []
-
-    def add(name, fn, configured):
-        if not configured:
-            results.append(f"⚪ {name}: تنظیم نشده")
-            return
-        try:
-            answer = str(fn() or "").strip()
-            results.append(f"🟢 {name}: OK" if answer else f"🔴 {name}: پاسخ خالی")
-        except Exception as exc:
-            results.append(f"🔴 {name}: {type(exc).__name__}")
-
-    add("OmniRoute", lambda: _omniroute_ai_sync(prompt), omniroute_configured())
-    add("Gemini", lambda: _gemini_generate_text(prompt), bool(GEMINI_API_KEY))
-    add("n8n", lambda: _n8n_ai_fallback_sync(prompt), n8n_configured())
-
-    # OpenAI direct smoke test is intentionally tiny and uses the same Responses API path as chat.
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    def openai_test():
-        payload = json.dumps({"model": OPENAI_MODEL, "input": prompt, "max_output_tokens": 20}, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/responses", data=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data.get("output_text") or ""
-    add("OpenAI", openai_test, bool(api_key))
-
-    await q.message.edit_text(
-        "🧪 <b>نتیجه تست AI</b>\n\n" + "\n".join(results) +
-        "\n\n🔐 هیچ کلید API نمایش داده نشد.",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 تست دوباره", callback_data="ai:test")],
-            [InlineKeyboardButton("⬅️ مدیریت AI", callback_data="ai:panel")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
-        ])
-    )
-
-
-async def ai_panel_callback(update, context):
-    q = update.callback_query
-    uid = q.from_user.id
-    if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-    await q.answer()
-    state = ai_provider_diagnostics()
-    await q.message.edit_text(
-        "🤖 <b>مدیریت AI</b>\n\n"
-        f"OmniRoute: {'🟢' if state.get('omniroute') else '🔴'}\n"
-        f"OpenAI: {'🟢' if state.get('openai') else '🔴'}\n"
-        f"Gemini: {'🟢' if state.get('gemini') else '🔴'}\n"
-        f"n8n: {'🟢' if state.get('n8n') else '🔴'}\n"
-        f"Text AI: {'🟢' if state.get('text_unified') else '🔴'}\n"
-        f"Voice/STT: {'🟢' if state.get('voice_stt') else '🔴'}",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧪 تست همه مسیرهای AI", callback_data="ai:test")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="nav:main")],
-        ])
-    )
-
-
 _OLD_TEXT_ROUTER_COMPACT = text_router
 async def text_router(update, context):
     if not update.message or not update.message.text:
         return
     uid = update.effective_user.id
     txt = update.message.text.strip()
+    # Keep both names for compatibility with the older dispatcher code below.
+    # The final router historically used `text`, while its input was stored in `txt`.
+    # That NameError caused menu/AI actions to fall into the global error handler.
+    text = txt
     category_map = {
         "🎯 برنامه من": "goals", "🎯 My Plan": "goals",
         "📊 گزارش و پیشرفت": "reports", "📊 Reports": "reports",
@@ -9592,11 +9593,7 @@ async def text_router(update, context):
         await admin_command(update, context)
         return
     if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
-        await admin_ai_panel(update, context)
-        return
-    if txt in ("🤖 چت با AI", "🤖 AI Chat"):
-        clear_flow(context)
-        await ai_chat_start(update, context)
+        await admin_command(update, context)
         return
     if txt in ("👥 کاربران", "👥 Users"):
         await admin_command(update, context)
