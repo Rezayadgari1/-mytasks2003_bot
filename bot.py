@@ -9192,6 +9192,11 @@ def main():
     app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
     app.add_handler(CallbackQueryHandler(step_add_start, pattern=r"^step_add:"))
     app.add_handler(CallbackQueryHandler(step_toggle, pattern=r"^step_toggle:"))
+    app.add_handler(CallbackQueryHandler(ready_subcategory_callback, pattern=r"^readysub:"))
+    app.add_handler(CallbackQueryHandler(goal_reminders_list, pattern=r"^goalreminders$"))
+    app.add_handler(CallbackQueryHandler(goal_calendar_callback, pattern=r"^goalcalendar:"))
+    app.add_handler(CallbackQueryHandler(goal_calendar_day, pattern=r"^goalcalday:"))
+    app.add_handler(CallbackQueryHandler(my_goals_callback, pattern=r"^cm:my_goals$"))
     app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
     app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
     app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
@@ -11448,6 +11453,431 @@ async def error_handler(update, context):
             logger.exception("ValueError route recovery failed")
     return await _OLD_ERROR_HANDLER_FINAL_NAV_REPAIR(update, context)
 
+
+
+# ===================== GOALS / REMINDERS / JALALI CALENDAR UPGRADE =====================
+# Additive final layer. Existing user data, manager/RBAC logic and main-menu labels
+# are preserved. This layer only extends the goals/reminders experience.
+
+READY_CATALOG_FA = {
+    "👤 شخصی": {
+        "🩺 سلامت": [
+            "🩺 وقت دکتر", "🧪 آزمایش دوره‌ای", "🩸 آزمایش کامل خون", "📋 چکاپ ماهانه", "📅 چکاپ سالانه",
+            "🦷 دندانپزشکی", "👁️ معاینه چشم", "💊 خرید/تمدید دارو", "💉 واکسن"
+        ],
+        "🏠 خانه": [
+            "🧹 نظافت خانه", "🔧 تعمیرات خانه", "❄️ سرویس کولر", "🔥 سرویس پکیج/بخاری", "💧 تعویض فیلتر آب",
+            "🛒 خرید لوازم خانه", "📦 خرید ماهانه خانه"
+        ],
+        "👨‍👩‍👧 خانواده": [
+            "☎️ تماس با خانواده", "❤️ وقت خانوادگی", "🎂 تولد", "💍 سالگرد", "🏫 پیگیری مدرسه/کلاس",
+            "🩺 وقت دکتر عضو خانواده", "🎁 خرید هدیه"
+        ],
+        "✈️ سفر": [
+            "✈️ سفر کاری", "🏖 سفر تفریحی", "👨‍👩‍👧 سفر خانوادگی", "🌍 سفر خارجی", "🎒 آماده‌سازی سفر"
+        ],
+        "📌 شخصی و اداری": [
+            "📝 کار شخصی", "🏢 کار اداری", "📞 تماس مهم", "🤝 قرار", "🎯 پیگیری یک کار", "⭐ کار مهم"
+        ],
+    },
+    "💰 مالی": {
+        "🧾 چک و سررسید": ["🧾 چک پرداختی", "🧾 چک دریافتی", "📅 سررسید چک", "💵 طلب", "💳 بدهی"],
+        "💳 پرداخت‌ها": ["💳 قسط", "🏦 وام", "🏠 اجاره", "💡 قبض", "🛡️ بیمه", "🧮 مالیات", "🎓 شهریه"],
+        "🔄 دوره‌ای": ["🔄 پرداخت ماهانه", "🔄 پرداخت سالانه", "📺 تمدید اشتراک", "🌐 تمدید سرویس آنلاین"],
+        "📊 مدیریت مالی": ["📒 ثبت هزینه", "🏦 بررسی حساب", "💰 پس‌انداز", "📈 بررسی هزینه ماهانه"],
+    },
+    "🚗 خودرو": {
+        "🛢 سرویس": ["🛢 تعویض روغن", "🔧 سرویس دوره‌ای", "🧰 تعمیر خودرو", "🔩 تعویض شمع", "〰️ تعویض تسمه"],
+        "🛑 ترمز و لاستیک": ["🛑 تعویض لنت", "🔍 بررسی ترمز", "🛞 تعویض لاستیک", "💨 تنظیم باد", "🔄 جابه‌جایی لاستیک"],
+        "💧 مایعات و فیلترها": ["💧 ضدیخ/آب رادیاتور", "🧴 روغن ترمز", "🌬 فیلتر هوا", "❄️ فیلتر کابین", "🛢 فیلتر روغن"],
+        "📄 مدارک و نگهداری": ["📄 معاینه فنی", "🛡️ تمدید بیمه خودرو", "🔋 بررسی باتری", "❄️ سرویس کولر", "🧽 کارواش"],
+    },
+    "💼 کار": {
+        "📅 برنامه": ["📅 جلسه", "📋 وظیفه کاری", "🎯 پروژه", "📊 گزارش روزانه", "📆 گزارش هفتگی", "🗓 گزارش ماهانه"],
+        "👥 مشتری": ["📞 تماس با مشتری", "🔔 پیگیری مشتری", "🤝 قرار با مشتری", "📨 ارسال پیام", "🧾 ارسال فاکتور"],
+        "📄 قرارداد و مالی": ["📄 قرارداد", "🔄 تمدید قرارداد", "💵 پیگیری پرداخت", "🧾 پیگیری فاکتور"],
+    },
+    "📚 تحصیل": {
+        "📖 مطالعه": ["📖 مطالعه", "🔁 مرور درس", "🔤 یادگیری لغت", "📝 جزوه"],
+        "🎓 دانشگاه/مدرسه": ["🏫 کلاس", "📝 امتحان", "📋 تکلیف", "💻 پروژه", "🎓 ثبت‌نام", "💳 شهریه"],
+    },
+    "🏋️ ورزش": {
+        "🏋️ تمرین": ["🏋️ بدنسازی", "🏃 دویدن", "🚶 پیاده‌روی", "🏠 ورزش خانگی", "🧘 یوگا", "🤸 کشش و نرمش"],
+        "⚽ ورزش‌های گروهی": ["⚽ فوتبال", "🥅 فوتسال", "🏐 والیبال", "🏀 بسکتبال", "🎾 تنیس"],
+        "🏊 فضای باز": ["🏊 شنا", "🚴 دوچرخه‌سواری", "🥾 کوهنوردی"],
+    },
+    "📄 مدارک": {
+        "🪪 شناسایی": ["🪪 گواهینامه", "🛂 پاسپورت", "💳 کارت بانکی"],
+        "🔄 تمدیدها": ["🛡️ تمدید بیمه", "📄 تمدید مجوز", "📝 تمدید قرارداد", "🌐 تمدید دامنه", "💻 تمدید هاست"],
+        "🏢 اداری": ["🏢 مراجعه اداری", "📑 تکمیل مدرک", "📬 پیگیری پرونده"],
+    },
+    "📌 سایر": {
+        "💻 فناوری": ["💻 بکاپ اطلاعات", "🔐 بررسی امنیت حساب", "📱 تعمیر موبایل", "🖥 تعمیر کامپیوتر", "🔄 به‌روزرسانی نرم‌افزار"],
+        "🐾 حیوانات": ["🐾 دامپزشک", "💉 واکسن حیوان", "💊 دارو", "🪱 ضدانگل", "🛁 حمام", "✂️ اصلاح", "🍖 خرید غذا"],
+        "🛒 خرید": ["🛒 خرید روزانه", "🛒 خرید هفتگی", "🛒 خرید ماهانه", "🎁 خرید هدیه", "🧴 خرید لوازم مصرفی"],
+        "🗒 متفرقه": ["🗒 کار متفرقه", "🔔 یادآوری سفارشی", "📌 پیگیری", "⏳ کار عقب‌افتاده"],
+    },
+}
+READY_CATALOG_EN = {
+    "👤 Personal": {"🩺 Health":["🩺 Doctor appointment","🧪 Periodic lab test","🩸 Full blood test","📋 Monthly checkup","📅 Annual checkup","🦷 Dentist","👁️ Eye exam","💊 Medication refill","💉 Vaccine"],"🏠 Home":["🧹 House cleaning","🔧 Home repair","❄️ AC service","🔥 Heater/boiler service","💧 Water filter change","🛒 Home supplies","📦 Monthly home shopping"],"👨‍👩‍👧 Family":["☎️ Call family","❤️ Family time","🎂 Birthday","💍 Anniversary","🏫 School/class follow-up","🩺 Family doctor appointment","🎁 Buy a gift"],"✈️ Travel":["✈️ Business trip","🏖 Vacation","👨‍👩‍👧 Family trip","🌍 International trip","🎒 Prepare for travel"],"📌 Personal & Admin":["📝 Personal task","🏢 Administrative task","📞 Important call","🤝 Appointment","🎯 Follow-up","⭐ Important task"]},
+    "💰 Finance": {"🧾 Checks & Due Dates":["🧾 Pay a check","🧾 Receive a check","📅 Check due date","💵 Receivable","💳 Debt"],"💳 Payments":["💳 Installment","🏦 Loan","🏠 Rent","💡 Bill","🛡️ Insurance","🧮 Tax","🎓 Tuition"],"🔄 Recurring":["🔄 Monthly payment","🔄 Annual payment","📺 Subscription renewal","🌐 Online service renewal"],"📊 Finance Management":["📒 Record expense","🏦 Check bank account","💰 Save money","📈 Review monthly expenses"]},
+    "🚗 Car": {"🛢 Service":["🛢 Oil change","🔧 Periodic service","🧰 Car repair","🔩 Spark plug change","〰️ Belt change"],"🛑 Brakes & Tires":["🛑 Brake pad change","🔍 Brake check","🛞 Tire change","💨 Tire pressure","🔄 Tire rotation"],"💧 Fluids & Filters":["💧 Coolant","🧴 Brake fluid","🌬 Air filter","❄️ Cabin filter","🛢 Oil filter"],"📄 Documents & Care":["📄 Inspection","🛡️ Car insurance renewal","🔋 Battery check","❄️ AC service","🧽 Car wash"]},
+    "💼 Work": {"📅 Planning":["📅 Meeting","📋 Work task","🎯 Project","📊 Daily report","📆 Weekly report","🗓 Monthly report"],"👥 Customers":["📞 Call customer","🔔 Follow up customer","🤝 Customer appointment","📨 Send message","🧾 Send invoice"],"📄 Contract & Finance":["📄 Contract","🔄 Renew contract","💵 Payment follow-up","🧾 Invoice follow-up"]},
+    "📚 Study": {"📖 Study":["📖 Study","🔁 Review","🔤 Learn vocabulary","📝 Notes"],"🎓 School/University":["🏫 Class","📝 Exam","📋 Homework","💻 Project","🎓 Registration","💳 Tuition"]},
+    "🏋️ Fitness": {"🏋️ Training":["🏋️ Gym","🏃 Running","🚶 Walking","🏠 Home workout","🧘 Yoga","🤸 Stretching"],"⚽ Team Sports":["⚽ Football","🥅 Futsal","🏐 Volleyball","🏀 Basketball","🎾 Tennis"],"🏊 Outdoor":["🏊 Swimming","🚴 Cycling","🥾 Hiking"]},
+    "📄 Documents": {"🪪 Identity":["🪪 Driver license","🛂 Passport","💳 Bank card"],"🔄 Renewals":["🛡️ Insurance renewal","📄 Permit renewal","📝 Contract renewal","🌐 Domain renewal","💻 Hosting renewal"],"🏢 Admin":["🏢 Office visit","📑 Complete document","📬 Case follow-up"]},
+    "📌 Other": {"💻 Technology":["💻 Backup data","🔐 Account security check","📱 Phone repair","🖥 Computer repair","🔄 Software update"],"🐾 Pets":["🐾 Vet","💉 Pet vaccine","💊 Medication","🪱 Deworming","🛁 Bath","✂️ Grooming","🍖 Pet food"],"🛒 Shopping":["🛒 Daily shopping","🛒 Weekly shopping","🛒 Monthly shopping","🎁 Gift shopping","🧴 Supplies"],"🗒 Misc":["🗒 Misc task","🔔 Custom reminder","📌 Follow-up","⏳ Overdue task"]},
+}
+
+GOALS_FA = READY_CATALOG_FA
+GOALS_EN = READY_CATALOG_EN
+
+# Extra persistent per-goal data. Existing goals/goal_days rows are never removed by this layer.
+_ORIGINAL_INIT_DB_GOALS_UPGRADE = init_db
+
+def _goals_upgrade_schema():
+    c=db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS goal_metadata(
+            user_id INTEGER NOT NULL, goal_id INTEGER NOT NULL, meta_key TEXT NOT NULL,
+            meta_value TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL,
+            PRIMARY KEY(user_id,goal_id,meta_key))""")
+        c.execute("""CREATE TABLE IF NOT EXISTS goal_completion_notice(
+            user_id INTEGER NOT NULL, goal_id INTEGER NOT NULL, completed_at TEXT NOT NULL,
+            PRIMARY KEY(user_id,goal_id))""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_goal_metadata_user_goal ON goal_metadata(user_id,goal_id)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_goals_user_enabled_end ON goals(user_id,enabled,reminder_end_date)")
+        c.commit()
+    finally:
+        c.close()
+
+def init_db():
+    _ORIGINAL_INIT_DB_GOALS_UPGRADE()
+    _goals_upgrade_schema()
+
+
+def _goal_catalog_data(uid):
+    return GOALS_EN if lang(uid)=="en" else GOALS_FA
+
+def _goal_top_keys(uid):
+    return list(_goal_catalog_data(uid).keys())
+
+def _goal_store_meta(uid,gid,key,value):
+    c=db(); c.execute("INSERT INTO goal_metadata(user_id,goal_id,meta_key,meta_value,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,goal_id,meta_key) DO UPDATE SET meta_value=excluded.meta_value,updated_at=excluded.updated_at",(uid,gid,key,str(value),datetime.now(TZ).isoformat())); c.commit(); c.close()
+
+def _goal_meta(uid,gid):
+    c=db(); rows=c.execute("SELECT meta_key,meta_value FROM goal_metadata WHERE user_id=? AND goal_id=?",(uid,gid)).fetchall(); c.close(); return {r['meta_key']:r['meta_value'] for r in rows}
+
+def _active_goals(uid):
+    c=db(); rows=c.execute("SELECT * FROM goals WHERE user_id=? AND enabled=1 AND (reminder_end_date IS NULL OR reminder_end_date>=?) ORDER BY id DESC",(uid,datetime.now(TZ).date().isoformat())).fetchall(); c.close(); return rows
+
+# Compact top-level categories: two columns, no long vertical scrolling.
+def categories_keyboard(uid, prefix="newcat"):
+    keys=_goal_top_keys(uid); rows=[]
+    for i in range(0,len(keys),2):
+        rows.append([InlineKeyboardButton(keys[j],callback_data=f"{prefix}:{j}") for j in range(i,min(i+2,len(keys)))])
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
+    return InlineKeyboardMarkup(rows)
+
+def category_by_index(uid,index):
+    return _goal_top_keys(uid)[index]
+
+def goals_by_category(uid,category):
+    data=_goal_catalog_data(uid); value=data[category]
+    if isinstance(value,dict):
+        out=[]
+        for subitems in value.values(): out.extend(subitems)
+        return out
+    return value
+
+async def new_category(update, context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id
+    category=category_by_index(uid,int(q.data.split(':')[1])); context.user_data['ready_category']=category
+    data=_goal_catalog_data(uid)[category]
+    if isinstance(data,dict):
+        keys=list(data.keys()); rows=[]
+        for i in range(0,len(keys),2):
+            rows.append([InlineKeyboardButton(keys[j],callback_data=f"readysub:{i+j-i}:{j}") for j in range(i,min(i+2,len(keys)))])
+        # callback uses category index + sub index for stable routing
+        rows=[]
+        catidx=_goal_top_keys(uid).index(category)
+        for i in range(0,len(keys),2): rows.append([InlineKeyboardButton(keys[j],callback_data=f"readysub:{catidx}:{j}") for j in range(i,min(i+2,len(keys)))])
+        rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data="newback")])
+        await q.message.edit_text("📂 یک زیرگروه را انتخاب کن:" if lang(uid)=="fa" else "📂 Choose a subgroup:",reply_markup=InlineKeyboardMarkup(rows)); return
+    await _show_ready_goals(update,context,category)
+
+async def ready_subcategory_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id
+    _,catidx,subidx=q.data.split(':'); category=category_by_index(uid,int(catidx)); sub=list(_goal_catalog_data(uid)[category].keys())[int(subidx)]
+    context.user_data['ready_category']=category; context.user_data['ready_subcategory']=sub
+    goals=_goal_catalog_data(uid)[category][sub]
+    rows=[]
+    for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j],callback_data=f"newgoal:{j}") for j in range(i,min(i+2,len(goals)))])
+    rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data=f"newcat:{catidx}")])
+    await q.message.edit_text(T[lang(uid)]["choose_goal"],reply_markup=InlineKeyboardMarkup(rows))
+
+async def _show_ready_goals(update,context,category):
+    uid=update.effective_user.id; goals=goals_by_category(uid,category); rows=[]
+    for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j],callback_data=f"newgoal:{j}") for j in range(i,min(i+2,len(goals)))])
+    rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data="newback")])
+    await update.callback_query.message.edit_text(T[lang(uid)]["choose_goal"],reply_markup=InlineKeyboardMarkup(rows))
+
+
+def _ready_template(name,category):
+    n=name.lower()
+    if 'تعویض روغن' in name or 'oil change' in n:
+        return [('last_date','📅 تاریخ تعویض قبلی را بفرست:'),('last_km','🚗 کیلومتر خودرو در زمان تعویض:'),('next_km','🔢 کیلومتر سرویس بعدی:'),('next_date','📅 تاریخ تقریبی سرویس بعدی:'),('oil_type','🛢 نوع/ویسکوزیته روغن:'),('shop','🔧 تعمیرگاه یا شخص انجام‌دهنده (اختیاری):')]
+    if 'چک' in name and ('پرداختی' in name or 'دریافتی' in name):
+        return [('amount','💰 مبلغ چک:'),('check_date','📅 تاریخ سررسید:'),('counterparty','👤 نام شخص/شرکت:'),('bank','🏦 بانک:'),('check_no','🔢 شماره چک (اختیاری):')]
+    if 'آزمایش' in name or 'چکاپ' in name or 'دکتر' in name or 'doctor' in n or 'checkup' in n or 'blood' in n:
+        return [('last_date','📅 تاریخ مراجعه/آزمایش قبلی:'),('next_date','📅 تاریخ بعدی:'),('doctor','👨‍⚕️ پزشک/مرکز (اختیاری):'),('note','📝 توضیحات (اختیاری):')]
+    if 'سفر' in name or 'trip' in n or 'vacation' in n:
+        return [('destination','📍 مقصد:'),('depart_date','📅 تاریخ حرکت:'),('depart_time','⏰ ساعت حرکت:'),('return_date','📅 تاریخ برگشت:'),('note','📝 توضیحات (اختیاری):')]
+    if 'بدنسازی' in name or 'gym' in n or 'دویدن' in name or 'running' in n or 'فوتبال' in name or 'football' in n or 'والیبال' in name or 'volleyball' in n or 'بسکتبال' in name or 'basketball' in n or 'شنا' in name or 'swimming' in n:
+        return [('start_date','📅 تاریخ شروع برنامه:'),('location','📍 محل تمرین (اختیاری):'),('duration','⏱ مدت تمرین به دقیقه:')]
+    return [('note','📝 توضیحات این هدف (اختیاری):')]
+
+async def new_goal_pick(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id
+    category=context.user_data.get('ready_category')
+    if not category: return
+    data=_goal_catalog_data(uid)[category]
+    if isinstance(data,dict):
+        sub=context.user_data.get('ready_subcategory')
+        if not sub: return
+        goals=data[sub]
+    else: goals=data
+    name=goals[int(q.data.split(':')[1])]
+    context.user_data['name']=name; context.user_data['category']=category
+    fields=_ready_template(name,category)
+    context.user_data['ready_detail_fields']=fields; context.user_data['ready_detail_index']=0
+    key,prompt=fields[0]; context.user_data['ready_detail_key']=key; context.user_data['ready_detail_mode']=True
+    await q.message.edit_text(prompt+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if lang(uid)=='fa' else prompt+"\n\n(For optional fields, send '-'.)")
+
+async def ready_detail_text_save(update,context):
+    if not context.user_data.get('ready_detail_mode'): return False
+    uid=update.effective_user.id; text=(update.message.text or '').strip(); fields=context.user_data.get('ready_detail_fields') or []; idx=int(context.user_data.get('ready_detail_index',0)); key=context.user_data.get('ready_detail_key')
+    if not key or idx>=len(fields): return False
+    _pending={k:v for k,v in context.user_data.get('ready_details',[])}
+    _pending[key]='' if text=='-' else text
+    context.user_data['ready_details']=list(_pending.items()); idx+=1
+    if idx < len(fields):
+        context.user_data['ready_detail_index']=idx; nk,np=fields[idx]; context.user_data['ready_detail_key']=nk
+        await update.message.reply_text(np+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if lang(uid)=='fa' else np+"\n\n(For optional fields, send '-'.)")
+        return True
+    context.user_data.pop('ready_detail_mode',None); context.user_data.pop('ready_detail_fields',None); context.user_data.pop('ready_detail_key',None); context.user_data.pop('ready_detail_index',None)
+    await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=='fa' else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
+    return True
+
+# Replace the existing generic goal list with an active-only list while preserving history in DB.
+async def today(update,context):
+    uid=update.effective_user.id; goals=_active_goals(uid); fa=lang(uid)=='fa'; log_activity(uid,'view_today')
+    if not goals:
+        await update.message.reply_text(T[lang(uid)]['no_goals'].format(name=display_name(uid)),reply_markup=keyboard(uid)); return
+    rows=[]
+    for g in goals:
+        st=get_status(uid,g['id']); icon='✅' if st=='done' else '❌' if st=='missed' else '⬜'; rows.append([InlineKeyboardButton(f"{icon} {g['name']}",callback_data=f"detail:{g['id']}")])
+    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar')])
+    rows.append([main_menu_button(uid)])
+    await update.message.reply_text(T[lang(uid)]['today'],reply_markup=InlineKeyboardMarkup(rows))
+
+async def edit_menu(update,context):
+    uid=update.effective_user.id; goals=_active_goals(uid); fa=lang(uid)=='fa'
+    if not goals:
+        await update.message.reply_text(T[lang(uid)]['no_goals'].format(name=display_name(uid)),reply_markup=keyboard(uid)); return
+    rows=[]
+    for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j]['name'],callback_data=f"edit:{goals[j]['id']}") for j in range(i,min(i+2,len(goals)))])
+    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar')])
+    rows.append([main_menu_button(uid)])
+    await update.message.reply_text(T[lang(uid)]['edit'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup(rows))
+
+async def goal_reminders_list(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; fa=lang(uid)=='fa'; goals=_active_goals(uid); today=datetime.now(TZ).date()
+    lines=['🔔 <b>یادآوری‌های من</b>',''] if fa else ['🔔 <b>My Reminders</b>','']; rows=[]
+    if not goals: lines.append('یادآوری فعالی نداری.' if fa else 'No active reminders.')
+    for g in goals:
+        if not g['reminder_time']: continue
+        end=g['reminder_end_date'] or 'بدون پایان'
+        meta=_goal_meta(uid,g['id']); lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time']} — تا {html.escape(end)}")
+        if meta:
+            details=' | '.join(f'{k}: {v}' for k,v in list(meta.items())[:3] if v)
+            if details: lines.append(f"  📝 {html.escape(details)}")
+        rows.append([InlineKeyboardButton(f"✏️ {g['name']}",callback_data=f"edit:{g['id']}")])
+    rows += [[InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar'),main_menu_button(uid)]]
+    target=q.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+
+# Minimal Jalali conversion, independent of external packages.
+def _g2j(gy,gm,gd):
+    gdm=[0,31,59,90,120,151,181,212,243,273,304,334]
+    if gy>1600: jy=979; gy-=1600
+    else: jy=0; gy-=621
+    gy2=gy+1 if gm>2 else gy
+    days=365*gy+(gy2+3)//4-(gy2+99)//100+(gy2+399)//400-80+gd+gdm[gm-1]
+    jy+=33*(days//12053); days%=12053; jy+=4*(days//1461); days%=1461
+    if days>365: jy+=(days-1)//365; days=(days-1)%365
+    jm=1+days//31 if days<186 else 7+(days-186)//30; jd=1+(days%31 if days<186 else (days-186)%30)
+    return jy,jm,jd
+
+def _j2g(jy,jm,jd):
+    if jy>979: gy=1600; jy-=979
+    else: gy=621
+    days=365*jy+(jy//33)*8+((jy%33)+3)//4+78+jd+(31*(jm-1) if jm<7 else (30*(jm-7)+186))
+    gy+=400*(days//146097); days%=146097
+    if days>36524: gy+=100*((days-1)//36524); days=(days-1)%36524; days+=1
+    gy+=4*(days//1461); days%=1461
+    if days>365: gy+=(days-1)//365; days=(days-1)%365
+    gd=days+1
+    mdays=[31,29 if (gy%4==0 and gy%100!=0) or gy%400==0 else 28,31,30,31,30,31,31,30,31,30,31]
+    gm=1
+    while gd>mdays[gm-1]: gd-=mdays[gm-1]; gm+=1
+    return gy,gm,gd
+
+def _jalali_from_iso(iso):
+    d=datetime.fromisoformat(iso).date(); return _g2j(d.year,d.month,d.day)
+
+def _jalali_iso(text):
+    import re
+    m=re.fullmatch(r'\s*(\d{4})[/-](\d{1,2})[/-](\d{1,2})\s*',text or '')
+    if not m: return None
+    jy,jm,jd=map(int,m.groups())
+    try:
+        gy,gm,gd=_j2g(jy,jm,jd); return datetime(gy,gm,gd).date().isoformat()
+    except Exception: return None
+
+def _jalali_month_days(y,m): return 31 if m<=6 else 30 if m<=11 else (30 if (y%33) in {1,5,9,13,17,22,26,30} else 29)
+
+async def goal_calendar(update,context,year=None,month=None):
+    q=update.callback_query; uid=q.from_user.id; fa=lang(uid)=='fa'; today=datetime.now(TZ).date(); jy,jm,jd=_g2j(today.year,today.month,today.day); year=year or jy; month=month or jm
+    if q: await q.answer()
+    names=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+    en_names=['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar','Mehr','Aban','Azar','Dey','Bahman','Esfand']
+    lines=[f"📅 <b>{names[month-1] if fa else en_names[month-1]} {year}</b>",'']
+    rows=[]
+    # Six weeks, Monday-based. Convert each Jalali day to Gregorian for lookup.
+    first_iso=datetime(*_j2g(year,month,1)).date().isoformat(); first=datetime.fromisoformat(first_iso).date(); offset=(first.weekday())
+    week=[]; header=['ش','ی','د','س','چ','پ','ج'] if fa else ['Mo','Tu','We','Th','Fr','Sa','Su']; rows.append([InlineKeyboardButton(x,callback_data='noop') for x in header])
+    for pos in range(offset): week.append('')
+    for day in range(1,_jalali_month_days(year,month)+1):
+        iso=datetime(*_j2g(year,month,day)).date().isoformat(); c=db(); cnt=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=? AND enabled=1 AND (reminder_end_date IS NULL OR reminder_end_date>=?) AND substr(COALESCE(reminder_start_date,created_at),1,10)<=?",(uid,iso,iso)).fetchone()['n']; c.close(); label=f"{day}{'•' if cnt else ''}"; week.append((label,iso))
+        if len(week)==7:
+            rows.append([InlineKeyboardButton(x if isinstance(x,str) else x[0],callback_data='noop' if isinstance(x,str) else f'goalcalday:{x[1]}') for x in week]); week=[]
+    if week: week += ['']*(7-len(week)); rows.append([InlineKeyboardButton(x if isinstance(x,str) else x[0],callback_data='noop' if isinstance(x,str) else f'goalcalday:{x[1]}') for x in week])
+    prev_y,prev_m=(year,month-1) if month>1 else (year-1,12); next_y,next_m=(year,month+1) if month<12 else (year+1,1)
+    rows.append([InlineKeyboardButton('⬅️ ماه قبل' if fa else '⬅️ Prev',callback_data=f'goalcalendar:{prev_y}:{prev_m}'),InlineKeyboardButton('📍 امروز' if fa else '📍 Today',callback_data='goalcalendar:today'),InlineKeyboardButton('ماه بعد ➡️' if fa else 'Next ➡️',callback_data=f'goalcalendar:{next_y}:{next_m}')])
+    rows.append([main_menu_button(uid)])
+    target=q.message if q else update.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+
+async def goal_calendar_day(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; iso=q.data.split(':',1)[1]; fa=lang(uid)=='fa'; c=db(); goals=c.execute("SELECT * FROM goals WHERE user_id=? AND enabled=1 ORDER BY id DESC",(uid,)).fetchall(); c.close(); selected=[]
+    for g in goals:
+        if g['reminder_start_date'] and iso<g['reminder_start_date']: continue
+        if g['reminder_end_date'] and iso>g['reminder_end_date']: continue
+        selected.append(g)
+    jy,jm,jd=_jalali_from_iso(iso); lines=[f"📅 <b>{jy:04d}/{jm:02d}/{jd:02d}</b>",'']; rows=[]
+    if not selected: lines.append('کاری برای این روز ثبت نشده.' if fa else 'No goals for this day.')
+    for g in selected:
+        lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time'] or '—'}"); rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
+    rows.append([InlineKeyboardButton('⬅️ تقویم' if fa else '⬅️ Calendar',callback_data=f'goalcalendar:{jy}:{jm}'),main_menu_button(uid)])
+    await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+
+async def goal_calendar_callback(update,context):
+    q=update.callback_query; data=q.data
+    if data=='goalcalendar:today':
+        d=datetime.now(TZ).date(); y,m,_=_g2j(d.year,d.month,d.day); return await goal_calendar(update,context,y,m)
+    _,y,m=data.split(':'); return await goal_calendar(update,context,int(y),int(m))
+
+# Extend goal detail screen with stored metadata and edit entry point.
+_OLD_DETAIL_GOALS_UPGRADE=detail
+async def detail(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; gid=int(q.data.split(':')[1]); g=get_goal(uid,gid)
+    if not g: return
+    meta=_goal_meta(uid,gid); fa=lang(uid); lines=[f"🎯 <b>{html.escape(g['name'])}</b>",f"📁 {html.escape(g['category'])}",f"⭐ اولویت: {g['priority']}",f"⏰ {g['reminder_time'] or 'خاموش'}"]
+    if g['reminder_end_date']: lines.append(f"📅 پایان تکرار: {html.escape(g['reminder_end_date'])}")
+    for k,v in meta.items():
+        if v: lines.append(f"📝 {html.escape(k)}: {html.escape(v)}")
+    rows=[[InlineKeyboardButton('✏️ ویرایش' if fa=='fa' else '✏️ Edit',callback_data=f'edit:{gid}')],[InlineKeyboardButton('✅ انجام دادم' if fa=='fa' else '✅ Done',callback_data=f'done:{gid}'),InlineKeyboardButton('❌ انجام ندادم' if fa=='fa' else '❌ Not done',callback_data=f'miss:{gid}')],[main_menu_button(uid)]]
+    await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+
+# Save detailed fields after the goal row exists.
+_OLD_TIME_CALLBACK_GOALS_UPGRADE=time_callback
+async def time_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(':',1)[1]
+    if value=='custom': context.user_data['awaiting_custom_time']=True; await q.message.edit_text(T[lang(uid)]['custom_time']); return
+    reminder=None if value=='none' else parse_time(value); name=context.user_data.get('name'); category=context.user_data.get('category')
+    if not name or not category: return
+    priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes'); add_goal(uid,name,category,reminder,priority,duration)
+    c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close()
+    for k,v in context.user_data.get('ready_details',[]): _goal_store_meta(uid,int(gid),k,v)
+    context.user_data.pop('ready_details',None)
+    if reminder:
+        context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); await q.message.edit_text('🔁 مدت تکرار یادآوری را انتخاب کن:' if lang(uid)=='fa' else '🔁 Choose reminder duration:',reply_markup=_targeted_repeat_keyboard(uid)); return
+    context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+
+async def custom_time_save(update,context):
+    # Preserve legacy custom-goal flow, but persist ready-goal metadata when present.
+    if context.user_data.get('ready_details'):
+        uid=update.effective_user.id; reminder=parse_time((update.message.text or '').strip())
+        if reminder is None: await update.message.reply_text(T[lang(uid)]['bad_time']); return True
+        name=context.user_data.get('name'); category=context.user_data.get('category'); priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes'); add_goal(uid,name,category,reminder,priority,duration)
+        c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close()
+        for k,v in context.user_data.get('ready_details',[]): _goal_store_meta(uid,int(gid),k,v)
+        context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); await update.message.reply_text('🔁 مدت تکرار یادآوری را انتخاب کن:',reply_markup=_targeted_repeat_keyboard(uid)); return True
+    return await _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE(update,context)
+
+_OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE=globals().get('custom_time_save')
+
+# Reminder completion: keep the DB row/history, disable only the active schedule and notify once.
+_OLD_UNIFIED_REMINDER_GOALS_UPGRADE=v25_unified_reminder_job
+async def v25_unified_reminder_job(context):
+    await _OLD_UNIFIED_REMINDER_GOALS_UPGRADE(context)
+    today=datetime.now(TZ).date().isoformat(); rows=[]; c=db();
+    try: rows=c.execute("SELECT * FROM goals WHERE enabled=1 AND reminder_end_date=?",(today,)).fetchall()
+    finally: c.close()
+    for g in rows:
+        uid=g['user_id']; c=db(); already=c.execute('SELECT 1 FROM goal_completion_notice WHERE user_id=? AND goal_id=?',(uid,g['id'])).fetchone(); c.close()
+        if already: continue
+        try:
+            await context.bot.send_message(uid,'🎉 <b>هدف شما کامل شد!</b>\n\nامروز آخرین روز این هدف بود و دوره‌ای که تعیین کرده بودید به پایان رسید.\n\nسابقه هدف حفظ می‌شود و از تاریخچه قابل مشاهده خواهد بود.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📋 یادآوری‌های من',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم',callback_data='goalcalendar:today')],[main_menu_button(uid)]]))
+            c=db(); c.execute('INSERT OR IGNORE INTO goal_completion_notice(user_id,goal_id,completed_at) VALUES(?,?,?)',(uid,g['id'],datetime.now(TZ).isoformat())); c.execute('UPDATE goals SET enabled=0 WHERE user_id=? AND id=?',(uid,g['id'])); c.commit(); c.close()
+        except Exception as e: logger.warning('Goal completion notice failed: %s',e)
+
+# Compact goals menu: add My Goals, Reminders and Calendar without changing root menu text/layout.
+_OLD_COMPACT_MENU_KEYBOARD_GOALS_UPGRADE=_compact_menu_keyboard
+def _compact_menu_keyboard(uid,section):
+    kb=_OLD_COMPACT_MENU_KEYBOARD_GOALS_UPGRADE(uid,section)
+    if section=='goals':
+        fa=lang(uid)=='fa'; extra=[
+            [InlineKeyboardButton('🎯 اهداف من' if fa else '🎯 My Goals',callback_data='cm:my_goals'),InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders')],
+            [InlineKeyboardButton('📅 تقویم شمسی' if fa else '📅 Jalali Calendar',callback_data='goalcalendar:today')],
+        ]
+        kb.inline_keyboard[1:1]=extra
+    return kb
+
+async def my_goals_callback(update,context):
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; fa=lang(uid)=='fa'; goals=_active_goals(uid); lines=['🎯 <b>اهداف من</b>',''] if fa else ['🎯 <b>My Goals</b>','']; rows=[]
+    if not goals: lines.append('هدف فعالی نداری.' if fa else 'No active goals.')
+    for g in goals:
+        lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time'] or 'خاموش'}")
+        rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
+    rows.append([InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')]); rows.append([main_menu_button(uid)])
+    await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+
+_OLD_COMPACT_MENU_CALLBACK_GOALS_UPGRADE=compact_menu_callback
+async def compact_menu_callback(update,context):
+    q=update.callback_query; data=q.data
+    if data=='cm:my_goals': return await my_goals_callback(update,context)
+    if data=='goalreminders': return await goal_reminders_list(update,context)
+    if data.startswith('goalcalendar:'):
+        if data.count(':')==2:
+            return await goal_calendar_callback(update,context)
+    return await _OLD_COMPACT_MENU_CALLBACK_GOALS_UPGRADE(update,context)
+
+# Final text router wrapper: detailed ready-goal fields must win before generic input handlers.
+_OLD_TEXT_ROUTER_GOALS_UPGRADE=text_router
+async def text_router(update,context):
+    if update.message and context.user_data.get('ready_detail_mode'):
+        return await ready_detail_text_save(update,context)
+    return await _OLD_TEXT_ROUTER_GOALS_UPGRADE(update,context)
 
 if __name__ == "__main__":
     main()
