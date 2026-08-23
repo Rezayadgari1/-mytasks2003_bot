@@ -6032,11 +6032,32 @@ async def ai_chat_start(update,context):
     clear_flow(context)
     context.user_data["ai_chat"]=True
     await update.message.reply_text(
-        "🤖 آماده‌ام. سوالت را بفرست؛ پاسخ را از سرویس هوشمند در دسترس دریافت می‌کنم. برای خروج «⬅️ برگشت» یا «🏠 منوی اصلی» را بزن."
+        "🤖 آماده‌ام. سوالت را بفرست؛ پاسخ را از سرویس هوشمند در دسترس دریافت می‌کنم."
         if lang(uid)=="fa" else
-        "🤖 Ready. Send your question and I will use the available AI provider. Use «⬅️ Back» or «🏠 Main Menu» to exit.",
-        reply_markup=nav_keyboard(uid),
+        "🤖 Ready. Send your question and I will use the available AI provider.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back", callback_data="aichat:back"),
+            InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="nav:main"),
+        ]]),
     )
+
+async def ai_chat_navigation_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    action = (q.data or "").split(":", 1)[1] if ":" in (q.data or "") else ""
+    clear_flow(context)
+    try:
+        await q.answer()
+    except Exception:
+        pass
+    fa = lang(uid) == "fa"
+    await q.message.edit_text(
+        "🏠 <b>منوی اصلی</b>\n\nیک بخش را انتخاب کن." if fa else
+        "🏠 <b>Main Menu</b>\n\nChoose a section.",
+        parse_mode="HTML",
+        reply_markup=_compact_root_inline(uid),
+    )
+
 
 async def ai_chat_text(update,context):
     if not context.user_data.get("ai_chat"): return False
@@ -9217,6 +9238,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
+    app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
