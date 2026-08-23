@@ -6321,6 +6321,10 @@ def _security_patch_audit():
     return checks
 
 def health_text():
+    """Compact, RTL-friendly Health Check report for Telegram.
+    Keep each check visually self-contained and translate technical status labels
+    so mixed Persian/English text does not scramble the message direction.
+    """
     c=db()
     rows=c.execute("""
         SELECT service,status,details
@@ -6329,15 +6333,44 @@ def health_text():
         ORDER BY id ASC
     """).fetchall()
     c.close()
-    lines=["🩺 Health Check / چکاپ ربات",""]
+
+    service_fa={
+        "Bot":"🤖 ربات",
+        "Database":"🗄️ پایگاه‌داده",
+        "Customer/Booking":"👥 مشتری و رزرو",
+        "Channel":"📢 کانال",
+        "Scheduler":"⏰ زمان‌بندی",
+        "n8n":"🔗 n8n",
+        "OmniRoute":"🔀 OmniRoute",
+        "Price Sources":"💹 منابع قیمت",
+        "Data Isolation":"🔐 جداسازی داده",
+        "AI":"🤖 هوش مصنوعی",
+        "Feature Access":"🧩 دسترسی قابلیت‌ها",
+        "SQLite Foreign Keys":"🔗 کلیدهای خارجی SQLite",
+        "SQLite Journal":"💾 ژورنال SQLite",
+        "SQLite Sync":"⚙️ همگام‌سازی SQLite",
+        "SQLite integrity":"🛡️ سلامت SQLite",
+    }
+    status_fa={
+        "OK":"سالم", "ERROR":"خطا", "WARN":"هشدار", "OFF":"خاموش"
+    }
+    icon={"OK":"🟢","ERROR":"🔴","WARN":"🟡","OFF":"⚪"}
+    lines=["🩺 <b>چکاپ ربات</b>","<i>وضعیت سرویس‌ها و زیرساخت</i>",""]
     for r in rows:
-        icon={"OK":"🟢","ERROR":"🔴","WARN":"🟡","OFF":"⚪"}.get(r["status"],"⚪")
-        service=re.sub(r"<[^>]+>", "", str(r["service"] or ""))
-        details=re.sub(r"<[^>]+>", "", str(r["details"] or ""))
-        lines.append(f"{icon} {service}: {r['status']}")
+        raw_service=re.sub(r"<[^>]+>", "", str(r["service"] or "")).strip()
+        status=str(r["status"] or "").upper()
+        details=re.sub(r"<[^>]+>", "", str(r["details"] or "")).strip()
+        label=service_fa.get(raw_service, raw_service)
+        st=status_fa.get(status, status)
+        lines.append(f"{icon.get(status,'⚪')} <b>{html.escape(label)}</b> — {html.escape(st)}")
         if details:
-            lines.append(f"   ↳ {details}")
-    return "\n".join(lines)
+            # Keep long technical diagnostics readable on mobile.
+            details=' '.join(details.split())
+            if len(details)>260:
+                details=details[:257]+'…'
+            lines.append(f"   <i>↳ {html.escape(details)}</i>")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 async def scheduled_health_check_job(context):
     """Run the automatic admin health check once per day at the configured time."""
     try:
@@ -6596,6 +6629,14 @@ V25_FEATURE_KEYS = {
     'installments','business_services','business_finance','booking_payments','card_to_card',
     'surveys','sms','voice','vip_plans','market_prices_v25'
 }
+
+
+def _feature_flag_exists(key):
+    try:
+        c=db(); row=c.execute('SELECT 1 FROM feature_flags WHERE key=? LIMIT 1',(str(key),)).fetchone(); c.close()
+        return bool(row)
+    except Exception:
+        return False
 
 V25_FEATURE_LABELS = {
     'unified_hub':'🧠 مرکز فرمان هوشمند',
@@ -7406,7 +7447,7 @@ async def v25_callback(update,context):
             return
         if action=='feat':
             if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            if len(p) < 3 or p[2] not in V25_FEATURE_KEYS: await q.answer('قابلیت نامعتبر است.',show_alert=True); return
+            if len(p) < 3 or not _feature_flag_exists(p[2]): await q.answer('قابلیت نامعتبر است.',show_alert=True); return
             key=p[2]; cur=feature_enabled(key); set_feature(key,not cur,uid); mode='free' if not cur else 'off'; set_feature_access_mode(key,mode,uid); await v25_admin_feature_status(update,context); return
         if action=='voice_retry': context.user_data['v25_voice_mode']=True; await q.message.edit_text('🎙️ ویس اصلاحی را بفرست. من متن جدید را جایگزین می‌کنم.',reply_markup=v25_back(uid)); return
         if action=='voice_edit': await v25_voice_edit(update,context); return
@@ -8095,7 +8136,8 @@ async def v25_admin_feature_status(update,context):
     uid=update.effective_user.id
     if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
     c=db(); rows=c.execute('SELECT key,enabled FROM feature_flags ORDER BY key').fetchall(); c.close()
-    labels=dict(V25_FEATURE_LABELS)
+    labels=dict(FEATURE_LABELS_FA)
+    labels.update(V25_FEATURE_LABELS)
     text='🔧 <b>وضعیت همه قابلیت‌ها</b>\n\n'; kb=[]
     for r in rows:
         label=labels.get(r['key'],r['key'].replace('_',' ')); state='🟢' if r['enabled'] else '🔴'; text+=f'{state} {label}\n'; kb.append([InlineKeyboardButton(f'{state} {label}',callback_data=f'v25:feat:{r["key"]}')])
@@ -8304,7 +8346,7 @@ async def v25_callback(update,context):
             context.user_data['v25_mode']='admin_plan_name'; await q.message.edit_text('📝 نام پلن جدید را بفرست:'); return
         if action=='feat':
             if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            if len(parts) < 3 or parts[2] not in V25_FEATURE_KEYS:
+            if len(parts) < 3 or not _feature_flag_exists(parts[2]):
                 await q.answer('قابلیت نامعتبر است.',show_alert=True); return
             key=parts[2]
             cur=feature_enabled(key)
