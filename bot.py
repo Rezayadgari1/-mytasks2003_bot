@@ -13396,12 +13396,21 @@ async def navigation_callback(update, context):
         except Exception:
             pass
         fa = lang(uid) == "fa"
-        await context.bot.send_message(
-            chat_id=uid,
-            text=_root_menu_text(uid),
-            parse_mode="HTML",
-            reply_markup=compact_keyboard(uid),
-        )
+        # Admins: show user menu directly instead of admin root
+        if admin_is_allowed(uid):
+            await context.bot.send_message(
+                chat_id=uid,
+                text="🏠 <b>منوی اصلی</b>" if fa else "🏠 <b>Main Menu</b>",
+                parse_mode="HTML",
+                reply_markup=_compact_user_keyboard(uid),
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=uid,
+                text=_root_menu_text(uid),
+                parse_mode="HTML",
+                reply_markup=compact_keyboard(uid),
+            )
         return
     if (q.data or "") == "nav:stats":
         try:
@@ -13534,6 +13543,7 @@ async def text_router(update, context):
         text = "👤 <b>حساب من</b>" if fa else "👤 <b>My Account</b>"
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("👤 اطلاعات شخصی" if fa else "👤 Profile", callback_data="profile")],
+            [InlineKeyboardButton("👥 مدیریت مشتریان" if fa else "👥 Customer Management", callback_data="cust:main")],
             [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
             [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language", callback_data="lang"),
              InlineKeyboardButton("⚙️ تنظیمات" if fa else "⚙️ Settings", callback_data="settings")],
@@ -13600,11 +13610,19 @@ async def text_router(update, context):
         except Exception:
             pass
         fa = lang(uid) == "fa"
-        await update.message.reply_text(
-            _root_menu_text(uid),
-            parse_mode="HTML",
-            reply_markup=compact_keyboard(uid),
-        )
+        # Admins: show user menu directly instead of admin root
+        if admin_is_allowed(uid):
+            await update.message.reply_text(
+                "🏠 <b>منوی اصلی</b>" if fa else "🏠 <b>Main Menu</b>",
+                parse_mode="HTML",
+                reply_markup=_compact_user_keyboard(uid),
+            )
+        else:
+            await update.message.reply_text(
+                _root_menu_text(uid),
+                parse_mode="HTML",
+                reply_markup=compact_keyboard(uid),
+            )
         return True
 
     # Back is relative. Use the section recorded when the current flow was
