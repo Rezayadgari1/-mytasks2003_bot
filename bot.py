@@ -11286,6 +11286,7 @@ def _compact_menu_keyboard(uid, section):
 async def _compact_menu_show(update, context, section):
     uid = update.effective_user.id
     fa = lang(uid) == "fa"
+    context.user_data["_nav_parent_section"] = section
     titles = {
         "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
         "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
@@ -13333,12 +13334,28 @@ async def text_router(update, context):
 
     if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
         clear_flow(context)
-        # The ReplyKeyboard is persistent. Remove only the user's navigation
-        # command and do NOT send another visible "🏠 منوی اصلی" message.
         try:
             await update.message.delete()
         except Exception:
             pass
+        # Show user menu if coming from a section
+        parent = context.user_data.get("_nav_parent_section")
+        if parent and parent in ("goals", "reports", "tools", "vip", "account", "support"):
+            fa = lang(uid) == "fa"
+            titles = {
+                "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
+                "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
+                "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+                "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
+                "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
+                "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+            }
+            await update.message.reply_text(
+                titles.get(parent, titles["goals"])[0 if fa else 1],
+                parse_mode="HTML",
+                reply_markup=_compact_menu_keyboard(uid, parent),
+            )
+            return
         return
 
     if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
