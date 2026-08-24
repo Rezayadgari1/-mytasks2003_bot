@@ -11205,6 +11205,65 @@ async def text_router(update, context):
         await update.message.reply_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
         return
 
+    # ===== User Menu Buttons (from _compact_user_keyboard) =====
+    if txt in ("⚡ دسترسی سریع", "⚡ Quick Access"):
+        clear_flow(context)
+        fa = lang(uid) == "fa"
+        text = "⚡ <b>دسترسی سریع</b>\n\nپرتکرارترین قابلیت‌ها:" if fa else "⚡ <b>Quick Access</b>"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ افزودن هدف" if fa else "➕ Add Goal", callback_data="new_goal"),
+             InlineKeyboardButton("📋 لیست اهداف" if fa else "📋 Goals List", callback_data="goals:main")],
+            [InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today"),
+             InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders")],
+            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show"),
+             InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Invite Friends", callback_data="ref:home")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("🎯 برنامه و اهداف", "🎯 Goals & Plan"):
+        clear_flow(context)
+        await _compact_menu_show(update, context, "goals")
+        return
+    if txt in ("📅 تقویم و یادآوری", "📅 Calendar & Reminders"):
+        clear_flow(context)
+        fa = lang(uid) == "fa"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 تقویم من" if fa else "📅 My Calendar", callback_data="goals:calendar")],
+            [InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders", callback_data="goalreminders")],
+            [InlineKeyboardButton("📆 برنامه امروز" if fa else "📆 Today", callback_data="goals:today")],
+        ])
+        await update.message.reply_text("📅 <b>تقویم و یادآوری</b>" if fa else "📅 <b>Calendar & Reminders</b>", parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("👤 حساب من", "👤 My Account"):
+        clear_flow(context)
+        fa = lang(uid) == "fa"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👤 اطلاعات شخصی" if fa else "👤 Personal Info", callback_data="v25:profile")],
+            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
+            [InlineKeyboardButton("👥 مدیریت مشتریان" if fa else "👥 Customers", callback_data="cust:main")],
+            [InlineKeyboardButton("⚙️ تنظیمات" if fa else "⚙️ Settings", callback_data="settings:lang")],
+        ])
+        await update.message.reply_text("👤 <b>حساب من</b>" if fa else "👤 <b>My Account</b>", parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("🎁 پاداش‌های من", "🎁 My Rewards"):
+        clear_flow(context)
+        await xp_command(update, context)
+        return
+    if txt in ("📊 آمار و گزارش", "📊 Reports & Analytics", "📊 Stats & Reports"):
+        clear_flow(context)
+        await show_stats(update, context)
+        return
+    if txt in ("🛠️ ابزارها", "🛠️ Tools"):
+        clear_flow(context)
+        fa = lang(uid) == "fa"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 چت با AI" if fa else "🤖 AI Chat", callback_data="aichat:start"),
+             InlineKeyboardButton("🎙️ دستیار صوتی" if fa else "🎙️ Voice", callback_data="v25:voice")],
+            [InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Prices", callback_data="prices:menu")],
+        ])
+        await update.message.reply_text("🛠️ <b>ابزارها</b>" if fa else "🛠️ <b>Tools</b>", parse_mode="HTML", reply_markup=kb)
+        return
+
     # Every normal legacy button is handled here before any text-input flow.
     legacy_routes = {
         "🎯 اهداف امروز": today, "🎯 Today's Goals": today,
