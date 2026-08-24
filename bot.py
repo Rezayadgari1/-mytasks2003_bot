@@ -536,6 +536,15 @@ def migrate_database(c):
             created_at TEXT NOT NULL
         )""")
         set_schema_version(c, 25)
+    if version < 26:
+        c.execute("""CREATE TABLE IF NOT EXISTS user_channel_membership(
+            user_id INTEGER PRIMARY KEY,
+            joined_at TEXT,
+            left_at TEXT,
+            is_member INTEGER DEFAULT 0,
+            last_check TEXT
+        )""")
+        set_schema_version(c, 26)
     if version < DB_SCHEMA_VERSION:
         set_schema_version(c, DB_SCHEMA_VERSION)
 
@@ -1650,6 +1659,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.exception("Referral success notification failed")
     if not await require_subscription(update, context):
         return
+    # Forced subscription check (admin-configurable)
+    if _forced_sub_is_enabled():
+        is_ok, result = _forced_sub_enforce(uid)
+        if not is_ok:
+            msg, kb = result
+            await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+            return
     info = user_info(uid)
 
     if info["gender"] is None:
@@ -10338,6 +10354,304 @@ def keyboard(uid):
 
 
 
+# ---------- Forced Subscription Management ----------
+# Admin-configurable mandatory channel membership with duration enforcement.
+# Keys in system_settings: forced_sub_enabled, forced_sub_duration_type, forced_sub_duration_value,
+# forced_sub_channel_url, forced_sub_message
+
+def _forced_sub_get(key, default=""):
+    c = db()
+    r = c.execute("SELECT value FROM system_settings WHERE key=?", (key,)).fetchone()
+    c.close()
+    return r["value"] if r else default
+
+def _forced_sub_set(key, value):
+    c = db()
+    now_iso = datetime.now(TZ).isoformat()
+    c.execute("INSERT OR REPLACE INTO system_settings(key,value,updated_at) VALUES(?,?,?)", (key, str(value), now_iso))
+    c.commit()
+    c.close()
+
+def _forced_sub_is_enabled():
+    return _forced_sub_get("forced_sub_enabled", "0") == "1"
+
+def _forced_sub_duration_hours():
+    """Return required membership duration in hours. 0 = forever, -1 = disabled."""
+    if not _forced_sub_is_enabled():
+        return -1
+    dtype = _forced_sub_get("forced_sub_duration_type", "hours")
+    try:
+        dval = int(_forced_sub_get("forced_sub_duration_value", "24"))
+    except (ValueError, TypeError):
+        dval = 24
+    if dtype == "forever":
+        return 0  # 0 means forever
+    elif dtype == "days":
+        return dval * 24
+    else:  # hours
+        return dval
+
+def _forced_sub_record_join(uid):
+    """Record when a user joins the channel."""
+    c = db()
+    now_iso = datetime.now(TZ).isoformat()
+    c.execute("INSERT OR REPLACE INTO user_channel_membership(user_id,joined_at,last_check,is_member) VALUES(?,?,?,1)",
+              (uid, now_iso, now_iso))
+    c.commit()
+    c.close()
+
+def _forced_sub_record_leave(uid):
+    """Record when a user leaves the channel."""
+    c = db()
+    now_iso = datetime.now(TZ).isoformat()
+    c.execute("UPDATE user_channel_membership SET left_at=?,is_member=0,last_check=? WHERE user_id=?",
+              (now_iso, now_iso, uid))
+    c.commit()
+    c.close()
+
+def _forced_sub_check_user(uid):
+    """Check if a user's membership is still valid. Returns True if OK."""
+    required_hours = _forced_sub_duration_hours()
+    if required_hours == -1:
+        return True  # not enabled
+    c = db()
+    r = c.execute("SELECT joined_at,is_member FROM user_channel_membership WHERE user_id=?", (uid,)).fetchone()
+    c.close()
+    if not r:
+        return True  # no record = not tracked yet
+    if required_hours == 0:
+        return bool(r["is_member"])  # forever: must be member now
+    if not r["is_member"]:
+        return False  # left channel
+    if r["joined_at"]:
+        joined = datetime.fromisoformat(r["joined_at"])
+        elapsed = (datetime.now(TZ) - joined).total_seconds() / 3600
+        if elapsed < required_hours:
+            return False  # hasn't stayed long enough
+    return True
+
+def _forced_sub_enforce(uid):
+    """Enforce forced subscription. Returns (is_ok, message_or_None)."""
+    if not _forced_sub_is_enabled():
+        return True, None
+    if not _forced_sub_check_user(uid):
+        channel_url = _forced_sub_get("forced_sub_channel_url", "")
+        msg = _forced_sub_get("forced_sub_message", "")
+        if not msg:
+            dtype = _forced_sub_get("forced_sub_duration_type", "hours")
+            try:
+                dval = int(_forced_sub_get("forced_sub_duration_value", "24"))
+            except (ValueError, TypeError):
+                dval = 24
+            if dtype == "forever":
+                duration_text = f"باید دائمی عضو کانال باشید"
+            elif dtype == "days":
+                duration_text = f"باید حداقل {dval} روز عضو کانال باشید"
+            else:
+                duration_text = f"باید حداقل {dval} ساعت عضو کانال باشید"
+            msg = f"🔒 {duration_text}\n\nبرای استفاده از ربات، ابتدا عضو کانال شوید و حداقل زمان مشخص‌شده را بمانید."
+        kb_lines = []
+        if channel_url:
+            kb_lines.append([InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)])
+        kb_lines.append([InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")])
+        kb = InlineKeyboardMarkup(kb_lines) if kb_lines else None
+        return False, (msg, kb)
+    return True, None
+
+
+async def _forced_sub_admin_panel(update, context):
+    """Show the forced subscription admin panel."""
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    enabled = _forced_sub_is_enabled()
+    dtype = _forced_sub_get("forced_sub_duration_type", "hours")
+    dval = _forced_sub_get("forced_sub_duration_value", "24")
+    channel_url = _forced_sub_get("forced_sub_channel_url", "")
+    
+    dtype_labels = {"hours": "ساعت", "days": "روز", "forever": "دائمی"}
+    dtype_label = dtype_labels.get(dtype, dtype)
+    
+    status = "🟢 فعال" if enabled else "🔴 غیرفعال"
+    duration = "دائمی" if dtype == "forever" else f"{dval} {dtype_label}"
+    
+    text = (
+        f"🔒 <b>عضویت اجباری کانال</b>\n\n"
+        f"وضعیت: {status}\n"
+        f"مدت الزامی: {duration}\n"
+        f"کانال: {html.escape(channel_url or 'تنظیم نشده')}\n\n"
+        f"👥 <b>وضعیت کاربران:</b>\n"
+    )
+    
+    # Get user stats
+    c = db()
+    total = c.execute("SELECT COUNT(*) n FROM user_channel_membership").fetchone()["n"]
+    members = c.execute("SELECT COUNT(*) n FROM user_channel_membership WHERE is_member=1").fetchone()["n"]
+    c.close()
+    
+    text += f"📊 ثبت‌شده: {total}\n✅ عضو فعال: {members}\n"
+    
+    kb = [
+        [InlineKeyboardButton("🟢 فعال‌سازی" if not enabled else "🔴 غیرفعال‌سازی", callback_data="forcedsub:toggle")],
+        [InlineKeyboardButton("⏱️ تنظیم مدت", callback_data="forcedsub:duration")],
+        [InlineKeyboardButton("🔗 تنظیم لینک کانال", callback_data="forcedsub:channel")],
+        [InlineKeyboardButton("✉️ تنظیم پیام", callback_data="forcedsub:message")],
+        [InlineKeyboardButton("👥 لیست کاربران", callback_data="forcedsub:users")],
+        [InlineKeyboardButton("🔄 بررسی همه", callback_data="forcedsub:check_all")],
+        [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:system")],
+    ]
+    
+    if update.callback_query:
+        await update.callback_query.answer()
+        try:
+            await update.callback_query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+        except Exception:
+            await update.callback_query.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+
+
+async def forced_sub_callback(update, context):
+    """Handle forced subscription admin callbacks."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True)
+        return
+    
+    data = q.data or ""
+    if not data.startswith("forcedsub:"):
+        return
+    action = data[10:]
+    
+    if action == "toggle":
+        current = _forced_sub_get("forced_sub_enabled", "0")
+        _forced_sub_set("forced_sub_enabled", "0" if current == "1" else "1")
+        await _forced_sub_admin_panel(update, context)
+    elif action == "duration":
+        text = (
+            "⏱️ <b>مدت عضویت الزامی</b>\n\n"
+            "مدت موردنظر را انتخاب کنید:"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⏰ ۱ ساعت", callback_data="forcedsub:set_dur:1:hours"),
+             InlineKeyboardButton("⏰ ۶ ساعت", callback_data="forcedsub:set_dur:6:hours"),
+             InlineKeyboardButton("⏰ ۲۴ ساعت", callback_data="forcedsub:set_dur:24:hours")],
+            [InlineKeyboardButton("📅 ۳ روز", callback_data="forcedsub:set_dur:3:days"),
+             InlineKeyboardButton("📅 ۷ روز", callback_data="forcedsub:set_dur:7:days"),
+             InlineKeyboardButton("📅 ۳۰ روز", callback_data="forcedsub:set_dur:30:days")],
+            [InlineKeyboardButton("♾️ دائمی", callback_data="forcedsub:set_dur:0:forever")],
+            [InlineKeyboardButton("✏️ مدت دلخواه", callback_data="forcedsub:custom_dur")],
+            [InlineKeyboardButton("⬅️ بازگشت", callback_data="forcedsub:home")],
+        ])
+        await q.answer()
+        try:
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await q.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+    elif action.startswith("set_dur:"):
+        parts = action.split(":")
+        dval = int(parts[1])
+        dtype = parts[2]
+        _forced_sub_set("forced_sub_duration_type", dtype)
+        _forced_sub_set("forced_sub_duration_value", str(dval))
+        await q.answer("✅ ذخیره شد", show_alert=True)
+        await _forced_sub_admin_panel(update, context)
+    elif action == "custom_dur":
+        context.user_data["forced_sub_wait"] = "custom_duration"
+        await q.answer()
+        await q.message.reply_text(
+            "✏️ <b>مدت دلخواه</b>\n\n"
+            "تعداد را بفرستید (مثلاً 48 برای ۴۸ ساعت یا 5 برای ۵ روز):\n"
+            "در انتها بنویسید 'h' برای ساعت یا 'd' برای روز\n"
+            "مثال: <code>48h</code> یا <code>7d</code>",
+            parse_mode="HTML"
+        )
+    elif action == "channel":
+        context.user_data["forced_sub_wait"] = "channel_url"
+        await q.answer()
+        await q.message.reply_text(
+            "🔗 <b>لینک کانال</b>\n\n"
+            "لینک دعوت کانال را بفرستید:",
+            parse_mode="HTML"
+        )
+    elif action == "message":
+        context.user_data["forced_sub_wait"] = "custom_message"
+        await q.answer()
+        await q.message.reply_text(
+            "✉️ <b>پیام اختصاصی</b>\n\n"
+            "پیامی که کاربران غیرعضو می‌بینند را بفرستید:\n"
+            "(با <code>{duration}</code> مدت الزامی جایگذاری می‌شود)",
+            parse_mode="HTML"
+        )
+    elif action == "users":
+        c = db()
+        rows = c.execute("""
+            SELECT u.user_id, u.first_name, m.joined_at, m.is_member, m.left_at
+            FROM user_channel_membership m
+            JOIN users u ON u.user_id = m.user_id
+            ORDER BY m.is_member DESC, m.joined_at DESC
+            LIMIT 30
+        """).fetchall()
+        c.close()
+        lines = ["👥 <b>وضعیت عضویت کاربران</b>", ""]
+        for r in rows:
+            status = "🟢 عضو" if r["is_member"] else "🔴 ترک‌کرده"
+            joined = (r["joined_at"] or "")[:16]
+            lines.append(f"{status} | {r['first_name'] or 'بدون نام'} | ID: <code>{r['user_id']}</code> | {joined}")
+        if not rows:
+            lines.append("هیچ رکوردی ثبت نشده.")
+        text = "\n".join(lines)
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ بازگشت", callback_data="forcedsub:home")]])
+        await q.answer()
+        try:
+            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            await q.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+    elif action == "check_all":
+        if not _forced_sub_is_enabled():
+            await q.answer("سیستم غیرفعال است.", show_alert=True)
+            return
+        required_hours = _forced_sub_duration_hours()
+        c = db()
+        rows = c.execute("SELECT user_id FROM user_channel_membership WHERE is_member=0").fetchall()
+        c.close()
+        bot = context.bot
+        blocked_count = 0
+        for r in rows:
+            uid_check = r["user_id"]
+            if uid_check in ADMIN_IDS:
+                continue
+            if not _forced_sub_check_user(uid_check):
+                c = db()
+                c.execute("UPDATE users SET blocked=1 WHERE user_id=? AND COALESCE(blocked,0)=0", (uid_check,))
+                c.commit()
+                c.close()
+                blocked_count += 1
+        await q.answer(f"🔍 {blocked_count} کاربر محدود شد", show_alert=True)
+        await _forced_sub_admin_panel(update, context)
+    elif action == "home":
+        await _forced_sub_admin_panel(update, context)
+
+
+async def forced_sub_check_callback(update, context):
+    """Handle forcedsub:check callback from users."""
+    q = update.callback_query
+    uid = q.from_user.id
+    is_ok, result = _forced_sub_enforce(uid)
+    if is_ok:
+        await q.answer("✅ عضویت شما تأیید شد.", show_alert=True)
+        fa = lang(uid) == "fa"
+        await q.message.reply_text(
+            "✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانید از امکانات ربات استفاده کنید.",
+            parse_mode="HTML",
+            reply_markup=keyboard(uid)
+        )
+    else:
+        msg, kb = result
+        await q.answer("❌ عضویت تأیید نشد.", show_alert=True)
+        await q.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+
+
 async def _show_admin_section(update, context, section):
     """Show a specific admin section with the management ReplyKeyboard as back."""
     uid = update.effective_user.id
@@ -10432,13 +10746,18 @@ async def _show_admin_section(update, context, section):
     elif section == 'system':
         paused = get_system_setting('bot_paused_until', '')
         maintenance = feature_enabled('maintenance')
+        forced_sub_status = "🟢 فعال" if _forced_sub_is_enabled() else "🔴 غیرفعال"
         text = (
             f"⚙️ <b>تنظیمات سیستم</b>\n\n"
             f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
             f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
+            f"🔒 عضویت اجباری: {forced_sub_status}\n"
             f"🗄 Schema: {DB_SCHEMA_VERSION}"
         )
-        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔒 عضویت اجباری کانال", callback_data="forcedsub:home")],
+        ])
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=kb)
     elif section == 'other':
         text = "📦 <b>سایر ماژول‌های مدیریتی</b>\n\nاز منوی زیر بخش موردنظر را انتخاب کن." if fa else "📦 <b>Other Admin Modules</b>"
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
@@ -10775,6 +11094,47 @@ async def text_router(update, context):
         await _show_admin_section(update, context, _admin_section_map[txt])
         return
 
+    # Forced subscription text input handlers
+    if context.user_data.get("forced_sub_wait") == "custom_duration":
+        context.user_data.pop("forced_sub_wait", None)
+        txt_stripped = txt.strip().lower()
+        if txt_stripped.endswith("h"):
+            try:
+                dval = int(txt_stripped[:-1])
+                if dval > 0:
+                    _forced_sub_set("forced_sub_duration_type", "hours")
+                    _forced_sub_set("forced_sub_duration_value", str(dval))
+                    await update.message.reply_text(f"✅ مدت {dval} ساعت ذخیره شد.")
+                    return
+            except ValueError:
+                pass
+        elif txt_stripped.endswith("d"):
+            try:
+                dval = int(txt_stripped[:-1])
+                if dval > 0:
+                    _forced_sub_set("forced_sub_duration_type", "days")
+                    _forced_sub_set("forced_sub_duration_value", str(dval))
+                    await update.message.reply_text(f"✅ مدت {dval} روز ذخیره شد.")
+                    return
+            except ValueError:
+                pass
+        await update.message.reply_text("⚠️ فرمت نادرست. مثال: 48h یا 7d")
+        return
+    if context.user_data.get("forced_sub_wait") == "channel_url":
+        context.user_data.pop("forced_sub_wait", None)
+        url = txt.strip()
+        if url.startswith("https://t.me/") or url.startswith("http://t.me/"):
+            _forced_sub_set("forced_sub_channel_url", url)
+            await update.message.reply_text(f"✅ لینک کانال ذخیره شد:\n{url}")
+        else:
+            await update.message.reply_text("⚠️ لینک معتبر نیست. باید با https://t.me/ شروع شود.")
+        return
+    if context.user_data.get("forced_sub_wait") == "custom_message":
+        context.user_data.pop("forced_sub_wait", None)
+        _forced_sub_set("forced_sub_message", txt)
+        await update.message.reply_text("✅ پیام اختصاصی ذخیره شد.")
+        return
+
     # V25 modules must also have priority over transient legacy input states.
     v25_routes = {
         "🧠 مرکز من": v25_hub,
@@ -11021,6 +11381,9 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
 
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
+    app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:"))
+    app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$"))
+    app.add_handler(ChatMemberUpdatedHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
@@ -15769,6 +16132,32 @@ async def poll_callback(update, context):
         )
     except Exception:
         pass
+
+
+
+# ---------- Channel Membership Tracking ----------
+async def track_channel_membership(update, context):
+    """Track when users join/leave the required channel."""
+    try:
+        chat_member = update.chat_member
+        if not chat_member:
+            return
+        user = chat_member.new_chat_member.user if hasattr(chat_member, 'new_chat_member') else None
+        if not user or user.is_bot:
+            return
+        uid = user.id
+        old_status = getattr(chat_member.old_chat_member, 'status', None)
+        new_status = getattr(chat_member.new_chat_member, 'status', None)
+        if old_status == new_status:
+            return
+        # Track join
+        if new_status in ('member', 'administrator', 'creator') and old_status in ('left', 'kicked', None):
+            _forced_sub_record_join(uid)
+        # Track leave
+        elif new_status in ('left', 'kicked') and old_status in ('member', 'administrator', 'creator'):
+            _forced_sub_record_leave(uid)
+    except Exception:
+        logger.exception("track_channel_membership failed")
 
 if __name__ == "__main__":
     main()
