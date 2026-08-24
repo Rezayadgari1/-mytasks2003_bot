@@ -669,9 +669,46 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,admin_id INTEGER,action TEXT,target_user INTEGER,details TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS xp_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,amount INTEGER NOT NULL,reason TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals(id INTEGER PRIMARY KEY AUTOINCREMENT,inviter_id INTEGER NOT NULL,invited_id INTEGER UNIQUE NOT NULL,created_at TEXT NOT NULL,rewarded INTEGER NOT NULL DEFAULT 0)""")
+    # --- Enhanced Referral System Tables ---
+    c.execute("""CREATE TABLE IF NOT EXISTS referral_settings(
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS referral_campaigns(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT UNIQUE NOT NULL,
+        referrer_reward INTEGER DEFAULT 10, invitee_reward INTEGER DEFAULT 5,
+        success_condition TEXT DEFAULT 'first_goal', enabled INTEGER DEFAULT 1,
+        start_date TEXT, end_date TEXT, created_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS referral_tiers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tier_name TEXT NOT NULL,
+        required_referrals INTEGER NOT NULL, reward_type TEXT NOT NULL,
+        reward_amount INTEGER NOT NULL, reward_days INTEGER,
+        created_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS referral_logs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+        action TEXT NOT NULL, target_user INTEGER, details TEXT,
+        created_at TEXT NOT NULL
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS content_feedback(id INTEGER PRIMARY KEY AUTOINCREMENT,post_key TEXT,user_id INTEGER,rating INTEGER,reaction TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS content_preferences(user_id INTEGER,category TEXT,score INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,category))""")
 
+    # --- Referral system default settings ---
+    _ref_defaults = {
+        "ref_system_enabled": "1", "ref_reward_enabled": "1",
+        "ref_bilateral_reward": "1", "ref_tokens_per_success": "10",
+        "ref_invitee_tokens": "5", "ref_vip_milestone": "10",
+        "ref_vip_days": "30", "ref_success_condition": "first_goal",
+        "ref_daily_limit": "50", "ref_weekly_limit": "200",
+        "ref_monthly_limit": "800", "ref_auto_approve": "1",
+        "ref_leaderboard_enabled": "1", "ref_campaign_active": "0",
+        "ref_custom_invite_text": "👋 من از ربات MyTasks استفاده می‌کنم. تو هم امتحان کن!",
+    }
+    for _k, _v in _ref_defaults.items():
+        _exists = c.execute("SELECT 1 FROM referral_settings WHERE key=?", (_k,)).fetchone()
+        if not _exists:
+            c.execute("INSERT INTO referral_settings(key,value,updated_at) VALUES(?,?,?)",
+                      (_k, _v, datetime.now(TZ).isoformat()))
     # Production indexes and idempotency tables.
     c.executescript("""
     CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active_at);
@@ -9595,9 +9632,241 @@ def token_backfill_existing_users():
     finally:
         c.close()
 
+# ===================== ENHANCED REFERRAL SYSTEM =====================
+
+def ref_get(key, default=""):
+    """Read a referral setting."""
+    try:
+        c = db(); r = c.execute("SELECT value FROM referral_settings WHERE key=?", (key,)).fetchone()
+        c.close(); return r["value"] if r else default
+    except Exception:
+        return default
+
+def ref_set(key, value):
+    """Write a referral setting."""
+    try:
+        c = db(); now = datetime.now(TZ).isoformat()
+        c.execute("INSERT INTO referral_settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                  (key, str(value), now)); c.commit(); c.close()
+    except Exception:
+        pass
+
+def ref_log(user_id, action, target_user=None, details=""):
+    """Log a referral event."""
+    try:
+        c = db(); c.execute("INSERT INTO referral_logs(user_id,action,target_user,details,created_at) VALUES(?,?,?,?,?)",
+                            (user_id, action, target_user, details[:500], datetime.now(TZ).isoformat()))
+        c.commit(); c.close()
+    except Exception:
+        pass
+
+def get_or_create_referral_code(uid):
+    """Get or create a unique referral code for a user."""
+    c = db()
+    r = c.execute("SELECT referral_code FROM users WHERE user_id=?", (uid,)).fetchone()
+    if r and r["referral_code"]:
+        c.close(); return r["referral_code"]
+    code = secrets.token_urlsafe(10)
+    c.execute("UPDATE users SET referral_code=? WHERE user_id=?", (code, uid))
+    c.commit(); c.close()
+    return code
+
+def validate_referral_code(code):
+    """Validate a referral code and return the inviter's user_id or None."""
+    if not code or len(code) < 5:
+        return None
+    c = db()
+    r = c.execute("SELECT user_id FROM users WHERE referral_code=?", (code,)).fetchone()
+    c.close()
+    return r["user_id"] if r else None
+
+def register_referral(inviter_uid, invitee_uid, source="link"):
+    """Register a new referral. Returns True if successful."""
+    if inviter_uid == invitee_uid:
+        return False  # Self-referral blocked
+    if int(ref_get("ref_daily_limit", "50")) <= 0:
+        return False
+    c = db()
+    try:
+        existing = c.execute("SELECT id FROM referrals WHERE invited_id=?", (invitee_uid,)).fetchone()
+        if existing:
+            c.close(); return False  # Already registered
+        # Anti-fraud: check inviter's daily limit
+        today = datetime.now(TZ).date().isoformat()
+        daily_count = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND substr(created_at,1,10)=?",
+                                (inviter_uid, today)).fetchone()["n"]
+        if daily_count >= int(ref_get("ref_daily_limit", "50")):
+            c.close(); return False
+        now = datetime.now(TZ).isoformat()
+        c.execute("INSERT INTO referrals(inviter_id,invited_id,created_at,source,status) VALUES(?,?,?,?,?)",
+                  (inviter_uid, invitee_uid, now, source, "registered"))
+        c.execute("UPDATE users SET referrer_id=? WHERE user_id=?", (inviter_uid, invitee_uid))
+        c.commit(); c.close()
+        ref_log(invitee_uid, "registered", inviter_uid, f"source={source}")
+        return True
+    except Exception:
+        try: c.close()
+        except: pass
+        return False
+
+def check_referral_success(invitee_uid):
+    """Check if a referral meets the success condition."""
+    condition = ref_get("ref_success_condition", "first_goal")
+    c = db()
+    try:
+        r = c.execute("SELECT inviter_id FROM referrals WHERE invited_id=? AND status='registered'", (invitee_uid,)).fetchone()
+        if not r:
+            c.close(); return None
+        inviter_id = r["inviter_id"]
+        if condition == "first_goal":
+            goals = c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=?", (invitee_uid,)).fetchone()["n"]
+            if goals >= 1:
+                c.execute("UPDATE referrals SET status='success' WHERE invited_id=?", (invitee_uid,))
+                c.commit(); c.close()
+                return inviter_id
+        elif condition == "first_activity":
+            acts = c.execute("SELECT COUNT(*) n FROM activity_log WHERE user_id=?", (invitee_uid,)).fetchone()["n"]
+            if acts >= 3:
+                c.execute("UPDATE referrals SET status='success' WHERE invited_id=?", (invitee_uid,))
+                c.commit(); c.close()
+                return inviter_id
+        elif condition == "any":
+            c.execute("UPDATE referrals SET status='success' WHERE invited_id=?", (invitee_uid,))
+            c.commit(); c.close()
+            return inviter_id
+        c.close()
+        return None
+    except Exception:
+        try: c.close()
+        except: pass
+        return None
+
+def award_referral_reward(inviter_id, invitee_id):
+    """Award referral rewards. Returns True if rewarded."""
+    if ref_get("ref_reward_enabled", "1") != "1":
+        return False
+    c = db()
+    try:
+        r = c.execute("SELECT id FROM referrals WHERE inviter_id=? AND invited_id=? AND status='success' AND rewarded=0",
+                      (inviter_id, invitee_id)).fetchone()
+        if not r:
+            c.close(); return False
+        now = datetime.now(TZ).isoformat()
+        referrer_tokens = int(ref_get("ref_tokens_per_success", "10"))
+        invitee_tokens = int(ref_get("ref_invitee_tokens", "5"))
+        # Award referrer
+        reward_key = f"ref:{inviter_id}:{invitee_id}"
+        existing = c.execute("SELECT 1 FROM reward_log WHERE reward_key=?", (reward_key,)).fetchone()
+        if not existing:
+            c.execute("INSERT INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
+                      (reward_key, inviter_id, "referral_tokens", referrer_tokens, now))
+            # Add tokens to referrer wallet
+            c.execute("INSERT OR IGNORE INTO token_wallets(user_id,balance,updated_at) VALUES(?,?,?)",
+                      (inviter_id, 0, now))
+            c.execute("UPDATE token_wallets SET balance=balance+?,updated_at=? WHERE user_id=?",
+                      (referrer_tokens, now, inviter_id))
+            ref_log(inviter_id, "rewarded", invitee_id, f"tokens={referrer_tokens}")
+        # Bilateral reward
+        if ref_get("ref_bilateral_reward", "1") == "1" and invitee_tokens > 0:
+            inv_key = f"ref_invitee:{invitee_id}"
+            inv_existing = c.execute("SELECT 1 FROM reward_log WHERE reward_key=?", (inv_key,)).fetchone()
+            if not inv_existing:
+                c.execute("INSERT INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
+                          (inv_key, invitee_id, "referral_invitee_tokens", invitee_tokens, now))
+                c.execute("INSERT OR IGNORE INTO token_wallets(user_id,balance,updated_at) VALUES(?,?,?)",
+                          (invitee_id, 0, now))
+                c.execute("UPDATE token_wallets SET balance=balance+?,updated_at=? WHERE user_id=?",
+                          (invitee_tokens, now, invitee_id))
+                ref_log(invitee_id, "invitee_rewarded", inviter_id, f"tokens={invitee_tokens}")
+        # Mark as rewarded
+        c.execute("UPDATE referrals SET rewarded=1 WHERE inviter_id=? AND invited_id=?", (inviter_id, invitee_id))
+        # Check VIP milestone
+        milestone = int(ref_get("ref_vip_milestone", "10"))
+        vip_days = int(ref_get("ref_vip_days", "30"))
+        total_success = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND status='success' AND rewarded=1",
+                                  (inviter_id,)).fetchone()["n"]
+        if milestone > 0 and total_success > 0 and total_success % milestone == 0:
+            vip_key = f"ref_vip_milestone:{inviter_id}:{total_success}"
+            vip_existing = c.execute("SELECT 1 FROM reward_log WHERE reward_key=?", (vip_key,)).fetchone()
+            if not vip_existing:
+                c.execute("INSERT INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
+                          (vip_key, inviter_id, "referral_vip_days", vip_days, now))
+                c.execute("UPDATE users SET vip_until=MAX(COALESCE(vip_until,?), DATE(?, '+' || ? || ' days')) WHERE user_id=?",
+                          (now, now, vip_days, inviter_id))
+                ref_log(inviter_id, "vip_milestone", invitee_id, f"days={vip_days},total={total_success}")
+        c.commit(); c.close()
+        return True
+    except Exception:
+        try: c.close()
+        except: pass
+        return False
+
+def get_referral_stats(uid):
+    """Get referral statistics for a user."""
+    c = db()
+    try:
+        total = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?", (uid,)).fetchone()["n"]
+        success = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND status='success'", (uid,)).fetchone()["n"]
+        pending = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND status='registered'", (uid,)).fetchone()["n"]
+        rewarded = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND rewarded=1", (uid,)).fetchone()["n"]
+        tokens_earned = c.execute("SELECT COALESCE(SUM(amount),0) t FROM reward_log WHERE user_id=? AND reward_type LIKE 'referral_%'",
+                                  (uid,)).fetchone()["t"]
+        code = get_or_create_referral_code(uid)
+        invited = c.execute("SELECT r.*, u.first_name FROM referrals r LEFT JOIN users u ON u.user_id=r.invited_id WHERE r.inviter_id=? ORDER BY r.created_at DESC",
+                            (uid,)).fetchall()
+        c.close()
+        return {"total": total, "success": success, "pending": pending, "rewarded": rewarded,
+                "tokens_earned": tokens_earned, "code": code, "invited": invited}
+    except Exception:
+        try: c.close()
+        except: pass
+        return {"total": 0, "success": 0, "pending": 0, "rewarded": 0, "tokens_earned": 0, "code": "", "invited": []}
+
+def get_admin_referral_stats():
+    """Get system-wide referral statistics for admin."""
+    c = db()
+    try:
+        total = c.execute("SELECT COUNT(*) n FROM referrals").fetchone()["n"]
+        success = c.execute("SELECT COUNT(*) n FROM referrals WHERE status='success'").fetchone()["n"]
+        pending = c.execute("SELECT COUNT(*) n FROM referrals WHERE status='registered'").fetchone()["n"]
+        rewarded = c.execute("SELECT COUNT(*) n FROM referrals WHERE rewarded=1").fetchone()["n"]
+        total_tokens = c.execute("SELECT COALESCE(SUM(amount),0) t FROM reward_log WHERE reward_type LIKE 'referral_%'").fetchone()["t"]
+        top_referrers = c.execute("""SELECT inviter_id, u.first_name, COUNT(*) n FROM referrals r
+            JOIN users u ON u.user_id=r.inviter_id WHERE r.status='success' GROUP BY inviter_id ORDER BY n DESC LIMIT 10""").fetchall()
+        c.close()
+        return {"total": total, "success": success, "pending": pending, "rewarded": rewarded,
+                "total_tokens": total_tokens, "top_referrers": top_referrers}
+    except Exception:
+        try: c.close()
+        except: pass
+        return {"total": 0, "success": 0, "pending": 0, "rewarded": 0, "total_tokens": 0, "top_referrers": []}
+
+def referral_leaderboard(period="all"):
+    """Get referral leaderboard."""
+    c = db()
+    try:
+        where = ""
+        if period == "weekly":
+            week_ago = (datetime.now(TZ) - timedelta(days=7)).isoformat()
+            where = f" AND r.created_at >= '{week_ago[:10]}'"
+        elif period == "monthly":
+            month_ago = (datetime.now(TZ) - timedelta(days=30)).isoformat()
+            where = f" AND r.created_at >= '{month_ago[:10]}'"
+        rows = c.execute(f"""SELECT r.inviter_id, u.first_name, COUNT(*) n FROM referrals r
+            JOIN users u ON u.user_id=r.inviter_id WHERE r.status='success'{where}
+            GROUP BY r.inviter_id ORDER BY n DESC LIMIT 20""").fetchall()
+        c.close()
+        return rows
+    except Exception:
+        try: c.close()
+        except: pass
+        return []
+
 def token_referral_reward(inviter_id, invited_id):
-    amount=int(token_setting("referral_tokens_per_success","10") or 10)
-    return add_tokens(int(inviter_id),amount,"successful_referral",f"referral:{inviter_id}:{invited_id}")
+    """Legacy compatibility: award referral reward."""
+    return award_referral_reward(int(inviter_id), int(invited_id))
+
+# ===================== END ENHANCED REFERRAL SYSTEM =====================
 
 def tokens_from_xp(uid):
     per=int(token_setting("xp_per_token","100") or 100)
