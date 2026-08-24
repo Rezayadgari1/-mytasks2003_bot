@@ -1587,6 +1587,9 @@ def subscription_keyboard():
 
 async def require_subscription(update, context):
     uid = update.effective_user.id
+    # Owner/admin is exempt from forced subscription
+    if admin_guard(uid):
+        return True
     if await is_channel_member(context.bot, uid):
         return True
 
@@ -1660,7 +1663,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await require_subscription(update, context):
         return
     # Forced subscription check (admin-configurable)
-    if _forced_sub_is_enabled():
+    # Owner is exempt - check before enforce function
+    if _forced_sub_is_enabled() and not admin_guard(uid):
         is_ok, result = _forced_sub_enforce(uid)
         if not is_ok:
             msg, kb = result
@@ -10433,6 +10437,9 @@ def _forced_sub_check_user(uid):
 def _forced_sub_enforce(uid):
     """Enforce forced subscription. Returns (is_ok, message_or_None)."""
     if not _forced_sub_is_enabled():
+        return True, None
+    # Owner/admin is exempt
+    if admin_guard(uid):
         return True, None
     if not _forced_sub_check_user(uid):
         channel_url = _forced_sub_get("forced_sub_channel_url", "")
