@@ -619,6 +619,8 @@ def init_db():
         c.execute("ALTER TABLE goals ADD COLUMN priority INTEGER NOT NULL DEFAULT 2")
     if "duration_minutes" not in goal_columns:
         c.execute("ALTER TABLE goals ADD COLUMN duration_minutes INTEGER")
+    if "condition" not in goal_columns:
+        c.execute("ALTER TABLE goals ADD COLUMN condition TEXT")
     c.execute("""CREATE TABLE IF NOT EXISTS user_settings(
         user_id INTEGER PRIMARY KEY, reminders_enabled INTEGER NOT NULL DEFAULT 1,
         ai_daily_used INTEGER NOT NULL DEFAULT 0, ai_used_date TEXT)""")
@@ -1113,11 +1115,11 @@ def parse_time(s):
     return None
 
 
-def add_goal(uid, name, category, reminder, priority=2, duration_minutes=None):
+def add_goal(uid, name, category, reminder, priority=2, duration_minutes=None, condition=None):
     c = db()
     c.execute(
-        "INSERT INTO goals(user_id,name,category,reminder_time,priority,duration_minutes,created_at) VALUES(?,?,?,?,?,?,?)",
-        (uid, name, category, reminder, priority, duration_minutes, datetime.now(TZ).isoformat()),
+        "INSERT INTO goals(user_id,name,category,reminder_time,priority,duration_minutes,condition,created_at) VALUES(?,?,?,?,?,?,?,?)",
+        (uid, name, category, reminder, priority, duration_minutes, condition, datetime.now(TZ).isoformat()),
     )
     c.commit()
     c.close()
@@ -1941,7 +1943,25 @@ async def duration_callback(update, context):
         await q.message.edit_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).")
         return
     context.user_data["duration_minutes"] = None if value=="0" else int(value)
-    await q.message.edit_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
+    await q.message.edit_text(
+        "⚙️ این هدف شرط اجرا داره؟" if lang(uid)=="fa" else "⚙️ Does this goal have an execution condition?",
+        reply_markup=condition_keyboard(uid),
+    )
+
+
+@subscription_required
+async def condition_callback(update, context):
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    value = q.data.split(":", 1)[1]
+    cond_map = {"none":None,"weather":"☀️ اگر هوا خوب بود","time":"⏰ اگر وقت داشتم","home":"🏠 اگر در خانه بودم","work":"🏢 اگر سر کار بودم","energy":"💡 اگر انرژی داشتم","mood":"😊 اگر حالم خوب بود"}
+    if value == "custom":
+        context.user_data["awaiting_custom_condition"] = True
+        await q.message.edit_text("✏️ شرط دلخواه را بنویس (مثلاً: اگر باران نبارد)." if lang(uid)=="fa" else "✏️ Write your custom condition (e.g.: if it doesn't rain).")
+        return
+    context.user_data["condition"] = cond_map.get(value)
+    await q.message.edit_text(T[lang(uid)]["choose_time"], reply_markup=time_keyboard(uid))
 
 
 @subscription_required
@@ -1968,7 +1988,7 @@ async def time_callback(update, context):
 
     priority = context.user_data.get("priority", 2)
     duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration)
+    add_goal(uid, name, category, reminder, priority, duration, context.user_data.get("condition"))
     context.user_data.clear()
     log_activity(uid, "goal_created")
     # Callback messages accept InlineKeyboardMarkup only. keyboard(uid) is a ReplyKeyboardMarkup.
@@ -1987,7 +2007,26 @@ async def custom_duration_save(update, context):
         return True
     context.user_data["duration_minutes"]=minutes
     context.user_data.pop("awaiting_custom_duration",None)
-    await update.message.reply_text(T[lang(uid)]["choose_time"],reply_markup=time_keyboard(uid))
+    await update.message.reply_text(
+        "⚙️ این هدف شرط اجرا داره؟" if lang(uid)=="fa" else "⚙️ Does this goal have an execution condition?",
+        reply_markup=condition_keyboard(uid),
+    )
+    return True
+
+
+async def custom_condition_save(update, context):
+    uid = update.effective_user.id
+    if not context.user_data.get("awaiting_custom_condition"):
+        return False
+    text = update.message.text.strip()
+    if not text:
+        return True
+    context.user_data["condition"] = text
+    context.user_data.pop("awaiting_custom_condition", None)
+    await update.message.reply_text(
+        T[lang(uid)]["choose_time"],
+        reply_markup=time_keyboard(uid),
+    )
     return True
 
 
@@ -2023,7 +2062,7 @@ async def custom_time_save(update, context):
 
     priority = context.user_data.get("priority", 2)
     duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration)
+    add_goal(uid, name, category, reminder, priority, duration, context.user_data.get("condition"))
     context.user_data.clear()
     log_activity(uid, "goal_created")
     await update.message.reply_text(
@@ -2075,7 +2114,7 @@ async def detail(update, context):
     if not g:
         return
     await q.message.edit_text(
-        f"🎯 {g['name']}\n📁 {g['category']}\n⭐ اولویت: {g['priority']}\n⏰ {g['reminder_time'] or 'Off'}",
+        f"🎯 {g['name']}\n📁 {g['category']}\n⭐ اولویت: {g['priority']}\n⏰ {g['reminder_time'] or 'Off'}\n{'⚙️ شرط: ' + g['condition'] if g['condition'] else ''}",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton(
                 "✅ Done" if lang(uid) == "en" else "✅ انجام دادم",
@@ -2164,7 +2203,7 @@ async def edit_goal(update, context):
         [InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")],
     ]
     await q.message.edit_text(
-        f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}",
+        f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}\n{'⚙️ شرط: '+g['condition'] if g['condition'] else ''}",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
@@ -5220,7 +5259,7 @@ async def text_router(update, context):
     text = update.message.text.strip()
     if any(k in context.user_data for k in (
         "channel_state", "admin_broadcast", "ai_chat", "auto_wait_interval", "admin_health_time",
-        "auto_wait_time", "awaiting_custom_duration", "awaiting_custom_edit_time",
+        "auto_wait_time", "awaiting_custom_duration", "awaiting_custom_condition", "awaiting_custom_edit_time",
         "awaiting_custom_goal", "awaiting_custom_time", "awaiting_edit_time",
         "awaiting_rename", "awaiting_step", "support_new"
     )):
@@ -5335,6 +5374,8 @@ async def text_router(update, context):
     if await custom_goal_save(update, context):
         return
     if await custom_duration_save(update, context):
+        return
+    if await custom_condition_save(update, context):
         return
     if await custom_time_save(update, context):
         return
@@ -10463,6 +10504,7 @@ def main():
     app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
     app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
+    app.add_handler(CallbackQueryHandler(condition_callback, pattern=r"^cond:"))
     app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
     app.add_handler(CallbackQueryHandler(goal_reminder_callback, pattern=r"^goalrem:"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
