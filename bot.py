@@ -11516,9 +11516,10 @@ def _compact_user_keyboard(uid):
     rows = [
         ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
-        ["👤 حساب من" if fa else "👤 My Account", "🎁 پاداش‌های من" if fa else "🎁 My Rewards"],
-        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
-        ["🎫 پشتیبانی" if fa else "🎫 Support", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
+        ["🎁 پاداش‌های من" if fa else "🎁 My Rewards", "📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
+        ["🛠️ ابزارها" if fa else "🛠️ Tools", "🎫 پشتیبانی" if fa else "🎫 Support"],
+        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -11535,7 +11536,7 @@ def _compact_admin_management_keyboard(uid):
         ["📈 قیمت و بازار" if fa else "📈 Prices & Market", "💳 پرداخت‌ها" if fa else "💳 Payments"],
         ["👥 مشتری و رزرو" if fa else "👥 Customers & Bookings", "🎙️ دستیار صوتی" if fa else "🎙️ Voice Assistant"],
         ["🎫 پشتیبانی و تیکت" if fa else "🎫 Support & Tickets", "🎁 هدیه مدیریتی" if fa else "🎁 Admin Gifts"],
-        ["📊 آمار و گزارش" if fa else "📊 Reports & Analytics", "🩺 Health Check" if fa else "🩺 Health Check"],
+        ["🩺 Health Check" if fa else "🩺 Health Check", "📣 دعوت و رفرال" if fa else "📣 Referrals"],
         ["🧪 مرکز تست" if fa else "🧪 Test Center", "🧩 قابلیت‌ها" if fa else "🧩 Features"],
         ["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings", "🔐 امنیت" if fa else "🔐 Security"],
         ["💾 بکاپ و بازیابی" if fa else "💾 Backup & Recovery", "📦 ماژول‌های دیگر" if fa else "📦 Other Modules"],
