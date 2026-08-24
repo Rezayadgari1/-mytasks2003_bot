@@ -60,7 +60,7 @@ DB_PATH = os.environ.get("DB_PATH", "").strip() or os.path.join(_SCRIPT_DIR, "go
 # DB_PATH=/data/goals.db
 # Do not store the live DB only inside an ephemeral deploy filesystem.
 
-DB_SCHEMA_VERSION = 25
+DB_SCHEMA_VERSION = 26
 
 # DATA PERSISTENCE CONTRACT
 # -------------------------
@@ -783,6 +783,101 @@ def init_db():
         enabled INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT NOT NULL
     )""")
+    # ── Birthday module ──────────────────────────────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS birthdays(
+        user_id INTEGER PRIMARY KEY,
+        birth_date TEXT NOT NULL,
+        birth_year INTEGER,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        gift_claimed INTEGER NOT NULL DEFAULT 0,
+        last_gift_year INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    # ── Events / Occasions ───────────────────────────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        event_date TEXT NOT NULL,
+        message TEXT NOT NULL DEFAULT '',
+        xp_reward INTEGER NOT NULL DEFAULT 0,
+        gift_type TEXT NOT NULL DEFAULT '',
+        gift_value TEXT NOT NULL DEFAULT '',
+        vip_days INTEGER NOT NULL DEFAULT 0,
+        target_users TEXT NOT NULL DEFAULT 'all',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS event_deliveries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        delivered_at TEXT NOT NULL,
+        UNIQUE(event_id, user_id)
+    )""")
+    # ── Gift definitions & tracking ──────────────────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS gift_definitions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        gift_type TEXT NOT NULL,
+        value TEXT NOT NULL DEFAULT '',
+        xp_amount INTEGER NOT NULL DEFAULT 0,
+        vip_days INTEGER NOT NULL DEFAULT 0,
+        duration_hours INTEGER NOT NULL DEFAULT 0,
+        feature_key TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_gifts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        gift_def_id INTEGER,
+        gift_type TEXT NOT NULL,
+        gift_value TEXT NOT NULL DEFAULT '',
+        xp_amount INTEGER NOT NULL DEFAULT 0,
+        vip_days INTEGER NOT NULL DEFAULT 0,
+        feature_key TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'admin',
+        source_detail TEXT NOT NULL DEFAULT '',
+        granted_by INTEGER,
+        granted_at TEXT NOT NULL,
+        expires_at TEXT,
+        claimed INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(user_id, gift_def_id, source)
+    )""")
+    # ── Subscriptions v2 (precise expiry) ────────────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS subscriptions_v2(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        plan TEXT NOT NULL DEFAULT 'vip',
+        start_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        duration_hours INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'admin',
+        amount INTEGER NOT NULL DEFAULT 0,
+        payment_id TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    )""")
+    # ── Access grants (central access control) ───────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS access_grants(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        feature_key TEXT NOT NULL,
+        granted_by INTEGER,
+        source TEXT NOT NULL DEFAULT 'subscription',
+        expires_at TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id, feature_key, source)
+    )""")
+    # ── Birthday & event settings ────────────────────────────────────
+    c.execute("""CREATE TABLE IF NOT EXISTS birthday_settings(
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )""")
     now_iso=datetime.now(TZ).isoformat()
     # Infrastructure/service cost registry. This is separate from feature_access:
     # feature_access controls who may use a feature (free/VIP/off), while service_costs
@@ -816,6 +911,8 @@ def init_db():
         "customer_calendar":"free", "customer_hours":"free", "customer_reminders":"free",
         "customer_analytics":"free", "customer_loyal":"free", "customer_period":"free",
         "customer_booking_link":"free", "customer_online_booking":"free", "customer_business_settings":"free",
+        # Birthday & Events
+        "birthday":"free", "events":"free", "admin_gifts":"free",
     }
     for key, mode in access_defaults.items():
         c.execute("INSERT OR IGNORE INTO feature_flags(key,enabled,updated_at) VALUES(?,?,?)",(key,1 if mode != "off" else 0,now_iso))
@@ -3720,6 +3817,210 @@ async def admin_command(update, context):
     await hide_main_reply_keyboard(update)
 
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🎂  BIRTHDAY HANDLERS (User-facing)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def birthday_register_callback(update, context):
+    """User registers their birthday."""
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    if not birthday_enabled():
+        await q.message.edit_text("🎂 این قابلیت در حال حاضر غیرفعال است.")
+        return
+    context.user_data["awaiting_birthday"] = True
+    fa = lang(uid) == "fa"
+    await q.message.edit_text(
+        "🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
+        "فرمت: <code>YYYY-MM-DD</code>\nمثال: <code>1995-03-15</code>\n\n"
+        "⚠️ تاریخ تولد دائمی ذخیره می‌شود و فقط برای تبریک و هدیه استفاده می‌شود." if fa else
+        "🎂 <b>Enter your birthday</b>\n\nFormat: <code>YYYY-MM-DD</code>\nExample: <code>1995-03-15</code>",
+        parse_mode="HTML",
+    )
+
+async def birthday_text_handler(update, context):
+    """Handle birthday date input."""
+    if not context.user_data.get("awaiting_birthday"):
+        return False
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+    context.user_data.pop("awaiting_birthday", None)
+    # Validate format
+    import re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        await update.message.reply_text("❌ فرمت نادرست. مثال: 1995-03-15")
+        return True
+    try:
+        dt = datetime.strptime(text, "%Y-%m-%d")
+        if dt > datetime.now(TZ) or dt.year < 1900:
+            await update.message.reply_text("❌ تاریخ نامعتبر.")
+            return True
+    except ValueError:
+        await update.message.reply_text("❌ تاریخ نامعتبر.")
+        return True
+    set_birthday(uid, text)
+    fa = lang(uid) == "fa"
+    await update.message.reply_text(
+        f"🎂 تاریخ تولد ثبت شد: <code>{text}</code>\n\n"
+        "🎁 در روز تولدت یک هدیه ویژه دریافت خواهی کرد!" if fa else
+        f"🎂 Birthday saved: <code>{text}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]),
+    )
+    return True
+
+async def birthday_show_callback(update, context):
+    """Show user's birthday info."""
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    b = get_birthday(uid)
+    fa = lang(uid) == "fa"
+    if not b:
+        await q.message.edit_text(
+            "🎂 <b>تولد تو ثبت نشده</b>\n\nروی دکمه زیر بزن تا تاریخ تولدت رو ثبت کنی." if fa else
+            "🎂 <b>No birthday registered</b>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🎂 ثبت تولد" if fa else "🎂 Set Birthday", callback_data="birthday:set")],
+                [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+            ]),
+        )
+        return
+    claimed = birthday_gift_claimed(uid)
+    text = (
+        f"🎂 <b>تاریخ تولد تو</b>\n\n"
+        f"📅 <code>{b['birth_date']}</code>\n"
+        f"🎁 هدیه امسال: {'✅ دریافت شد' if claimed else '📭 هنوز دریافت نشده'}"
+    )
+    kb = [
+        [InlineKeyboardButton("✏️ ویرایش" if fa else "✏️ Edit", callback_data="birthday:set")],
+        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+    ]
+    await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 📅  EVENTS HANDLERS (Admin-facing)
+# ═══════════════════════════════════════════════════════════════════════
+
+async def admin_events_callback(update, context):
+    """Admin panel for events management."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True)
+        return
+    await q.answer()
+    action = q.data.split(":", 2)[-1] if q.data.count(":") >= 2 else ""
+    if action == "list":
+        events = get_all_events()
+        if not events:
+            text = "📅 <b>مناسبتی ثبت نشده</b>"
+        else:
+            lines = ["📅 <b>لیست مناسبت‌ها</b>", ""]
+            for e in events:
+                status = "🟢" if e["enabled"] else "🔴"
+                lines.append(f"{status} #{e['id']} | {e['name']} | {e['event_date']}")
+            text = "\n".join(lines)
+        kb = [
+            [InlineKeyboardButton("➕ مناسبت جدید", callback_data="adm:events:create")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ]
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    elif action == "create":
+        context.user_data["admin_create_event"] = True
+        await q.message.reply_text(
+            "📅 <b>نام مناسبت رو بفرست:</b>\nمثال: نوروز، ولنتاین، ...",
+            parse_mode="HTML",
+        )
+
+
+async def admin_birthday_callback(update, context):
+    """Admin panel for birthday management."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True)
+        return
+    await q.answer()
+    action = q.data.split(":", 2)[-1] if q.data.count(":") >= 2 else ""
+    if action == "list":
+        c = db()
+        rows = c.execute("SELECT b.*, u.first_name FROM birthdays b JOIN users u ON u.user_id=b.user_id ORDER BY substr(b.birth_date,6)").fetchall()
+        c.close()
+        if not rows:
+            text = "🎂 <b>هیچ تولدی ثبت نشده</b>"
+        else:
+            lines = ["🎂 <b>تولدهای ثبت‌شده</b>", ""]
+            for r in rows:
+                status = "🟢" if r["enabled"] else "🔴"
+                lines.append(f"{status} {r['first_name']} | <code>{r['birth_date']}</code>")
+            text = "\n".join(lines)
+        kb = [[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]]
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    elif action == "settings":
+        gift_type = birthday_settings_get("gift_type", "xp")
+        gift_value = birthday_settings_get("gift_value", "50")
+        enabled = feature_enabled("birthday")
+        text = (
+            f"🎂 <b>تنظیمات تولد</b>\n\n"
+            f"وضعیت: {'🟢 فعال' if enabled else '🔴 غیرفعال'}\n"
+            f"نوع هدیه: {gift_type}\n"
+            f"مقدار هدیه: {gift_value}"
+        )
+        kb = [
+            [InlineKeyboardButton("🟢 فعال" if not enabled else "🔴 غیرفعال", callback_data="adm:birthdays:toggle")],
+            [InlineKeyboardButton("🎁 تغییر نوع هدیه", callback_data="adm:birthdays:set_gift_type")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ]
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    elif action == "toggle":
+        current = feature_enabled("birthday")
+        set_feature("birthday", not current, uid)
+        await admin_birthday_callback(update, context)
+    elif action == "set_gift_type":
+        context.user_data["admin_birthday_gift_type"] = True
+        await q.message.reply_text("🎁 نوع هدیه رو بفرست:\n\nxp / vip / none")
+
+
+async def admin_gifts_callback(update, context):
+    """Admin panel for manual gift granting."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True)
+        return
+    await q.answer()
+    text = (
+        "🎁 <b>هدیه مدیریتی</b>\n\n"
+        "برای ارسال هدیه به کاربر:\n"
+        "1️⃣ شناسه کاربر رو بفرست\n"
+        "2️⃣ نوع هدیه رو انتخاب کن\n"
+        "3️⃣ مقدار و مدت رو تعیین کن"
+    )
+    kb = [[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]]
+    await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
+    context.user_data["admin_gift_mode"] = "user_id"
+
+
+async def admin_access_matrix_callback(update, context):
+    """Show access control matrix for a user."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True)
+        return
+    await q.answer()
+    context.user_data["admin_access_matrix"] = True
+    await q.message.reply_text(
+        "🔐 <b>ماتریس دسترسی</b>\n\nشناسه کاربر رو بفرست:",
+        parse_mode="HTML",
+    )
+
+
 async def admin(update, context):
     uid = update.effective_user.id
     if uid not in ADMIN_IDS:
@@ -5123,6 +5424,373 @@ async def final_guard(update,context):
         elif update.message: await update.message.reply_text("⛔ حساب شما مسدود است.")
         return False
     return True
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🎂  BIRTHDAY MODULE
+# ═══════════════════════════════════════════════════════════════════════
+
+def birthday_enabled():
+    return feature_enabled("birthday")
+
+def set_birthday(uid, birth_date, birth_year=None):
+    """Register or update a user's birthday. Permanently stored, never deleted."""
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    year = birth_year
+    if not year:
+        try:
+            year = int(birth_date.split("-")[0])
+        except Exception:
+            year = None
+    c.execute(
+        """INSERT INTO birthdays(user_id, birth_date, birth_year, enabled, created_at, updated_at)
+           VALUES(?, ?, ?, 1, ?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET
+           birth_date=excluded.birth_date,
+           birth_year=COALESCE(excluded.birth_year, birth_year),
+           updated_at=excluded.updated_at""",
+        (uid, birth_date, year, now, now),
+    )
+    c.commit()
+    c.close()
+
+def get_birthday(uid):
+    c = db()
+    r = c.execute("SELECT * FROM birthdays WHERE user_id=?", (uid,)).fetchone()
+    c.close()
+    return r
+
+def toggle_birthday(uid, enabled):
+    c = db()
+    c.execute("UPDATE birthdays SET enabled=?, updated_at=? WHERE user_id=?",
+              (1 if enabled else 0, datetime.now(TZ).isoformat(), uid))
+    c.commit()
+    c.close()
+
+def get_todays_birthdays():
+    """Get all users whose birthday is today."""
+    today = datetime.now(TZ)
+    # Match by month-day, ignoring year
+    month_day = today.strftime("-%m-%d")
+    c = db()
+    rows = c.execute(
+        "SELECT b.*, u.first_name FROM birthdays b "
+        "JOIN users u ON u.user_id = b.user_id "
+        "WHERE b.enabled=1 AND substr(b.birth_date, 5) = ?",
+        (month_day,),
+    ).fetchall()
+    c.close()
+    return rows
+
+def get_upcoming_birthdays(days_ahead=7):
+    """Get birthdays coming up in the next N days."""
+    today = datetime.now(TZ)
+    results = []
+    c = db()
+    rows = c.execute("SELECT b.*, u.first_name FROM birthdays b JOIN users u ON u.user_id = b.user_id WHERE b.enabled=1").fetchall()
+    c.close()
+    for r in rows:
+        try:
+            bdate = datetime.fromisoformat(r["birth_date"])
+            this_year = today.year
+            next_bday = bdate.replace(year=this_year)
+            if next_bday < today:
+                next_bday = bdate.replace(year=this_year + 1)
+            diff = (next_bday - today).days
+            if 1 <= diff <= days_ahead:
+                results.append({"user_id": r["user_id"], "first_name": r["first_name"],
+                                "birth_date": r["birth_date"], "days_until": diff})
+        except Exception:
+            continue
+    return sorted(results, key=lambda x: x["days_until"])
+
+def birthday_gift_claimed(uid):
+    """Check if user already claimed birthday gift this year."""
+    current_year = datetime.now(TZ).year
+    c = db()
+    r = c.execute("SELECT last_gift_year FROM birthdays WHERE user_id=?", (uid,)).fetchone()
+    c.close()
+    if r and r["last_gift_year"] == current_year:
+        return True
+    return False
+
+def mark_birthday_gift_claimed(uid):
+    current_year = datetime.now(TZ).year
+    c = db()
+    c.execute("UPDATE birthdays SET last_gift_year=?, gift_claimed=1, updated_at=? WHERE user_id=?",
+              (current_year, datetime.now(TZ).isoformat(), uid))
+    c.commit()
+    c.close()
+
+def birthday_settings_get(key, default=""):
+    c = db()
+    r = c.execute("SELECT value FROM birthday_settings WHERE key=?", (key,)).fetchone()
+    c.close()
+    return r["value"] if r else default
+
+def birthday_settings_set(key, value):
+    c = db()
+    c.execute("INSERT INTO birthday_settings(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+              (key, value))
+    c.commit()
+    c.close()
+
+def birthday_gift_xp(uid, amount=50):
+    """Grant birthday XP gift (one per year)."""
+    if birthday_gift_claimed(uid):
+        return False
+    add_xp(uid, amount, "birthday_gift")
+    mark_birthday_gift_claimed(uid)
+    award_engagement_xp_once(uid, 0, "birthday_gift", f"birthday:{uid}:{datetime.now(TZ).year}", "birthday_gift")
+    return True
+
+def birthday_gift_vip(uid, days=3):
+    """Grant birthday VIP gift (one per year)."""
+    if birthday_gift_claimed(uid):
+        return False
+    expires = (datetime.now(TZ) + timedelta(days=days)).isoformat()
+    c = db()
+    c.execute("UPDATE users SET vip_until=? WHERE user_id=?", (expires, uid))
+    c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",
+              (uid, "Birthday VIP", days, "birthday", datetime.now(TZ).isoformat(), expires, datetime.now(TZ).isoformat()))
+    c.commit()
+    c.close()
+    mark_birthday_gift_claimed(uid)
+    return True
+
+async def send_birthday_greeting(bot, uid, first_name):
+    """Send personalized birthday greeting with gift."""
+    greeting = birthday_settings_get("greeting_template",
+        "🎂 تولدت مبارک {name} عزیز! 🎉\n\nامروز روز خاص توئه! امیدوارم سال خوبی پیش رو داشته باشی! 🌷")
+    gift_type = birthday_settings_get("gift_type", "xp")
+    gift_value = int(birthday_settings_get("gift_value", "50"))
+
+    text = greeting.replace("{name}", first_name or "عزیز")
+
+    if gift_type == "xp":
+        granted = birthday_gift_xp(uid, gift_value)
+        if granted:
+            text += f"\n\n🎁 هدیه تولد: ⭐ {gift_value} XP"
+    elif gift_type == "vip":
+        granted = birthday_gift_vip(uid, gift_value)
+        if granted:
+            text += f"\n\n🎁 هدیه تولد: 💎 {gift_value} روز VIP"
+
+    try:
+        await bot.send_message(uid, text, parse_mode="HTML")
+    except Exception:
+        logger.warning("Birthday greeting failed for %s", uid)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 📅  EVENTS / OCCASIONS MODULE
+# ═══════════════════════════════════════════════════════════════════════
+
+def events_enabled():
+    return feature_enabled("events")
+
+def create_event(name, event_date, message="", xp_reward=0, gift_type="", gift_value="",
+                 vip_days=0, target_users="all"):
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    c.execute(
+        """INSERT INTO events(name, event_date, message, xp_reward, gift_type, gift_value,
+           vip_days, target_users, enabled, created_at, updated_at)
+           VALUES(?,?,?,?,?,?,?,?,1,?,?)""",
+        (name, event_date, message, xp_reward, gift_type, gift_value, vip_days, target_users, now, now),
+    )
+    eid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+    c.commit()
+    c.close()
+    return eid
+
+def get_active_events():
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    c = db()
+    rows = c.execute("SELECT * FROM events WHERE enabled=1 AND event_date=?", (today,)).fetchall()
+    c.close()
+    return rows
+
+def event_already_delivered(event_id, uid):
+    c = db()
+    r = c.execute("SELECT 1 FROM event_deliveries WHERE event_id=? AND user_id=?", (event_id, uid)).fetchone()
+    c.close()
+    return bool(r)
+
+def mark_event_delivered(event_id, uid):
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    c.execute("INSERT OR IGNORE INTO event_deliveries(event_id, user_id, delivered_at) VALUES(?,?,?)",
+              (event_id, uid, now))
+    c.commit()
+    c.close()
+
+def get_all_events():
+    c = db()
+    rows = c.execute("SELECT * FROM events ORDER BY event_date DESC").fetchall()
+    c.close()
+    return rows
+
+def toggle_event(event_id, enabled):
+    c = db()
+    c.execute("UPDATE events SET enabled=?, updated_at=? WHERE id=?",
+              (1 if enabled else 0, datetime.now(TZ).isoformat(), event_id))
+    c.commit()
+    c.close()
+
+def delete_event(event_id):
+    c = db()
+    c.execute("DELETE FROM events WHERE id=?", (event_id,))
+    c.execute("DELETE FROM event_deliveries WHERE event_id=?", (event_id,))
+    c.commit()
+    c.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🎁  ADMIN GIFT SYSTEM
+# ═══════════════════════════════════════════════════════════════════════
+
+def admin_grant_gift(user_id, gift_type, value="", xp_amount=0, vip_days=0,
+                     feature_key="", granted_by=0, source="admin", source_detail=""):
+    now = datetime.now(TZ).isoformat()
+    expires = None
+    if vip_days > 0:
+        expires = (datetime.now(TZ) + timedelta(days=vip_days)).isoformat()
+        c = db()
+        current = c.execute("SELECT vip_until FROM users WHERE user_id=?", (user_id,)).fetchone()
+        if current and current["vip_until"]:
+            try:
+                cur_exp = datetime.fromisoformat(current["vip_until"])
+                if cur_exp > datetime.now(TZ):
+                    expires = (cur_exp + timedelta(days=vip_days)).isoformat()
+            except Exception:
+                pass
+        c.execute("UPDATE users SET vip_until=? WHERE user_id=?", (expires, user_id))
+        c.commit()
+        c.close()
+    if xp_amount > 0:
+        add_xp(user_id, xp_amount, "admin_gift")
+    if feature_key:
+        c = db()
+        c.execute(
+            """INSERT INTO access_grants(user_id, feature_key, granted_by, source, expires_at, active, created_at)
+               VALUES(?, ?, ?, ?, ?, 1, ?)
+               ON CONFLICT(user_id, feature_key, source) DO UPDATE SET
+               expires_at=excluded.expires_at, active=1""",
+            (user_id, feature_key, granted_by, source, expires, now))
+        c.commit()
+        c.close()
+    c = db()
+    c.execute(
+        """INSERT INTO user_gifts(user_id, gift_type, gift_value, xp_amount, vip_days,
+           feature_key, source, source_detail, granted_by, granted_at, expires_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (user_id, gift_type, value, xp_amount, vip_days, feature_key, source, source_detail, granted_by, now, expires))
+    c.commit()
+    c.close()
+
+def get_user_gifts(uid):
+    c = db()
+    rows = c.execute("SELECT * FROM user_gifts WHERE user_id=? ORDER BY granted_at DESC", (uid,)).fetchall()
+    c.close()
+    return rows
+
+def has_active_feature_access(uid, feature_key):
+    """Check if user has active access to a feature via grants or subscription."""
+    c = db()
+    now = datetime.now(TZ).isoformat()
+    r = c.execute(
+        "SELECT 1 FROM access_grants WHERE user_id=? AND feature_key=? AND active=1 AND (expires_at IS NULL OR expires_at>?)",
+        (uid, feature_key, now)).fetchone()
+    c.close()
+    if r:
+        return True
+    if is_vip(uid):
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 💎  SUBSCRIPTIONS V2 (precise expiry)
+# ═══════════════════════════════════════════════════════════════════════
+
+def create_subscription(user_id, plan="vip", duration_hours=0, source="admin", amount=0, payment_id=None):
+    now = datetime.now(TZ)
+    start_at = now.isoformat()
+    if duration_hours > 0:
+        expires_at = (now + timedelta(hours=duration_hours)).isoformat()
+    else:
+        expires_at = "9999-12-31T23:59:59"
+    # Check for existing active subscription and extend
+    c = db()
+    existing = c.execute(
+        "SELECT expires_at FROM subscriptions_v2 WHERE user_id=? AND plan=? AND active=1 ORDER BY expires_at DESC LIMIT 1",
+        (user_id, plan)).fetchone()
+    if existing and existing["expires_at"]:
+        try:
+            cur_exp = datetime.fromisoformat(existing["expires_at"])
+            if cur_exp > now:
+                # Extend from current expiry, not from now
+                start_at = cur_exp.isoformat()
+                expires_at = (cur_exp + timedelta(hours=duration_hours)).isoformat() if duration_hours else "9999-12-31T23:59:59"
+        except Exception:
+            pass
+    c.execute(
+        """INSERT INTO subscriptions_v2(user_id, plan, start_at, expires_at, duration_hours, source, amount, payment_id, active, created_at)
+           VALUES(?,?,?,?,?,?,?,?,1,?)""",
+        (user_id, plan, start_at, expires_at, duration_hours, source, amount, payment_id, now.isoformat()))
+    c.execute("UPDATE users SET vip_until=? WHERE user_id=?", (expires_at, user_id))
+    c.commit()
+    c.close()
+    return expires_at
+
+def get_active_subscriptions(uid):
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    rows = c.execute(
+        "SELECT * FROM subscriptions_v2 WHERE user_id=? AND active=1 AND expires_at>?",
+        (uid, now)).fetchall()
+    c.close()
+    return rows
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🔐  ACCESS CONTROL CENTER
+# ═══════════════════════════════════════════════════════════════════════
+
+def get_user_access_matrix(uid):
+    """Return a dict of feature_key -> status for a user."""
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    features = c.execute("SELECT key FROM feature_flags WHERE enabled=1").fetchall()
+    grants = c.execute(
+        "SELECT feature_key, expires_at FROM access_grants WHERE user_id=? AND active=1",
+        (uid,)).fetchall()
+    c.close()
+    grant_map = {}
+    for g in grants:
+        if g["expires_at"]:
+            try:
+                if datetime.fromisoformat(g["expires_at"]) > datetime.now(TZ):
+                    grant_map[g["feature_key"]] = True
+            except Exception:
+                grant_map[g["feature_key"]] = True
+        else:
+            grant_map[g["feature_key"]] = True
+    vip = is_vip(uid)
+    result = {}
+    for f in features:
+        key = f["key"]
+        mode = feature_access_mode(key, uid)
+        if mode == "off":
+            result[key] = "🔴 disabled"
+        elif mode == "vip":
+            result[key] = "🟢" if (vip or key in grant_map) else "💎 VIP"
+        else:
+            result[key] = "🟢"
+    return result
+
 
 async def xp_command(update,context):
     uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
@@ -9198,6 +9866,32 @@ async def text_router(update, context):
         clear_flow(context)
         await _show_admin_management(update, context)
         return
+    # Birthday & Events buttons
+    if txt in ("🎂 تولد من", "🎂 My Birthday"):
+        if not birthday_enabled():
+            await update.message.reply_text("🎂 این قابلیت در حال حاضر غیرفعال است.", reply_markup=compact_keyboard(uid))
+            return
+        await birthday_show_callback(update, context)
+        return
+    if txt in ("🎂 تولد و مناسبت‌ها", "🎂 Birthday & Events"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = "🎂 <b>تولد و مناسبت‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎂 مدیریت تولد", callback_data="adm:birthdays:list"),
+             InlineKeyboardButton("⚙️ تنظیمات تولد", callback_data="adm:birthdays:settings")],
+            [InlineKeyboardButton("📅 مناسبت‌ها", callback_data="adm:events:list")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("🎁 هدیه مدیریتی", "🎁 Admin Gifts"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        await admin_gifts_callback(update, context)
+        return
     # Admin section navigation: each button opens its specific section
     _admin_section_map = {
         "📊 داشبورد و گزارش": "dashboard", "📊 Dashboard & Reports": "dashboard",
@@ -9364,6 +10058,66 @@ class _FallbackJobQueue:
             task.cancel()
         self._tasks.clear()
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# ⏰  SCHEDULER JOBS
+# ═══════════════════════════════════════════════════════════════════════
+
+_birthday_last_run = ""
+
+async def birthday_scheduler_job(context):
+    """Check for birthdays and send greetings."""
+    global _birthday_last_run
+    now = datetime.now(TZ)
+    today_key = now.strftime("%Y-%m-%d")
+    hour = now.hour
+    # Run once per day between 08:00 and 09:00
+    if today_key == _birthday_last_run or hour < 8 or hour > 9:
+        return
+    _birthday_last_run = today_key
+    if not birthday_enabled():
+        return
+    birthdays = get_todays_birthdays()
+    for b in birthdays:
+        try:
+            await send_birthday_greeting(context.bot, b["user_id"], b["first_name"])
+        except Exception as e:
+            logger.warning("Birthday greeting failed for %s: %s", b["user_id"], e)
+
+_event_last_run = ""
+
+async def event_scheduler_job(context):
+    """Check for active events and send event messages."""
+    global _event_last_run
+    now = datetime.now(TZ)
+    today_key = now.strftime("%Y-%m-%d")
+    hour = now.hour
+    # Run once per day between 09:00 and 10:00
+    if today_key == _event_last_run or hour < 9 or hour > 10:
+        return
+    _event_last_run = today_key
+    if not events_enabled():
+        return
+    events = get_active_events()
+    if not events:
+        return
+    c = db()
+    users = c.execute("SELECT user_id, first_name FROM users WHERE blocked=0").fetchall()
+    c.close()
+    for event in events:
+        for u in users:
+            if not event_already_delivered(event["id"], u["user_id"]):
+                try:
+                    text = f"🎉 <b>{html.escape(event['name'])}</b>\n\n{event['message']}"
+                    if event["xp_reward"] > 0:
+                        add_xp(u["user_id"], event["xp_reward"], f"event:{event['id']}")
+                        text += f"\n\n🎁 هدیه: ⭐ {event['xp_reward']} XP"
+                    await context.bot.send_message(u["user_id"], text, parse_mode="HTML")
+                    mark_event_delivered(event["id"], u["user_id"])
+                except Exception as e:
+                    logger.warning("Event delivery failed for %s: %s", u["user_id"], e)
+
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("Set BOT_TOKEN in your environment variables.")
@@ -9411,6 +10165,17 @@ def main():
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
+    # Birthday callbacks
+    app.add_handler(CallbackQueryHandler(birthday_register_callback, pattern=r"^birthday:set$"))
+    app.add_handler(CallbackQueryHandler(birthday_show_callback, pattern=r"^birthday:show$"))
+    # Events admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_events_callback, pattern=r"^adm:events:"))
+    # Birthday admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_birthday_callback, pattern=r"^adm:birthdays:"))
+    # Gifts admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_gifts_callback, pattern=r"^adm:gifts"))
+    # Access matrix callbacks
+    app.add_handler(CallbackQueryHandler(admin_access_matrix_callback, pattern=r"^adm:access"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
@@ -9502,6 +10267,8 @@ def main():
         app.job_queue.run_repeating(weekly_admin_report_job, interval=60, first=27)
         app.job_queue.run_repeating(scheduled_health_check_job, interval=60, first=60)
         app.job_queue.run_repeating(customer_reminder_job, interval=60, first=30)
+        app.job_queue.run_repeating(birthday_scheduler_job, interval=60, first=35)
+        app.job_queue.run_repeating(event_scheduler_job, interval=60, first=40)
         app.job_queue.run_repeating(customer_morning_job, interval=60, first=35)
         app.job_queue.run_repeating(customer_daily_report_job, interval=60, first=40)
         app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
@@ -9905,7 +10672,7 @@ def _compact_user_keyboard(uid):
         ["👤 حساب من" if fa else "👤 My Account", "🎫 پشتیبانی" if fa else "🎫 Support"],
         ["👥 مدیریت مشتری و نوبت‌دهی" if fa else "👥 Customer & Appointments", "📅 رزروهای من" if fa else "📅 My Bookings"],
         ["⚙️ تنظیمات" if fa else "⚙️ Settings", "📈 قیمت آنلاین" if fa else "📈 Online Prices"],
-        ["🤝 دعوت دوستان" if fa else "🤝 Invite Friends", "🎟️ توکن‌های من" if fa else "🎟️ My Tokens"],
+        ["🤝 دعوت دوستان" if fa else "🤝 Invite Friends", "🎂 تولد من" if fa else "🎂 My Birthday"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -9921,6 +10688,7 @@ def _compact_admin_management_keyboard(uid):
         ["🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics", "💾 Backup و Recovery" if fa else "💾 Backup & Recovery"],
         ["🧩 قابلیت‌ها و Feature Flags" if fa else "🧩 Features & Flags", "🔐 امنیت و Audit" if fa else "🔐 Security & Audit"],
         ["🧪 مرکز تست و Regression" if fa else "🧪 Test & Regression", "⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"],
+        ["🎂 تولد و مناسبت‌ها" if fa else "🎂 Birthday & Events", "🎁 هدیه مدیریتی" if fa else "🎁 Admin Gifts"],
         ["📦 سایر ماژول‌های مدیریتی" if fa else "📦 Other Admin Modules"],
         ["👤 استفاده از ربات" if fa else "👤 Use Bot"],
         ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
