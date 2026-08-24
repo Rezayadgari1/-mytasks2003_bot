@@ -11075,20 +11075,62 @@ async def text_router(update, context):
 
     # Admin section navigation: each button opens its specific section
     _admin_section_map = {
+        # Dashboard
         "📊 داشبورد و گزارش": "dashboard", "📊 Dashboard & Reports": "dashboard",
+        # Users
         "👥 کاربران و نقش‌ها": "users", "👥 Users & Roles": "users",
+        "👥 کاربران و پاداش‌ها": "users",
+        # Tickets
         "🎫 تیکت‌ها و Incident": "tickets", "🎫 Tickets & Incidents": "tickets",
+        "🎫 پشتیبانی و تیکت": "tickets",
+        # Finance
         "💰 مالی و پرداخت": "finance", "💰 Finance & Payments": "finance",
+        # VIP/XP
         "💎 VIP / XP / Token": "xpvip",
+        "💎 اشتراک و دسترسی‌ها": "xpvip",
+        # Channel
         "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
+        "📢 مدیریت کانال": "channel",
+        # AI
         "🤖 مدیریت AI": "ai", "🤖 AI Management": "ai",
+        "🤖 هوش مصنوعی": "ai",
+        # Health
         "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
+        "🩺 Health Check": "health",
+        # Backup
         "💾 Backup و Recovery": "backup", "💾 Backup & Recovery": "backup",
+        "💾 بکاپ و بازیابی": "backup",
+        # Features
         "🧩 قابلیت‌ها و Feature Flags": "features", "🧩 Features & Flags": "features",
+        "🧩 قابلیت‌ها": "features",
+        # Security
         "🔐 امنیت و Audit": "security", "🔐 Security & Audit": "security",
+        "🔐 امنیت": "security",
+        # Test
         "🧪 مرکز تست و Regression": "test", "🧪 Test & Regression": "test",
+        "🧪 مرکز تست": "test",
+        # System
         "⚙️ تنظیمات سیستم": "system", "⚙️ System Settings": "system",
+        # Other
         "📦 سایر ماژول‌های مدیریتی": "other", "📦 Other Admin Modules": "other",
+        "📦 ماژول‌های دیگر": "other",
+        # Birthday
+        "🎂 تولد و مناسبت‌ها": "birthday",
+        # Goals
+        "🎯 اهداف و یادآوری": "dashboard",
+        # Prices
+        "📈 قیمت و بازار": "finance",
+        # Payments
+        "💳 پرداخت‌ها": "finance",
+        # Customers
+        "👥 مشتری و رزرو": "users",
+        # Voice
+        "🎙️ دستیار صوتی": "ai",
+        # Gifts
+        "🎁 هدیه مدیریتی": "xpvip",
+        # Referrals
+        "📣 دعوت و رفرال": "other",
+        "📣 Referrals": "other",
     }
     if txt in _admin_section_map:
         await _show_admin_section(update, context, _admin_section_map[txt])
