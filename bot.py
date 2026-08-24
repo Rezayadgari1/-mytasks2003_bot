@@ -10497,6 +10497,7 @@ def main():
     app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
     app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
     app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
+    app.add_handler(CallbackQueryHandler(_bdo_owner_callback, pattern=r"^bd:"))
     app.add_handler(CallbackQueryHandler(birthday_callback, pattern=r"^bd:"))
     app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
@@ -14744,7 +14745,7 @@ async def _bdo_owner_callback(update, context):
     act = data[3:]
     if act == "home":
         await q.answer()
-        await q.message.edit_text(_bdo_home_text(), parse_mode="HTML")
+        await q.message.reply_text(_bdo_home_text(), parse_mode="HTML", reply_markup=_bdo_kb())
         return
     if act == "tog_main":
         bd_set("bd_enabled", "0" if bd_get("bd_enabled", "1") == "1" else "1")
