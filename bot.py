@@ -9024,6 +9024,116 @@ def keyboard(uid):
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
 
+
+async def _show_admin_section(update, context, section):
+    """Show a specific admin section with the management ReplyKeyboard as back."""
+    uid = update.effective_user.id
+    fa = lang(uid) == 'fa'
+    back_kb = _compact_admin_management_keyboard(uid)
+    if section == 'dashboard':
+        s = admin_stats()
+        text = (
+            "📊 <b>داشبورد مرکزی</b>\n\n"
+            f"👥 کاربران: {s['users']}\n"
+            f"🆕 جدید امروز: {s['new_today']}\n"
+            f"🟢 فعال امروز: {s['active_today']}\n"
+            f"🎯 اهداف: {s['goals']}\n"
+            f"✅ انجام‌شده امروز: {s['done_today']}\n"
+            f"⏰ یادآوری: {s['reminders']}\n"
+            f"🏆 دستاورد: {s['achievements']}\n"
+            f"📅 نوبت امروز: {s['appointments_today']}\n"
+            f"💎 VIP فعال: {s['vip_users']}\n"
+            f"🎫 تیکت باز: {s['open_tickets']}"
+        )
+        await update.message.reply_text(text, reply_markup=back_kb)
+    elif section == 'users':
+        c = db()
+        rows = c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked FROM users ORDER BY created_at DESC LIMIT 20").fetchall()
+        c.close()
+        lines = ["👥 <b>آخرین کاربران</b>", ""]
+        for r in rows:
+            name = r['first_name'] or 'بدون نام'
+            status = '⛔' if r['blocked'] else '🟢'
+            lines.append(f"{status} {name} | ID: <code>{r['user_id']}</code> | ⭐{r['xp']}")
+        text = '\n'.join(lines) if len(rows) else '👥 کاربری ثبت نشده.'
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'tickets':
+        c = db()
+        rows = c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall()
+        c.close()
+        lines = ["🎫 <b>تیکت‌های باز</b>", ""]
+        for r in rows:
+            lines.append(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}")
+        text = '\n'.join(lines) if rows else '🎫 تیکت بازی نیست.'
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'finance':
+        c = db()
+        payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()['n']
+        revenue = c.execute("SELECT COALESCE(SUM(amount),0) n FROM payments WHERE status='completed'").fetchone()['n']
+        vip = c.execute("SELECT COUNT(*) n FROM subscription_history").fetchone()['n']
+        c.close()
+        text = (
+            f"💰 <b>مالی و پرداخت</b>\n\n"
+            f"💳 تراکنش‌ها: {payments}\n"
+            f"💵 مبلغ ثبت‌شده: {revenue:,}\n"
+            f"💎 سوابق اشتراک: {vip}"
+        )
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'xpvip':
+        text = (
+            "⭐ <b>XP / VIP</b>\n\n"
+            "از بخش کاربران، پرونده هر کاربر را باز کن تا XP و اشتراک را مدیریت کنی.\n\n"
+            "برای اشتراک: ➕ اضافه‌کردن روز، ➖ کم‌کردن روز، ✏️ ویرایش یا ❌ لغو کامل."
+        )
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'channel':
+        await update.message.reply_text("📡 <b>مدیریت کانال و پست‌گذاری</b>", parse_mode='HTML', reply_markup=channel_keyboard())
+    elif section == 'ai':
+        text = (
+            "🤖 <b>مدیریت AI</b>\n\n"
+            f"-model: {OPENAI_MODEL}\n"
+            f"Gemini: {GEMINI_MODEL}\n"
+            f"OmniRoute: {OMNIROUTE_MODEL}\n\n"
+            "از بخش تنظیمات سیستم، کلیدهای API را مدیریت کن."
+        )
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'health':
+        await run_health_checks(context.bot, uid)
+        await update.message.reply_text(health_text(), reply_markup=back_kb)
+    elif section == 'backup':
+        ok = backup_database_snapshot(keep=20)
+        admin_log(uid, 'manual_backup', None, 'success' if ok else 'failed')
+        text = '💾 بکاپ با موفقیت ساخته شد.' if ok else '❌ ساخت بکاپ ناموفق بود.'
+        await update.message.reply_text(text, reply_markup=back_kb)
+    elif section == 'features':
+        await update.message.reply_text(feature_admin_text(), reply_markup=feature_admin_keyboard())
+    elif section == 'security':
+        text = (
+            "🔐 <b>امنیت و Audit</b>\n\n"
+            "از بخش لاگ مدیران، اقدامات اخیر را بررسی کن.\n"
+            "از بخش کاربران، کاربران محدود شده را مدیریت کن."
+        )
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'test':
+        await update.message.reply_text(_admin_test_text(), parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'system':
+        paused = get_system_setting('bot_paused_until', '')
+        maintenance = feature_enabled('maintenance')
+        text = (
+            f"⚙️ <b>تنظیمات سیستم</b>\n\n"
+            f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
+            f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
+            f"🗄 Schema: {DB_SCHEMA_VERSION}"
+        )
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    elif section == 'other':
+        text = "📦 <b>سایر ماژول‌های مدیریتی</b>\n\nاز منوی زیر بخش موردنظر را انتخاب کن." if fa else "📦 <b>Other Admin Modules</b>"
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
+    else:
+        await admin_command(update, context)
+
+
+
 async def text_router(update, context):
     """Single final text dispatcher. Main-menu buttons always win over flow states."""
     if not update.message or not update.message.text:
@@ -9088,18 +9198,25 @@ async def text_router(update, context):
         clear_flow(context)
         await _show_admin_management(update, context)
         return
-    if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
-        await admin_command(update, context)
-        return
-    if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents",
-                "💰 مالی و پرداخت", "💰 Finance & Payments", "💎 VIP / XP / Token",
-                "📢 کانال و انتشار", "📢 Channels & Publishing", "🩺 سلامت و Diagnostics",
-                "🩺 Health & Diagnostics", "💾 Backup و Recovery", "💾 Backup & Recovery",
-                "🧩 قابلیت‌ها و Feature Flags", "🧩 Features & Flags", "🔐 امنیت و Audit",
-                "🔐 Security & Audit", "🧪 مرکز تست و Regression", "🧪 Test & Regression",
-                "⚙️ تنظیمات سیستم", "⚙️ System Settings", "📦 سایر ماژول‌های مدیریتی",
-                "📦 Other Admin Modules"):
-        await admin_command(update, context)
+    # Admin section navigation: each button opens its specific section
+    _admin_section_map = {
+        "📊 داشبورد و گزارش": "dashboard", "📊 Dashboard & Reports": "dashboard",
+        "👥 کاربران و نقش‌ها": "users", "👥 Users & Roles": "users",
+        "🎫 تیکت‌ها و Incident": "tickets", "🎫 Tickets & Incidents": "tickets",
+        "💰 مالی و پرداخت": "finance", "💰 Finance & Payments": "finance",
+        "💎 VIP / XP / Token": "xpvip",
+        "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
+        "🤖 مدیریت AI": "ai", "🤖 AI Management": "ai",
+        "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
+        "💾 Backup و Recovery": "backup", "💾 Backup & Recovery": "backup",
+        "🧩 قابلیت‌ها و Feature Flags": "features", "🧩 Features & Flags": "features",
+        "🔐 امنیت و Audit": "security", "🔐 Security & Audit": "security",
+        "🧪 مرکز تست و Regression": "test", "🧪 Test & Regression": "test",
+        "⚙️ تنظیمات سیستم": "system", "⚙️ System Settings": "system",
+        "📦 سایر ماژول‌های مدیریتی": "other", "📦 Other Admin Modules": "other",
+    }
+    if txt in _admin_section_map:
+        await _show_admin_section(update, context, _admin_section_map[txt])
         return
 
     # V25 modules must also have priority over transient legacy input states.
@@ -10868,7 +10985,7 @@ async def text_router(update, context):
             return
 
         if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
-            await admin_command(update, context)
+            await _show_admin_section(update, context, "dashboard")
             return
 
         if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles"):
@@ -10899,6 +11016,23 @@ async def text_router(update, context):
                 parse_mode="HTML",
                 reply_markup=_master_manager_keyboard(uid)
             )
+            return
+
+        # Section map for unhandled admin buttons
+        _mgr_section_map = {
+            "🎫 تیکت‌ها و Incident": "tickets", "🎫 Tickets & Incidents": "tickets",
+            "💰 مالی و پرداخت": "finance", "💰 Finance & Payments": "finance",
+            "💎 VIP / XP / Token": "xpvip",
+            "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
+            "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
+            "💾 Backup و Recovery": "backup", "💾 Backup & Recovery": "backup",
+            "🧩 قابلیت‌ها و Feature Flags": "features", "🧩 Features & Flags": "features",
+            "🔐 امنیت و Audit": "security", "🔐 Security & Audit": "security",
+            "🧪 مرکز تست و Regression": "test", "🧪 Test & Regression": "test",
+            "📦 سایر ماژول‌های مدیریتی": "other", "📦 Other Admin Modules": "other",
+        }
+        if txt in _mgr_section_map:
+            await _show_admin_section(update, context, _mgr_section_map[txt])
             return
 
     return await _OLD_TEXT_ROUTER_MANAGER_MENU(update, context)
