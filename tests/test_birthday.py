@@ -104,6 +104,10 @@ cbu = FakeCBUpdate(USER_A, "bd:set")
 await_ = asyncio.get_event_loop_policy().new_event_loop()
 loop = await_
 loop.run_until_complete(bot.birthday_callback(cbu, ctx))
+# New calendar flow: bd:set opens the Jalali year picker instead of a text prompt;
+# manual entry is triggered by the bd:manual button.
+assert "bd_wait" not in ctx.user_data
+loop.run_until_complete(bot.birthday_callback(FakeCBUpdate(USER_A, "bd:manual"), ctx))
 assert ctx.user_data.get("bd_wait") == "date"
 
 
@@ -246,7 +250,9 @@ print("[8] daily job OK (congrats + gift once, rerun no-op)")
 nd = int(bot.bd_get("bd_reminder_days", "3"))
 rem_date = today + bot.timedelta(days=nd)
 c = bot._bday_db()
-c.execute("UPDATE birthdays SET birth_date=? WHERE user_id=?", (f"2000-{rem_date.isoformat()[5:]}", USER_B))
+c.execute("INSERT INTO birthdays(user_id,birth_date,created_at,updated_at) VALUES(?,?,?,?) "
+          "ON CONFLICT(user_id) DO UPDATE SET birth_date=excluded.birth_date",
+          (USER_B, f"2000-{rem_date.isoformat()[5:]}", now, now))
 c.execute("DELETE FROM bday_events WHERE kind='reminder'")
 c.commit()
 c.close()

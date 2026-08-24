@@ -16,6 +16,9 @@ SUITES = [
     "test_scale_reliability.py",
     "test_prices_ai.py",
     "test_access_control.py",
+    "test_birthday.py",
+    "test_birthday_calendar.py",
+    "test_booking_flow.py",
 ]
 
 

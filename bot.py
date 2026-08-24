@@ -4705,6 +4705,16 @@ async def customer_booking_link(update,context):
     text=f"🔗 <b>لینک رزرو آنلاین</b>\n\n🏪 {title}\n\n<code>{link}</code>\n\nمشتری از این لینک زمان‌های آزاد را می‌بیند و نوبت ثبت می‌کند."
     if contacts: text += "\n\n"+"\n".join(contacts)
     await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
+    # Deliver the booking link as its own message so it can be copied/forwarded directly.
+    try:
+        await context.bot.send_message(
+            uid,
+            f"🔗 <b>لینک رزرو آنلاین «{title}»:</b>\n\n{link}\n\n"
+            "✅ این لینک را برای مشتریانتان بفرستید.\n"
+            "🔒 رزرو هر مشتری جداگانه ثبت می\u200cشود و بخش «رزروهای من» هر شخص فقط رزروهای خودش را نشان می\u200cدهد.",
+            parse_mode="HTML", disable_web_page_preview=True)
+    except Exception:
+        logger.warning("Booking link delivery message failed")
 
 async def customer_settings(update,context):
     q=update.callback_query; uid=q.from_user.id; p=ensure_business_profile(uid); types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN
@@ -5141,12 +5151,44 @@ async def customer_daily_report_job(context):
 async def customer_morning_job(context):
     now=datetime.now(TZ)
     if now.hour!=7 or now.minute!=0:return
-    c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.appointment_date=? AND a.status='booked' ORDER BY a.owner_user_id,a.appointment_time",(now.date().isoformat(),)).fetchall(); c.close(); groups={}
+    c=db(); rows=c.execute("SELECT a.*,c.name,c.phone,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.appointment_date=? AND a.status='booked' ORDER BY a.owner_user_id,a.appointment_time",(now.date().isoformat(),)).fetchall(); c.close(); groups={}
     for r in rows:groups.setdefault(r['owner_user_id'],[]).append(r)
     for owner,items in groups.items():
         lines=["🌅 <b>برنامه مشتری‌های امروز</b>",""]+[f"🕐 <b>{r['appointment_time']}</b> — 👤 {html.escape(r['name'])}"+(f" — 📞 {html.escape(r['phone'])}" if r['phone'] else '') for r in items]+[f"\n👥 مجموع: {len(items)} مشتری"]
         try:await context.bot.send_message(owner,"\n".join(lines),parse_mode="HTML",reply_markup=customer_keyboard(owner))
         except Exception as e:logger.warning("Customer morning failed: %s",e)
+
+    # Morning reminder for every client who has an appointment today (both sides are informed).
+    notified_pairs = set()
+    profile_cache = {}
+    for r in rows:
+        cust_tg = r['telegram_user_id']
+        if not cust_tg:
+            continue
+        cust_key = int(cust_tg)
+        pair = (cust_key, r['owner_user_id'])
+        if pair in notified_pairs or user_blocked(cust_key):
+            continue
+        notified_pairs.add(pair)
+        if r['owner_user_id'] not in profile_cache:
+            profile_cache[r['owner_user_id']] = ensure_business_profile(r['owner_user_id'])
+        prof = profile_cache[r['owner_user_id']]
+        bname = prof["business_name"] or prof["business_type"] or "کسب\u200cوکار"
+        todays = sorted([x for x in rows if x['telegram_user_id'] == cust_tg and x['owner_user_id'] == r['owner_user_id']],
+                        key=lambda x: x['appointment_time'])
+        sched = "\n".join("🕐 " + x['appointment_time'] + (" — " + html.escape(x['service']) if x['service'] else "")
+                          for x in todays)
+        try:
+            await context.bot.send_message(
+                cust_key,
+                f"🔔 <b>یادآوری نوبت امروز</b>\n\n🏪 {html.escape(bname)}\n{sched}\n\nمنتظر حضور گرمتان هستیم! 🌟",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📅 رزروهای من", callback_data="cust:mybookings")],
+                    [main_menu_button(cust_key)],
+                ]))
+        except Exception as e:
+            logger.warning("Customer morning reminder failed: %s", e)
 
 async def hide_main_reply_keyboard(update):
     """Remove the persistent main ReplyKeyboard without adding a visible UI message."""
@@ -14169,6 +14211,167 @@ def bd_congrats_text(name):
 
 
 # ---------- user-facing command (privacy: own row only) ----------
+# Birthday entry: Jalali calendar picker (سال ← ماه ← روز) + ✍️ ورود دستی.
+
+_BD_JY_MIN, _BD_JY_MAX = 1300, 1450
+_BD_YEARS_PER_PAGE = 12
+_BD_FA_DG = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+_BD_MONTHS_FA = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+                 "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_BD_MONTHS_EN = ("Farvardin", "Ordibehesht", "Khordad", "Tir", "Mordad", "Shahrivar",
+                 "Mehr", "Aban", "Azar", "Dey", "Bahman", "Esfand")
+
+
+def _bd_now_jy():
+    t = datetime.now(TZ).date()
+    return _g2j(t.year, t.month, t.day)[0]
+
+
+def bd_jalali_to_iso(jy, jm, jd):
+    """Validate a Jalali date and convert it to the standard Gregorian ISO string."""
+    try:
+        jy, jm, jd = int(jy), int(jm), int(jd)
+    except (TypeError, ValueError):
+        return None
+    if not (_BD_JY_MIN <= jy <= _BD_JY_MAX and 1 <= jm <= 12):
+        return None
+    if not (1 <= jd <= _jalali_month_days(jy, jm)):
+        return None
+    try:
+        gy, gm, gd = _j2g(jy, jm, jd)
+        return datetime(gy, gm, gd).date().isoformat()
+    except Exception:
+        return None
+
+
+def bd_parse_any_date(text):
+    """Parse common birthday formats: 1382/04/23, 1382-04-23, 23/04/1382,
+    ۲۳/۰۴/۱۳۸۲, 2000-08-24, 2000/8/24. Returns (gregorian_iso, kind) or None.
+    Years inside the Jalali window are treated as Solar Hijri; anything else as Gregorian."""
+    s = _bd_en((text or "").strip()).replace("/", "-").replace(".", "-").replace("،", "-").strip("- ")
+    parts = [p for p in re.split(r"-+", s) if p]
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        a, b, cc = (int(p) for p in parts)
+
+        def _try_jal(y, m, d):
+            iso = bd_jalali_to_iso(y, m, d)
+            return (iso, "jalali") if iso else None
+
+        def _try_greg(y, m, d):
+            iso = bd_parse_date("%04d-%02d-%02d" % (y, m, d))
+            return (iso, "gregorian") if iso else None
+
+        if a >= 100:
+            if _BD_JY_MIN <= a <= _BD_JY_MAX:
+                return _try_jal(a, b, cc)
+            return _try_greg(a, b, cc)
+        if cc >= 100:
+            if _BD_JY_MIN <= cc <= _BD_JY_MAX:
+                return _try_jal(cc, b, a)
+            return _try_greg(cc, b, a)
+        return None
+    iso = bd_parse_date(text)
+    return (iso, "gregorian") if iso else None
+
+
+async def _safe_edit(q, text, kb=None):
+    try:
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        try:
+            await q.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            pass
+
+
+def _bd_manual_btn(fa):
+    return InlineKeyboardButton("✍️ ورود دستی" if fa else "✍️ Manual", callback_data="bd:manual")
+
+
+def _bd_cal_years_kb(base, fa):
+    base = max(_BD_JY_MIN, min(int(base), _BD_JY_MAX - _BD_YEARS_PER_PAGE + 1))
+    rows, row = [], []
+    for y in range(base, base + _BD_YEARS_PER_PAGE):
+        row.append(InlineKeyboardButton(str(y).translate(_BD_FA_DG) if fa else str(y),
+                                        callback_data="bd:calm:%d" % y))
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([
+        InlineKeyboardButton("◀️ سال‌های قبل" if fa else "◀️ Older years",
+                             callback_data="bd:caly:%d" % (base - _BD_YEARS_PER_PAGE)),
+        InlineKeyboardButton("سال‌های بعد ▶️" if fa else "Newer years ▶️",
+                             callback_data="bd:caly:%d" % (base + _BD_YEARS_PER_PAGE)),
+    ])
+    rows.append([_bd_manual_btn(fa),
+                 InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="bd:back")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _bd_cal_months_kb(year, fa):
+    names = _BD_MONTHS_FA if fa else _BD_MONTHS_EN
+    rows, row = [], []
+    for m in range(1, 13):
+        row.append(InlineKeyboardButton(names[m - 1], callback_data="bd:cald:%d:%d" % (year, m)))
+        if len(row) == 3:
+            rows.append(row)
+            row = []
+    rows.append([_bd_manual_btn(fa),
+                 InlineKeyboardButton("⬅️ انتخاب سال" if fa else "⬅️ Years", callback_data="bd:cal")])
+    return InlineKeyboardMarkup(rows)
+
+
+def _bd_cal_days_kb(year, month, fa):
+    ndays = _jalali_month_days(year, month)
+    rows, row = [], []
+    for d in range(1, ndays + 1):
+        row.append(InlineKeyboardButton(str(d).translate(_BD_FA_DG) if fa else str(d),
+                                        callback_data="bd:calsave:%d:%d:%d" % (year, month, d)))
+        if len(row) == 7:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([_bd_manual_btn(fa),
+                 InlineKeyboardButton("⬅️ انتخاب ماه" if fa else "⬅️ Months",
+                                      callback_data="bd:calm:%d" % year)])
+    return InlineKeyboardMarkup(rows)
+
+
+def _bd_status_parts(uid):
+    fa = lang(uid) == "fa"
+    c = _bday_db()
+    r = c.execute("SELECT birth_date FROM birthdays WHERE user_id=?", (uid,)).fetchone()
+    c.close()
+    if r:
+        jy, jm, jd = _jalali_from_iso(r["birth_date"])
+        if fa:
+            text = ("🎂 <b>تاریخ تولد ثبت‌شدهٔ تو:</b>\n"
+                    "🗓 شمسی: <code>%04d/%02d/%02d</code>\n"
+                    "📅 میلادی: <code>%s</code>\n\n"
+                    "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود."
+                    ) % (jy, jm, jd, r["birth_date"])
+        else:
+            text = ("🎂 <b>Your saved birthday:</b> <code>%s</code>\n\n"
+                    "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts."
+                    ) % (r["birth_date"],)
+    else:
+        if fa:
+            text = ("🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
+                    "سال، ماه و روز تولدت را از تقویم انتخاب کن یا «✍️ ورود دستی» را بزن.\n\n"
+                    "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود.")
+        else:
+            text = ("🎂 <b>Enter your birthday</b>\n\n"
+                    "Pick year, month and day from the calendar, or tap Manual.\n\n"
+                    "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts.")
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎂 ثبت تولد" if fa else "🎂 Set Birthday", callback_data="bd:set")],
+        [InlineKeyboardButton("🗑 حذف تاریخ" if fa else "🗑 Delete", callback_data="bd:del")],
+    ])
+    return text, kb
+
 
 async def birthday_command(update, context):
     uid = update.effective_user.id
@@ -14176,33 +14379,7 @@ async def birthday_command(update, context):
     if bd_get("bd_enabled", "1") != "1":
         await update.message.reply_text("این بخش در حال حاضر غیرفعال است. 🙏" if fa else "This section is currently disabled.")
         return
-    c = _bday_db()
-    r = c.execute("SELECT birth_date FROM birthdays WHERE user_id=?", (uid,)).fetchone()
-    c.close()
-    if r:
-        text = ("🎂 <b>تاریخ تولد ثبت‌شدهً تو:</b> <code>" + r['birth_date'] + "</code>\n\n"
-                "می‌توانی ویرایش یا حذفش کنی.\n"
-                "⚠️ تاریخ تولد دائمی ذخیره می‌شود و فقط برای تبریک و هدیه استفاده می‌شود."
-                if fa else
-                "🎂 <b>Your saved birthday:</b> <code>" + r['birth_date'] + "</code>\n\n"
-                "You can edit or delete it.\n"
-                "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts.")
-    else:
-        text = ("🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
-                "هنوز تاریخ تولدت را ثبت نکرده‌ای. روی دکمهً زیر کلیک کن.\n\n"
-                "فرمت: <code>YYYY-MM-DD</code>\n"
-                "مثال: <code>1995-03-15</code>\n\n"
-                "⚠️ تاریخ تولد دائمی ذخیره می‌شود و فقط برای تبریک و هدیه استفاده می‌شود."
-                if fa else
-                "🎂 <b>Enter your birthday</b>\n\n"
-                "You haven't registered your birthday yet. Click the button below.\n\n"
-                "Format: <code>YYYY-MM-DD</code>\n"
-                "Example: <code>1995-03-15</code>\n\n"
-                "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts.")
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📝 ثبت / ویرایش" if fa else "📝 Set / Edit", callback_data="bd:set")],
-        [InlineKeyboardButton("🗑 حذف تاریخ" if fa else "🗑 Delete", callback_data="bd:del")],
-    ])
+    text, kb = _bd_status_parts(uid)
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
 
 
@@ -14214,32 +14391,122 @@ async def birthday_callback(update, context):
     if not data.startswith("bd:"):
         await q.answer()
         return
-    await q.answer()
     act = data[3:]
-    if act == "set":
+
+    async def _ans(msg=None, alert=False):
+        try:
+            await q.answer(msg, show_alert=alert)
+        except Exception:
+            pass
+
+    if act == "set" or act == "cal":
+        await _ans()
+        base = max(_BD_JY_MIN, min(_bd_now_jy() - 25, _BD_JY_MAX - 11))
+        title = "📅 <b>سال تولدت را انتخاب کن:</b>" if fa else "📅 <b>Select your birth year:</b>"
+        await _safe_edit(q, title, _bd_cal_years_kb(base, fa))
+        return
+    if act.startswith("caly:"):
+        await _ans()
+        try:
+            base = int(act.split(":")[1])
+        except ValueError:
+            base = _bd_now_jy() - 25
+        title = "📅 <b>سال تولدت را انتخاب کن:</b>" if fa else "📅 <b>Select your birth year:</b>"
+        await _safe_edit(q, title, _bd_cal_years_kb(base, fa))
+        return
+    if act.startswith("calm:"):
+        try:
+            year = int(act.split(":")[1])
+            assert _BD_JY_MIN <= year <= _BD_JY_MAX
+        except Exception:
+            await _ans("⛔ سال نامعتبر است.", True)
+            return
+        await _ans()
+        if fa:
+            title = "🗓 <b>ماه تولدت را انتخاب کن:</b> <code>%d</code>" % year
+        else:
+            title = "🗓 <b>Select your birth month:</b> <code>%d</code>" % year
+        await _safe_edit(q, title, _bd_cal_months_kb(year, fa))
+        return
+    if act.startswith("cald:"):
+        pr = act.split(":")
+        try:
+            year, month = int(pr[1]), int(pr[2])
+            assert _BD_JY_MIN <= year <= _BD_JY_MAX and 1 <= month <= 12
+        except Exception:
+            await _ans("⛔ نامعتبر است.", True)
+            return
+        await _ans()
+        mname = (_BD_MONTHS_FA if fa else _BD_MONTHS_EN)[month - 1]
+        if fa:
+            title = "🔢 <b>روز تولدت را انتخاب کن:</b> %s %d" % (mname, year)
+        else:
+            title = "🔢 <b>Select your birth day:</b> %s %d" % (mname, year)
+        await _safe_edit(q, title, _bd_cal_days_kb(year, month, fa))
+        return
+    if act.startswith("calsave:"):
+        pr = act.split(":")
+        iso = bd_jalali_to_iso(pr[1], pr[2], pr[3]) if len(pr) == 4 else None
+        if not iso:
+            await _ans("⛔ تاریخ نامعتبر است.", True)
+            return
+        now_iso = datetime.now(TZ).isoformat()
+        c = _bday_db()
+        c.execute("INSERT INTO birthdays(user_id,birth_date,created_at,updated_at) VALUES(?,?,?,?) "
+                  "ON CONFLICT(user_id) DO UPDATE SET birth_date=excluded.birth_date, updated_at=excluded.updated_at",
+                  (uid, iso, now_iso, now_iso))
+        c.commit()
+        c.close()
+        jy, jm, jd = _jalali_from_iso(iso)
+        if fa:
+            txt = ("✅ <b>تاریخ تولدت ثبت شد!</b> 🎂\n\n"
+                   "🗓 شمسی: <code>%04d/%02d/%02d</code>\n"
+                   "📅 میلادی: <code>%s</code>\n\n"
+                   "هر سال در همین روز تبریک و هدیهٔ تولد دریافت می‌کنی."
+                   ) % (jy, jm, jd, iso)
+        else:
+            txt = ("✅ <b>Your birthday is saved!</b> 🎂\n\n"
+                   "Standard date: <code>%s</code>\n\n"
+                   "You will receive birthday greetings and gifts every year on this day.") % (iso,)
+        await _ans("✅ ثبت شد")
+        await _safe_edit(q, txt, None)
+        return
+    if act == "manual":
         context.user_data["bd_wait"] = "date"
-        await q.message.edit_text(
-            "🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
-            "فرمت: <code>YYYY-MM-DD</code>\n"
-            "مثال: <code>1995-03-15</code>\n\n"
-            "⚠️ تاریخ تولد دائمی ذخیره می‌شود و فقط برای تبریک و هدیه استفاده می‌شود." if fa
-            else "🎂 <b>Enter your birthday</b>\n\n"
-            "Format: <code>YYYY-MM-DD</code>\n"
-            "Example: <code>1995-03-15</code>\n\n"
-            "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts.",
-            parse_mode="HTML")
+        if fa:
+            txt = ("✍️ <b>تاریخ تولد را دستی وارد کن</b>\n\n"
+                   "فرمت‌های قابل قبول:\n"
+                   "<code>1382/04/23</code> · <code>1382-04-23</code>\n"
+                   "<code>23/04/1382</code> (شمسی)\n"
+                   "<code>2000-08-24</code> (میلادی)\n\n"
+                   "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود.")
+        else:
+            txt = ("✍️ <b>Enter your birthday manually</b>\n\n"
+                   "Accepted formats:\n<code>2000-08-24</code>, <code>2000/8/24</code>, "
+                   "<code>1382/04/23</code>, <code>23/04/1382</code>\n\n"
+                   "⚠️ Your birthday is saved permanently and used only for greetings and gifts.")
+        await _ans()
+        await _safe_edit(q, txt, None)
         return
     if act == "del":
         c = _bday_db()
         c.execute("DELETE FROM birthdays WHERE user_id=?", (uid,))
         c.commit()
         c.close()
-        await q.message.edit_text("✅ تاریخ تولد حذف شد." if fa else "✅ Birthday removed.")
+        await _ans()
+        await _safe_edit(q, "🗑 تاریخ تولد حذف شد." if fa else "🗑 Birthday removed.", None)
         return
     if act == "cancel":
         context.user_data.pop("bd_wait", None)
-        await q.message.edit_text("باشه، لغو شد. 👍" if fa else "Okay, cancelled.")
+        await _ans()
+        await _safe_edit(q, "باشه، لغو شد. 👍" if fa else "Okay, cancelled. 👍", None)
         return
+    if act == "back":
+        await _ans()
+        text, kb = _bd_status_parts(uid)
+        await _safe_edit(q, text, kb)
+        return
+    await _ans()
 
 
 # ---------- Owner-only panel ----------
@@ -14767,17 +15034,24 @@ async def text_router(update, context):
             # User-side pending birthday-date input (from /birthday buttons).
             if context.user_data.get("bd_wait") == "date":
                 context.user_data.pop("bd_wait", None)
-                iso = bd_parse_date(txt)
-                if not iso:
-                    await update.message.reply_text("⚠️ فرمت درست نیست. مثال: 2000-08-24")
+                parsed = bd_parse_any_date(txt)
+                if not parsed:
+                    await update.message.reply_text(
+                        "⚠️ فرمت درست نیست.\nمثال شمسی: <code>1382/04/23</code> یا <code>23/04/1382</code>\nمثال میلادی: <code>2000-08-24</code>",
+                        parse_mode="HTML")
                     return
+                iso, _kind = parsed
                 c = _bday_db()
                 c.execute("INSERT INTO birthdays(user_id,birth_date,created_at,updated_at) VALUES(?,?,?,?) "
                           "ON CONFLICT(user_id) DO UPDATE SET birth_date=excluded.birth_date, updated_at=excluded.updated_at",
                           (uid, iso, datetime.now(TZ).isoformat(), datetime.now(TZ).isoformat()))
                 c.commit()
                 c.close()
-                await update.message.reply_text(f"✅ ثبت شد! 🎂 تولدت هر سال {iso[5:]} جشن گرفته می‌شود.")
+                jy, jm, jd = _jalali_from_iso(iso)
+                mname = (_BD_MONTHS_FA if lang(uid) == "fa" else _BD_MONTHS_EN)[jm - 1]
+                await update.message.reply_text(
+                    f"✅ ثبت شد! 🎂 تولدت هر سال {jd} {mname} جشن گرفته می‌شود.\n📅 تاریخ استاندارد: <code>{iso}</code>",
+                    parse_mode="HTML")
                 return
             # Owner panel routing / pending owner inputs.
             if await _bdo_route(update, context, uid, txt):
