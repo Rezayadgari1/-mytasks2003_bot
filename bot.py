@@ -685,6 +685,11 @@ def init_db():
         reward_amount INTEGER NOT NULL, reward_days INTEGER,
         created_at TEXT NOT NULL
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS referral_templates(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS referral_logs(
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
         action TEXT NOT NULL, target_user INTEGER, details TEXT,
@@ -6507,47 +6512,201 @@ async def successful_payment_callback(update,context):
         logger.exception("Successful payment handling failed")
         await update.message.reply_text("❌ ثبت پرداخت انجام نشد.",reply_markup=keyboard(uid))
 
-async def referral(update,context):
-    uid=update.effective_user.id
-    c=db()
+# --- Pre-made invite text templates ---
+_INVITE_TEMPLATES_FA = [
+    {"id": 1, "text": "👋 سلام!\nمن از ربات MyTasks استفاده می‌کنم برای مدیریت کارها و اهدافم.\nخیلی کمکم کرده! تو هم امتحان کن:\n{invite_link}", "enabled": 1},
+    {"id": 2, "text": "🎯 یه ربات عالی برای مدیریت روزانه پیدا کردم!\nاگه دنبال یه ابزار ساده و قوی برای برنامه‌ریزی هستی، اینو امتحان کن:\n{invite_link}", "enabled": 1},
+    {"id": 3, "text": "🚀 با MyTasks زندگیت رو سازمان‌دهی کن!\nهدف بذار، یادآوری بگیر، پیشرفتت رو ببین.\nهمین الان شروع کن:\n{invite_link}", "enabled": 1},
+]
+
+def _get_invite_templates():
+    """Get active invite templates."""
     try:
-        r=c.execute("SELECT referral_code FROM users WHERE user_id=?",(uid,)).fetchone(); n=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(uid,)).fetchone()["n"]
-    finally: c.close()
-    code=r["referral_code"] if r and r["referral_code"] else secrets.token_urlsafe(12)
-    c=db(); c.execute("UPDATE users SET referral_code=? WHERE user_id=?",(code,uid)); c.commit(); c.close()
-    # Referral VIP rewards are idempotent: viewing the referral page must never
-    # grant the same 10-referral milestone more than once.
-    if feature_enabled("referrals") and n>0 and n%10==0:
-        milestone = n // 10
-        reward_key = f"referral_vip:{uid}:{milestone}"
-        c=db()
-        try:
-            cur=c.execute("INSERT OR IGNORE INTO reward_log(reward_key,user_id,reward_type,amount,created_at) VALUES(?,?,?,?,?)",
-                          (reward_key,uid,"referral_vip_days",30,datetime.now(TZ).isoformat()))
-            if cur.rowcount == 1:
-                r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(uid,)).fetchone(); base=datetime.now(TZ)
-                if r and r["vip_until"]:
-                    try: base=max(base,datetime.fromisoformat(r["vip_until"]))
-                    except Exception: pass
-                new_until=base+timedelta(days=30)
-                c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(new_until.isoformat(),uid))
-                c.commit()
-            else:
-                c.rollback()
-        finally:
-            c.close()
-    me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=ref_{code}" if me.username else code
-    reward=int(token_setting("referral_tokens_per_success","10") or 10)
-    next_count=((n//10)+1)*10
-    await update.message.reply_text(
+        c = db()
+        rows = c.execute("SELECT * FROM referral_templates WHERE enabled=1 ORDER BY sort_order").fetchall()
+        c.close()
+        if rows:
+            return [{"id": r["id"], "text": r["text"]} for r in rows]
+    except Exception:
+        pass
+    return _INVITE_TEMPLATES_FA
+
+def _referral_user_kb(uid):
+    """Build the user referral panel keyboard."""
+    fa = lang(uid) == "fa"
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 دعوت دوستان" if fa else "📤 Invite Friends", callback_data="ref:invite")],
+        [InlineKeyboardButton("🔗 لینک دعوت من" if fa else "🔗 My Invite Link", callback_data="ref:link"),
+         InlineKeyboardButton("🔑 کد دعوت من" if fa else "🔑 My Referral Code", callback_data="ref:code")],
+        [InlineKeyboardButton("👥 افراد دعوت‌شده" if fa else "👥 Invited Users", callback_data="ref:list")],
+        [InlineKeyboardButton("🎁 پاداش‌های من" if fa else "🎁 My Rewards", callback_data="ref:rewards")],
+        [InlineKeyboardButton("📊 آمار دعوت" if fa else "📊 Referral Stats", callback_data="ref:stats")],
+        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+    ])
+
+async def referral(update, context):
+    """Main referral panel - entry point."""
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    stats = get_referral_stats(uid)
+    me = await context.bot.get_me()
+    link = f"https://t.me/{me.username}?start=ref_{stats['code']}" if me.username else stats["code"]
+    text = (
         f"🤝 <b>دعوت دوستان</b>\n\n"
         f"🔗 لینک اختصاصی تو:\n<code>{html.escape(link)}</code>\n\n"
-        f"👥 دعوت موفق: <b>{n}</b> نفر\n"
-        f"🎁 پاداش دریافت‌شده: <b>{n*reward}</b> توکن\n"
-        f"🎁 هر دعوت موفق: <b>{reward}</b> توکن\n"
-        f"💎 هر ۱۰ دعوت موفق = ۳۰ روز VIP\n"
-        f"📈 تا پاداش VIP بعدی: <b>{max(0,next_count-n)}</b> دعوت",
-        parse_mode="HTML")
+        f"👥 دعوت‌ها: <b>{stats['total']}</b> | موفق: <b>{stats['success']}</b> | در انتظار: <b>{stats['pending']}</b>\n"
+        f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن"
+    )
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+
+
+async def referral_callback(update, context):
+    """Handle referral panel callbacks."""
+    q = update.callback_query
+    uid = q.from_user.id
+    fa = lang(uid) == "fa"
+    data = q.data
+    action = data.split(":", 1)[1] if ":" in data else ""
+    await q.answer()
+
+    me = await context.bot.get_me()
+    stats = get_referral_stats(uid)
+    link = f"https://t.me/{me.username}?start=ref_{stats['code']}" if me.username else stats["code"]
+
+    if action == "invite":
+        templates = _get_invite_templates()
+        if not templates:
+            await q.message.edit_text("📤 متن آماده‌ای وجود ندارد.", reply_markup=_referral_user_kb(uid))
+            return
+        rows = []
+        for t in templates[:6]:
+            preview = t["text"][:60] + ("..." if len(t["text"]) > 60 else "")
+            rows.append([InlineKeyboardButton(f"📝 {preview}", callback_data=f"ref:tmpl:{t['id']}")])
+        rows.append([InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")])
+        await q.message.edit_text("📤 <b>یک متن آماده انتخاب کن:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
+        return
+
+    if action.startswith("tmpl:"):
+        tid = int(action.split(":")[1])
+        templates = _get_invite_templates()
+        tmpl = next((t for t in templates if t["id"] == tid), None)
+        if not tmpl:
+            await q.message.edit_text("❌ متن پیدا نشد.", reply_markup=_referral_user_kb(uid))
+            return
+        text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📤 ارسال در Telegram" if fa else "📤 Share on Telegram", callback_data=f"ref:send:{tid}")],
+            [InlineKeyboardButton("📋 کپی متن" if fa else "📋 Copy Text", callback_data=f"ref:copy:{tid}")],
+            [InlineKeyboardButton("🔗 کپی لینک" if fa else "🔗 Copy Link", callback_data="ref:copylink")],
+            [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:invite")],
+        ])
+        await q.message.edit_text(f"📤 <b>متن دعوت:</b>\n\n{text}", parse_mode="HTML", reply_markup=kb)
+        return
+
+    if action.startswith("send:"):
+        tid = int(action.split(":")[1])
+        templates = _get_invite_templates()
+        tmpl = next((t for t in templates if t["id"] == tid), None)
+        if tmpl:
+            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+        else:
+            text = f"👋 از ربات MyTasks استفاده کن:\n{link}"
+        # Use Telegram's forward sharing - user picks the recipient
+        await q.message.delete()
+        await context.bot.send_message(uid, f"📤 <b>متن آماده ارسال:</b>\n\n{text}\n\n<i>متن را کپی کن و برای دوستت بفرست.</i>", parse_mode="HTML")
+        await context.bot.send_message(uid, text)
+        return
+
+    if action.startswith("copy:"):
+        tid = int(action.split(":")[1])
+        templates = _get_invite_templates()
+        tmpl = next((t for t in templates if t["id"] == tid), None)
+        if tmpl:
+            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+        else:
+            text = link
+        await q.answer("📋 متن کپی شد!", show_alert=True)
+        return
+
+    if action == "copylink":
+        await q.answer(f"🔗 {link}", show_alert=True)
+        return
+
+    if action == "link":
+        await q.message.edit_text(
+            f"🔗 <b>لینک اختصاصی تو:</b>\n\n<code>{html.escape(link)}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📤 اشتراک‌گذاری" if fa else "📤 Share", callback_data="ref:invite")],
+                [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")],
+            ])
+        )
+        return
+
+    if action == "code":
+        await q.message.edit_text(
+            f"🔑 <b>کد دعوت اختصاصی تو:</b>\n\n<code>{stats['code']}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📤 اشتراک‌گذاری" if fa else "📤 Share", callback_data="ref:invite")],
+                [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")],
+            ])
+        )
+        return
+
+    if action == "list":
+        invited = stats["invited"]
+        if not invited:
+            text = "👥 <b>هنوز کسی را دعوت نکرده‌ای.</b>\n\nبا لینک اختصاصیت دوستانت را دعوت کن!"
+        else:
+            lines = [f"👥 <b>افراد دعوت‌شده ({len(invited)} نفر):</b>", ""]
+            status_map = {"registered": "⏳ وارد شده", "success": "✅ موفق", "rewarded": "🎁 پاداش دریافت شده"}
+            for inv in invited[:20]:
+                name = html.escape(inv["first_name"] or "کاربر")
+                st = status_map.get(inv.get("status", ""), "⏳ در انتظار")
+                lines.append(f"• {name} — {st}")
+            text = "\n".join(lines)
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+        return
+
+    if action == "rewards":
+        c = db()
+        rewards = c.execute("SELECT * FROM reward_log WHERE user_id=? AND reward_type LIKE 'referral_%' ORDER BY created_at DESC LIMIT 10", (uid,)).fetchall()
+        c.close()
+        if not rewards:
+            text = "🎁 <b>هنوز پاداشی دریافت نکرده‌ای.</b>"
+        else:
+            lines = [f"🎁 <b>پاداش‌های اخیر:</b>", ""]
+            for rw in rewards:
+                lines.append(f"• {rw['reward_type']}: <b>{rw['amount']}</b> — {rw['created_at'][:10]}")
+            text = "\n".join(lines)
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+        return
+
+    if action == "stats":
+        next_milestone = int(ref_get("ref_vip_milestone", "10"))
+        remaining = max(0, next_milestone - (stats["success"] % next_milestone))
+        text = (
+            f"📊 <b>آمار دعوت تو:</b>\n\n"
+            f"👥 کل دعوت‌ها: <b>{stats['total']}</b>\n"
+            f"✅ دعوت‌های موفق: <b>{stats['success']}</b>\n"
+            f"⏳ در انتظار: <b>{stats['pending']}</b>\n"
+            f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن\n"
+            f"📈 تا پاداش بعدی: <b>{remaining}</b> دعوت موفق دیگر"
+        )
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+        return
+
+    if action == "home":
+        link2 = f"https://t.me/{me.username}?start=ref_{stats['code']}" if me.username else stats["code"]
+        text = (
+            f"🤝 <b>دعوت دوستان</b>\n\n"
+            f"🔗 لینک اختصاصی تو:\n<code>{html.escape(link2)}</code>\n\n"
+            f"👥 دعوت‌ها: <b>{stats['total']}</b> | موفق: <b>{stats['success']}</b> | در انتظار: <b>{stats['pending']}</b>\n"
+            f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن"
+        )
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+        return
 
 def prices_keyboard(uid):
     fa=lang(uid)=="fa"
@@ -10803,6 +10962,7 @@ def main():
 
     app.add_handler(CommandHandler("xp", xp_command))
     app.add_handler(CommandHandler("referral", referral))
+    app.add_handler(CallbackQueryHandler(referral_callback, pattern=r"^ref:"))
     app.add_handler(CommandHandler("prices", prices))
     app.add_handler(CommandHandler("support", support_start))
     app.add_handler(CommandHandler("birthday", birthday_command))
