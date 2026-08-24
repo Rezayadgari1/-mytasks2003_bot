@@ -4329,6 +4329,15 @@ async def user_daily_progress_job(context):
             xp=xp_info(uid)[0]
             text=f"🌙 <b>شب بخیر {html.escape(display_name(uid))}!</b>\n\nگزارش روزانه تو 🌙\n\n🎯 امروز: {td}/{tt} هدف انجام شد ({tp}٪)\n📅 دیروز: {yd}/{yt} هدف انجام شد ({yp}٪)\n\n{trend}: {sign}{diff}٪ نسبت به دیروز\n⭐ XP فعلی: {xp}\n\nفردا یک قدم بهتر شروع می‌کنیم. 💪"
             await context.bot.send_message(uid,text,parse_mode="HTML",reply_markup=keyboard(uid))
+            # Send satisfaction poll after report
+            try:
+                kb_poll = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("😍 عالی بود", callback_data="poll:satisfied"),
+                    InlineKeyboardButton("👍 خوب بود", callback_data="poll:ok"),
+                    InlineKeyboardButton("😐 معمولی", callback_data="poll:meh"),
+                ]])
+                await context.bot.send_message(uid, "🗣️ <b>نظرسنجی</b>\n\nاز امکانات ربات راضی بودی؟ نظرت رو بگو تا بهترش کنیم! ❤️", parse_mode="HTML", reply_markup=kb_poll)
+            except Exception: pass
         except Exception: logger.exception("User daily progress failed for %s",uid)
     c.close()
 
@@ -11104,7 +11113,7 @@ def main():
     if app.job_queue:
         app.job_queue.run_repeating(v25_unified_reminder_job, interval=60, first=5)
         app.job_queue.run_repeating(morning_job, interval=60, first=10)
-        app.job_queue.run_repeating(v25_night_job, interval=60, first=16)
+        # v25_night_job disabled: merged into user_daily_progress_job
         app.job_queue.run_repeating(user_daily_progress_job, interval=60, first=11)
         app.job_queue.run_repeating(send_channel_morning_message, interval=60, first=12)
         app.job_queue.run_repeating(send_night_channel_feedback, interval=60, first=14)
@@ -15716,6 +15725,38 @@ async def text_router(update, context):
 
 
 # ===================== END BIRTHDAY & OCCASIONS MODULE =====================
+
+
+
+# ---------- Satisfaction Poll ----------
+async def poll_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    data = q.data or ""
+    if not data.startswith("poll:"):
+        await q.answer()
+        return
+    choice = data[5:]
+    labels = {"satisfied": "😍 عالی بود", "ok": "👍 خوب بود", "meh": "😐 معمولی"}
+    label = labels.get(choice, choice)
+    # Log the poll response
+    try:
+        c = db()
+        now_iso = datetime.now(TZ).isoformat()
+        c.execute("INSERT INTO delivery_log(delivery_key,user_id,delivery_type,created_at) VALUES(?,?,?,?)",
+                  (f"poll:{uid}:{datetime.now(TZ).date().isoformat()}", uid, f"poll_{choice}", now_iso))
+        c.commit()
+        c.close()
+    except Exception:
+        pass
+    await q.answer(f"ممنون! نظرت ثبت شد: {label}", show_alert=True)
+    try:
+        await q.message.edit_text(
+            f"🗣️ <b>نظرسنجی</b>\n\nاز امکانات ربات راضی بودی؟\n\n✅ پاسخ تو: {label}\n\nممنون از نظرت! ❤️",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()
