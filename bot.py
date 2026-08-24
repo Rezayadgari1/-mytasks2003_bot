@@ -10972,10 +10972,10 @@ def _compact_user_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
         ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
-        ["📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders", "👤 حساب من" if fa else "👤 My Account"],
-        ["🎁 پاداش‌های من" if fa else "🎁 My Rewards", "📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
-        ["🛠️ ابزارها" if fa else "🛠️ Tools", "🎫 پشتیبانی" if fa else "🎫 Support"],
-        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
+        ["👤 حساب من" if fa else "👤 My Account", "🎁 پاداش‌های من" if fa else "🎁 My Rewards"],
+        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
+        ["🎫 پشتیبانی" if fa else "🎫 Support", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -13403,6 +13403,30 @@ async def navigation_callback(update, context):
             reply_markup=compact_keyboard(uid),
         )
         return
+    if (q.data or "") == "nav:stats":
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        try:
+            await q.message.delete()
+        except Exception:
+            pass
+        # Send stats directly for callback
+        goals = get_goals(uid)
+        streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
+        d = datetime.now(TZ).date().isoformat()
+        c = db()
+        done = c.execute("SELECT COUNT(*) AS n FROM goal_days WHERE user_id=? AND goal_date=? AND status='done'", (uid, d)).fetchone()["n"]
+        missed = c.execute("SELECT COUNT(*) AS n FROM goal_days WHERE user_id=? AND goal_date=? AND status='missed'", (uid, d)).fetchone()["n"]
+        total_done = c.execute("SELECT COUNT(*) AS n FROM goal_days WHERE user_id=? AND status='done'", (uid,)).fetchone()["n"]
+        c.close()
+        fa = lang(uid) == "fa"
+        text = f"📊 <b>آمار من</b>\n\n🎯 کل اهداف: {len(goals)}\n✅ انجام‌شده امروز: {done}\n❌ انجام‌نشده امروز: {missed}\n🔥 مجموع انجام‌ها: {total_done}"
+        if streak > 0:
+            text += f"\n🔥 رکورد زنجیره فعلی: {streak} روز" if fa else f"\n🔥 Current streak: {streak} days"
+        await context.bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
+        return
     try:
         await q.answer()
     except Exception:
@@ -13471,9 +13495,12 @@ async def text_router(update, context):
         text = "⚡ <b>دسترسی سریع</b>\n\nپرتکرارترین قابلیت‌ها:" if fa else "⚡ <b>Quick Access</b>"
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ افزودن هدف" if fa else "➕ Add Goal", callback_data="new_goal"),
-             InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today")],
-            [InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders"),
-             InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
+             InlineKeyboardButton("📋 لیست اهداف" if fa else "📋 Goals List", callback_data="goals:main")],
+            [InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Online Prices", callback_data="price:all"),
+             InlineKeyboardButton("📊 آمار من" if fa else "📊 My Stats", callback_data="nav:stats")],
+            [InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today"),
+             InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders")],
+            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -13494,6 +13521,11 @@ async def text_router(update, context):
              InlineKeyboardButton("📆 برنامه هفته" if fa else "📆 Weekly", callback_data="goals:weekly")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    # My Stats (quick access)
+    if txt in ("📊 آمار من", "📊 My Stats"):
+        clear_flow(context)
+        await stats(update, context)
         return
     # My Account
     if txt in ("👤 حساب من", "👤 My Account"):
