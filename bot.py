@@ -14066,11 +14066,10 @@ async def text_router(update, context):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ افزودن هدف" if fa else "➕ Add Goal", callback_data="new_goal"),
              InlineKeyboardButton("📋 لیست اهداف" if fa else "📋 Goals List", callback_data="goals:main")],
-            [InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Online Prices", callback_data="price:all"),
-             InlineKeyboardButton("📊 آمار من" if fa else "📊 My Stats", callback_data="nav:stats")],
             [InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today"),
              InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders")],
-            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
+            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show"),
+             InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Invite Friends", callback_data="ref:home")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
