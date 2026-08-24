@@ -1626,26 +1626,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if handled:
                 return
         if arg.startswith("ref_"):
-            code=arg[4:].strip()
-            try:
-                c=db(); inviter=c.execute("SELECT user_id FROM users WHERE referral_code=?",(code,)).fetchone()
-                if inviter and int(inviter["user_id"])!=uid:
-                    c.execute("UPDATE users SET referrer_id=? WHERE user_id=? AND (referrer_id IS NULL OR referrer_id=0)",(int(inviter["user_id"]),uid))
-                    cur_ref=c.execute("INSERT OR IGNORE INTO referrals(inviter_id,invited_id,created_at,rewarded) VALUES(?,?,?,0)",(int(inviter["user_id"]),uid,datetime.now(TZ).isoformat()))
-                    c.commit()
-                    if cur_ref.rowcount == 1:
+            code = arg[4:].strip()
+            inviter_uid = validate_referral_code(code)
+            if inviter_uid and inviter_uid != uid:
+                registered = register_referral(inviter_uid, uid, source="link")
+                if registered:
+                    ref_log(uid, "start_ref_link", inviter_uid, f"code={code}")
+                    # Check if this completes a success condition
+                    completed_inviter = check_referral_success(uid)
+                    if completed_inviter:
+                        award_referral_reward(completed_inviter, uid)
+                        # Notify inviter
                         try:
-                            token_referral_reward(int(inviter["user_id"]), uid)
-                            try:
-                                await context.bot.send_message(
-                                    chat_id=int(inviter["user_id"]),
-                                    text="🎉 یک دعوت موفق ثبت شد!\n🎁 پاداش دعوت به کیف پولت اضافه شد.\nبرای دیدن آمار: /referral"
-                                )
-                            except Exception:
-                                logger.exception("Referral reward notification failed")
-                        except Exception: logger.exception("Referral token reward failed")
-                c.close()
-            except Exception as e: logger.warning("Referral registration failed: %s",e)
+                            stats = get_referral_stats(completed_inviter)
+                            await context.bot.send_message(
+                                chat_id=completed_inviter,
+                                text=f"🎉 <b>خبر خوب!</b>\n\n"
+                                     f"دوستت با لینک دعوت تو به ربات پیوست ❤️\n"
+                                     f"📊 دعوت‌های موفق تو: <b>{stats['success']}</b> نفر",
+                                parse_mode="HTML"
+                            )
+                        except Exception:
+                            logger.exception("Referral success notification failed")
     if not await require_subscription(update, context):
         return
     info = user_info(uid)
@@ -3772,12 +3774,123 @@ def admin_keyboard():
         ],
         [InlineKeyboardButton("📢 مدیریت کانال و پست‌گذاری", callback_data="adm:channel")],
         [InlineKeyboardButton("🩺 سلامت ربات", callback_data="adm:health"), InlineKeyboardButton("📋 گزارش روزانه", callback_data="adm:report")],
+        [InlineKeyboardButton("📣 دعوت و رفرال", callback_data="adm:referral")],
         [InlineKeyboardButton("⚙️ کنترل قابلیت‌ها", callback_data="adm:features")],
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="adm:main")],
     ])
 
 
 @subscription_required
+async def admin_referral_callback(update, context):
+    """Admin referral management panel."""
+    q = update.callback_query
+    uid = q.from_user.id
+    if not admin_guard(uid):
+        await q.answer("⛔", show_alert=True); return
+    await q.answer()
+    action = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else "dashboard"
+    fa = lang(uid) == "fa"
+
+    if action == "dashboard":
+        stats = get_admin_referral_stats()
+        lines = [
+            "📣 <b>داشبورد دعوت و رفرال</b>", "",
+            f"👥 کل دعوت‌ها: <b>{stats['total']}</b>",
+            f"✅ موفق: <b>{stats['success']}</b>",
+            f"⏳ در انتظار: <b>{stats['pending']}</b>",
+            f"🎁 پاداش صادر شده: <b>{stats['rewarded']}</b>",
+            f"💰 مجموع توکن پاداش: <b>{stats['total_tokens']}</b>",
+        ]
+        if stats["top_referrers"]:
+            lines.append("\n🏆 <b>برترین دعوت‌کنندگان:</b>")
+            for i, r in enumerate(stats["top_referrers"][:5], 1):
+                lines.append(f"  {i}. {html.escape(r['first_name'] or 'کاربر')}: <b>{r['n']}</b> دعوت موفق")
+        text = "\n".join(lines)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👥 کاربران دعوت‌شده", callback_data="adm:referral:list")],
+            [InlineKeyboardButton("⚙️ تنظیمات پاداش", callback_data="adm:referral:settings")],
+            [InlineKeyboardButton("📝 متن‌های آماده", callback_data="adm:referral:templates")],
+            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="adm:referral:dashboard")],
+            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:stats")],
+        ])
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    if action == "list":
+        c = db()
+        rows = c.execute("""SELECT r.*, u.first_name AS inviter_name, v.first_name AS invited_name
+            FROM referrals r LEFT JOIN users u ON u.user_id=r.inviter_id
+            LEFT JOIN users v ON v.user_id=r.invited_id
+            ORDER BY r.created_at DESC LIMIT 30""").fetchall()
+        c.close()
+        if not rows:
+            text = "👥 <b>هنوز دعوتی ثبت نشده.</b>"
+        else:
+            lines = [f"👥 <b>آخرین دعوت‌ها ({len(rows)}):</b>", ""]
+            status_map = {"registered": "⏳", "success": "✅", "rewarded": "🎁"}
+            for r in rows:
+                st = status_map.get(r.get("status", ""), "❓")
+                lines.append(f"{st} {html.escape(r['inviter_name'] or '?')} → {html.escape(r['invited_name'] or '?')} | {r['created_at'][:10]}")
+            text = "\n".join(lines)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+        ])
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    if action == "settings":
+        settings = {
+            "ref_reward_enabled": ref_get("ref_reward_enabled", "1"),
+            "ref_bilateral_reward": ref_get("ref_bilateral_reward", "1"),
+            "ref_tokens_per_success": ref_get("ref_tokens_per_success", "10"),
+            "ref_invitee_tokens": ref_get("ref_invitee_tokens", "5"),
+            "ref_vip_milestone": ref_get("ref_vip_milestone", "10"),
+            "ref_vip_days": ref_get("ref_vip_days", "30"),
+            "ref_success_condition": ref_get("ref_success_condition", "first_goal"),
+            "ref_daily_limit": ref_get("ref_daily_limit", "50"),
+        }
+        cond_map = {"first_goal": "ثبت اولین هدف", "first_activity": "اولین فعالیت", "any": "فقط ورود"}
+        text = (
+            f"⚙️ <b>تنظیمات پاداش دعوت</b>\n\n"
+            f"🎁 پاداش فعال: {'🟢' if settings['ref_reward_enabled']=='1' else '🔴'}\n"
+            f"🤝 پاداش دوطرفه: {'🟢' if settings['ref_bilateral_reward']=='1' else '🔴'}\n"
+            f"💰 توکن دعوت‌کننده: <b>{settings['ref_tokens_per_success']}</b>\n"
+            f"🎁 توکن دعوت‌شده: <b>{settings['ref_invitee_tokens']}</b>\n"
+            f"💎 هر <b>{settings['ref_vip_milestone']}</b> دعوت = <b>{settings['ref_vip_days']}</b> روز VIP\n"
+            f"🎯 شرط موفقیت: <b>{cond_map.get(settings['ref_success_condition'], settings['ref_success_condition'])}</b>\n"
+            f"📅 سقف روزانه: <b>{settings['ref_daily_limit']}</b>"
+        )
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 تغییر شرط موفقیت", callback_data="adm:referral:toggle_cond")],
+            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+        ])
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
+    if action == "toggle_cond":
+        current = ref_get("ref_success_condition", "first_goal")
+        order = ["first_goal", "first_activity", "any"]
+        nxt = order[(order.index(current) + 1) % len(order)] if current in order else "first_goal"
+        ref_set("ref_success_condition", nxt)
+        await admin_referral_callback(update, context)
+        return
+
+    if action == "templates":
+        c = db()
+        rows = c.execute("SELECT * FROM referral_templates ORDER BY sort_order").fetchall()
+        c.close()
+        lines = ["📝 <b>متن‌های آماده دعوت:</b>", ""]
+        for r in rows:
+            status = "🟢" if r["enabled"] else "🔴"
+            preview = r["text"][:50] + ("..." if len(r["text"]) > 50 else "")
+            lines.append(f"{status} #{r['id']}: {preview}")
+        text = "\n".join(lines) if len(rows) > 0 else "📝 <b>هنوز متنی اضافه نشده.</b>"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+        ])
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+
 async def admin_panel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
@@ -10904,6 +11017,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_gifts_callback, pattern=r"^adm:gifts"))
     # Access matrix callbacks
     app.add_handler(CallbackQueryHandler(admin_access_matrix_callback, pattern=r"^adm:access"))
+    app.add_handler(CallbackQueryHandler(admin_referral_callback, pattern=r"^adm:referral"))
     app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
     app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
     app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
