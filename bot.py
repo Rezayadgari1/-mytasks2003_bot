@@ -3503,6 +3503,38 @@ async def channel_panel_callback(update, context):
         await q.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
     await q.answer()
+    try:
+        await _channel_panel_inner(update, context)
+    except Exception as e:
+        logger.exception("channel_panel_callback error")
+        try:
+            await q.answer("❌ خطا رخ داد", show_alert=True)
+        except Exception:
+            pass
+        try:
+            await q.message.edit_text(
+                "⚠️ <b>خطا در پنل مدیریت کانال</b>\n\n"
+                f"کد خطا: <code>{type(e).__name__}</code>\n"
+                "دوباره امتحان کن.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data="ch:main")],
+                    [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+                ])
+            )
+        except Exception:
+            await q.message.reply_text(
+                "⚠️ خطا در پنل مدیریت کانال. دوباره امتحان کن.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data="ch:main")],
+                    [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+                ])
+            )
+
+
+async def _channel_panel_inner(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
     parts=q.data.split(":")
     action = parts[1] if len(parts)>1 else "main"
     cfg = get_channel_config()
