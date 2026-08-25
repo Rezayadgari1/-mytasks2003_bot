@@ -85,7 +85,7 @@ REQUIRED_CHANNEL_URL = os.environ.get("REQUIRED_CHANNEL_URL", "").strip()
 N8N_WEBHOOK_URL = os.environ.get("N8N_WEBHOOK_URL", "").strip()
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "").strip()
 N8N_TIMEOUT = float(os.environ.get("N8N_TIMEOUT", "12"))
-MYTASKS_BUILD_ID = "2026-08-23-ADMIN-ROOT-UNIFIED-AI-01"
+MYTASKS_BUILD_ID = "2026-08-25-FINAL-QUALITY-01"
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
@@ -2576,16 +2576,9 @@ def _safe_channel_enabled(value, default=1):
 
 
 def get_channel_config():
-    """Return the active channel and repair old databases missing channel tables."""
+    """Return the currently selected channel, while preserving legacy channel_config."""
     c=db()
     try:
-        # Older deployments might have a database created before managed_channels.
-        # Create the table here as a safe additive migration before any SELECT.
-        c.execute("""CREATE TABLE IF NOT EXISTS managed_channels(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT UNIQUE NOT NULL,
-            title TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
-        c.commit()
         active=get_system_setting("active_channel_id", "") if "get_system_setting" in globals() else ""
         if active:
             r=c.execute("SELECT channel_id,enabled,updated_at FROM managed_channels WHERE channel_id=?",(active,)).fetchone()
@@ -11544,8 +11537,8 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
 
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
-    app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:"))
-    app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$"))
+    app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$") )
+    app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:(?!check$)"))
     app.add_handler(ChatMemberHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
@@ -11575,6 +11568,7 @@ def main():
     app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
     app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
     app.add_handler(PollAnswerHandler(channel_poll_answer_handler))
+    app.add_handler(CallbackQueryHandler(poll_callback, pattern=r"^poll:"))
     if MessageReactionHandler is not None:
         app.add_handler(MessageReactionHandler(channel_reaction_handler))
     app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
@@ -11586,8 +11580,8 @@ def main():
     app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
     app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
     app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
-    app.add_handler(CallbackQueryHandler(_bdo_owner_callback, pattern=r"^bd:"))
-    app.add_handler(CallbackQueryHandler(birthday_callback, pattern=r"^bd:"))
+    app.add_handler(CallbackQueryHandler(_bdo_owner_callback, pattern=r"^bd:(home|tog_main|tog_rem|cyc_rem|tog_gift|cyc_kind|cyc_aud|amt|text|time|remdays|occ_add|occ_toggle:\d+|occ_del:\d+|report)$"))
+    app.add_handler(CallbackQueryHandler(birthday_callback, pattern=r"^bd:(set|del|manual|back|cal|calm:\d+|caly:\d+|cald:\d+:\d+|calsave:\d+:\d+:\d+)$"))
     app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
     app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
     app.add_handler(CallbackQueryHandler(onboarding_feature_callback, pattern=r"^pref:"))
@@ -11671,7 +11665,7 @@ def main():
         app.job_queue.run_repeating(weekly_owner_backup_job, interval=3600, first=120)
         app.job_queue.run_repeating(birthday_occasion_job, interval=60, first=65)
 
-    logger.info("MyTasks build: 2026-08-23-ADMIN-ROOT-UNIFIED-AI-01")
+    logger.info("MyTasks build: 2026-08-25-FINAL-QUALITY-01")
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
@@ -13385,22 +13379,9 @@ def _targeted_record_username(user):
         uid=int(user.id)
         uname=(getattr(user,"username",None) or "").strip().lstrip("@").lower() or None
         first=getattr(user,"first_name",None) or ""
-        now=datetime.now(TZ).isoformat()
         c=db()
-        # INSERT first. The old code only UPDATEd users, so a valid username
-        # was lost when the user row did not exist yet.
-        c.execute(
-            "INSERT OR IGNORE INTO users(user_id,first_name,language,created_at,last_active_at) VALUES(?,?,?,?,?)",
-            (uid,first,"fa",now,now)
-        )
-        c.execute(
-            "UPDATE users SET username=?, first_name=COALESCE(NULLIF(?,''),first_name), last_active_at=? WHERE user_id=?",
-            (uname,first,now,uid)
-        )
-        c.execute(
-            "UPDATE management_roles SET username=?, updated_at=? WHERE user_id=? AND username IS NOT ?",
-            (uname,now,uid,uname)
-        )
+        c.execute("UPDATE users SET username=?, first_name=COALESCE(NULLIF(?,''),first_name), last_active_at=? WHERE user_id=?",(uname,first,datetime.now(TZ).isoformat(),uid))
+        c.execute("UPDATE management_roles SET username=?, updated_at=? WHERE user_id=? AND username IS NOT ?",(uname,datetime.now(TZ).isoformat(),uid,uname))
         c.commit(); c.close()
     except Exception:
         logger.exception("Username tracking failed")
@@ -13503,36 +13484,17 @@ def _targeted_permissions_keyboard(uid,target):
 
 # ---------- Add/disable manager by username OR numeric ID ----------
 async def _targeted_resolve_manager_ref(context,bot,ref):
-    """Resolve a manager by numeric Telegram ID or a username already known to the bot.
-
-    Telegram Bot API does not provide a general user lookup by @username.
-    get_chat(@username) is for public chats such as channels and groups, not arbitrary users.
-    """
-    ref=(ref or "").strip()
-    if ref.isdigit():
-        return int(ref), None
-    uname=ref.lstrip("@").strip().lower()
-    if not uname or not re.fullmatch(r"[A-Za-z0-9_]{3,32}",uname):
-        return None,None
-
-    c=db()
+    ref=ref.strip();
+    if ref.isdigit(): return int(ref), None
+    uname=ref.lstrip("@").lower()
+    if not uname or not re.fullmatch(r"[A-Za-z0-9_]{3,32}",uname): return None,None
+    c=db(); r=c.execute("SELECT user_id,username FROM users WHERE lower(username)=? LIMIT 1",(uname,)).fetchone(); c.close()
+    if r: return int(r["user_id"]),uname
     try:
-        # Search all local user sources. Users who have sent any message to the bot
-        # are recorded by _targeted_record_username.
-        r=c.execute("SELECT user_id,username FROM users WHERE lower(username)=? LIMIT 1",(uname,)).fetchone()
-        if r:
-            return int(r["user_id"]),uname
-        r=c.execute("SELECT user_id,username FROM management_roles WHERE lower(username)=? LIMIT 1",(uname,)).fetchone()
-        if r:
-            return int(r["user_id"]),uname
-        r=c.execute("SELECT telegram_user_id,telegram_username FROM customers WHERE lower(telegram_username)=? AND telegram_user_id IS NOT NULL LIMIT 1",(uname,)).fetchone()
-        if r:
-            return int(r["telegram_user_id"]),uname
-    finally:
-        c.close()
-
-    # Do not use bot.get_chat('@username') here. It does not resolve normal users.
-    return None,uname
+        chat=await bot.get_chat("@"+uname)
+        return int(chat.id),uname
+    except Exception:
+        return None,uname
 
 # ---------- Live prices: online only, manager controls which assets appear ----------
 def _targeted_enabled_prices():
@@ -13723,35 +13685,21 @@ async def text_router(update,context):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
         if not target:
-            await update.message.reply_text(
-                '❌ این @username در ربات شناخته نشده است.\n\n'
-                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
-                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
-            ); return
+            await update.message.reply_text('❌ کاربر پیدا نشد. @username معتبر یا ID عددی بفرست.'); return
         context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Fix legacy add-manager flow too: accept username and store it.
     if context.user_data.get('master_add_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target:
-            await update.message.reply_text(
-                '❌ این @username در ربات شناخته نشده است.\n\n'
-                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
-                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
-            ); return
+        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
         context.user_data['master_add_manager']=False; context.user_data['master_pending_manager_id']=target; context.user_data['master_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Legacy disable flow: accept username too.
     if context.user_data.get('master_disable_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target:
-            await update.message.reply_text(
-                '❌ این @username در ربات شناخته نشده است.\n\n'
-                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
-                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
-            ); return
+        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
         if target==master_owner_id(): await update.message.reply_text('❌ Owner قابل لغو نیست.'); return
         c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('✅ مدیریت این کاربر لغو شد.',reply_markup=keyboard(uid)); return
     return await _OLD_TEXT_ROUTER_TARGETED(update,context)
@@ -16368,6 +16316,176 @@ async def track_channel_membership(update, context):
             _forced_sub_record_leave(uid)
     except Exception:
         logger.exception("track_channel_membership failed")
+
+
+# ===================== FINAL UI / FLOW QUALITY LAYER =====================
+# This layer only reorganizes existing services. It does not add a new service.
+# Existing database records and settings stay untouched.
+
+_FINAL_OLD_COMPACT_USER_KEYBOARD = _compact_user_keyboard
+_FINAL_OLD_COMPACT_MENU_KEYBOARD = _compact_menu_keyboard
+_FINAL_OLD_COMPACT_ROOT_INLINE = _compact_root_inline
+_FINAL_OLD_TEXT_ROUTER_UI = text_router
+_FINAL_OLD_COMPACT_MENU_CALLBACK_UI = compact_menu_callback
+
+
+def _compact_user_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
+        ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
+        ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
+        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
+        ["🎫 پشتیبانی" if fa else "🎫 Support", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
+    ]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
+
+
+def _compact_menu_keyboard(uid, section):
+    fa = lang(uid) == "fa"
+    common = {
+        "goals": [
+            [("🎯 اهداف امروز", "cm:today"), ("➕ هدف جدید", "cm:custom_goal")],
+            [("🏆 اهداف آماده", "cm:ready_goals"), ("✏️ ویرایش اهداف", "cm:edit_goals")],
+            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم", "cm:calendar")],
+            [("📊 آمار من", "cm:stats"), ("📅 گزارش هفتگی", "cm:weekly")],
+        ],
+        "reports": [
+            [("📊 گزارش امروز", "v25:reports"), ("📅 گزارش هفتگی", "cm:weekly")],
+            [("🗓️ گزارش ماهانه", "v25:report_month"), ("📈 آمار من", "cm:stats")],
+            [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
+        ],
+        "tools": [
+            [("🤖 چت با AI", "cm:ai"), ("🎙️ دستیار صوتی", "cm:voice")],
+            [("📚 راهنمای ربات", "cm:guide")],
+        ],
+        "vip": [
+            [("💎 VIP و اشتراک", "cm:vip"), ("⭐ XP", "cm:xp")],
+            [("🎟️ توکن‌های من", "cm:tokens"), ("🤝 دعوت دوستان", "cm:referral")],
+            [("🏆 دستاوردها", "cm:achievements")],
+        ],
+        "account": [
+            [("👤 پروفایل", "cm:profile"), ("🎁 پاداش‌های من", "cm:rewards")],
+            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم من", "cm:calendar")],
+            [("⚙️ تنظیمات", "cm:settings")],
+        ],
+        "support": [
+            [("🎫 پشتیبانی", "cm:support"), ("📚 راهنمای ربات", "cm:guide")],
+        ],
+    }
+    en = {
+        "cm:today":"🎯 Today's Goals", "cm:custom_goal":"➕ New Goal",
+        "cm:ready_goals":"🏆 Ready Goals", "cm:edit_goals":"✏️ Edit Goals",
+        "cm:reminders":"🔔 Reminders", "cm:calendar":"📅 Calendar",
+        "cm:stats":"📈 My Stats", "cm:weekly":"📅 Weekly Report",
+        "v25:reports":"📊 Today's Report", "v25:report_month":"🗓️ Monthly Report",
+        "cm:achievements":"🏆 Achievements", "cm:xp":"⭐ XP",
+        "cm:ai":"🤖 AI Chat", "cm:voice":"🎙️ Voice Assistant", "cm:guide":"📚 Bot Guide",
+        "cm:vip":"💎 VIP & Subscription", "cm:tokens":"🎟️ My Tokens", "cm:referral":"🤝 Referrals",
+        "cm:profile":"👤 Profile", "cm:rewards":"🎁 My Rewards", "cm:settings":"⚙️ Settings",
+        "cm:support":"🎫 Support",
+    }
+    rows=[]
+    for row in common.get(section, []):
+        out=[]
+        for label, cb in row:
+            out.append(InlineKeyboardButton(label if fa else en.get(cb, label), callback_data=cb))
+        rows.append(out)
+    rows.append([
+        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home"),
+        main_menu_button(uid),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+def _compact_root_inline(uid):
+    fa = lang(uid) == "fa"
+    if fa:
+        rows = [
+            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("📈 قیمت آنلاین", callback_data="cm:prices"), InlineKeyboardButton("🧠 مرکز من", callback_data="cm:center")],
+            [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
+            [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
+        ]
+    else:
+        rows = [
+            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("📈 Online Prices", callback_data="cm:prices"), InlineKeyboardButton("🧠 My Center", callback_data="cm:center")],
+            [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
+            [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
+        ]
+    return InlineKeyboardMarkup(rows)
+
+
+async def _render_rewards_page(update, context):
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    xp, level, _ = xp_info(uid)
+    text = (
+        f"🎁 <b>پاداش‌های من</b>\n\n⭐ XP: {xp}\n🏅 سطح: {level}\n💎 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}"
+        if fa else
+        f"🎁 <b>My Rewards</b>\n\n⭐ XP: {xp}\n🏅 Level: {level}\n💎 VIP: {'Active' if is_vip(uid) else 'Inactive'}"
+    )
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐ XP من" if fa else "⭐ My XP", callback_data="cm:xp"), InlineKeyboardButton("🏆 دستاوردها" if fa else "🏆 Achievements", callback_data="cm:achievements")],
+        [InlineKeyboardButton("🎟️ توکن‌های من" if fa else "🎟️ My Tokens", callback_data="cm:tokens"), InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Referrals", callback_data="cm:referral")],
+        [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="menu:account"), main_menu_button(uid)],
+    ])
+    q = getattr(update, "callback_query", None)
+    if q:
+        await q.answer()
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+
+async def compact_menu_callback(update, context):
+    q = update.callback_query
+    data = q.data or ""
+    if data == "cm:rewards":
+        return await _render_rewards_page(update, context)
+    if data == "v25:report_month":
+        await q.answer()
+        return await v25_reports(update, context, "month")
+    if data == "v25:reports":
+        await q.answer()
+        return await v25_reports(update, context, "day")
+    return await _FINAL_OLD_COMPACT_MENU_CALLBACK_UI(update, context)
+
+
+async def text_router(update, context):
+    if not update.message or not update.message.text:
+        return await _FINAL_OLD_TEXT_ROUTER_UI(update, context)
+    txt = update.message.text.strip()
+    uid = update.effective_user.id
+    direct = {
+        "🎯 برنامه و اهداف": "goals", "🎯 Goals & Plan": "goals",
+        "📈 قیمت آنلاین": "prices", "📈 Online Prices": "prices",
+        "📅 تقویم و یادآوری": "calendar", "📅 Calendar & Reminders": "calendar",
+        "👤 حساب من": "account", "👤 My Account": "account",
+        "📊 آمار و گزارش": "reports", "📊 Stats & Reports": "reports",
+        "🛠️ ابزارها": "tools", "🛠️ Tools": "tools",
+        "🎫 پشتیبانی": "support", "🎫 Support": "support",
+        "⚙️ تنظیمات": "settings", "⚙️ Settings": "settings",
+    }
+    section = direct.get(txt)
+    if section:
+        clear_flow(context)
+        if section in {"goals", "reports", "tools", "account", "support"}:
+            return await _compact_menu_show(update, context, section)
+        if section == "prices":
+            return await prices(update, context)
+        if section == "calendar":
+            return await v25_reminders_menu(update, context)
+        if section == "settings":
+            return await settings(update, context)
+    if txt in ("🎁 پاداش‌های من", "🎁 My Rewards"):
+        clear_flow(context)
+        return await _render_rewards_page(update, context)
+    return await _FINAL_OLD_TEXT_ROUTER_UI(update, context)
+
 
 if __name__ == "__main__":
     main()
