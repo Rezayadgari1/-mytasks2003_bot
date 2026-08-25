@@ -11140,6 +11140,15 @@ async def text_router(update, context):
         "📣 دعوت و رفرال": "other",
         "📣 Referrals": "other",
     }
+    # Forced subscription has its own dedicated admin panel and is exposed
+    # directly from the main management menu for quick access.
+    if txt in ("🔒 عضویت اجباری کانال", "🔒 Mandatory Channel Subscription"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            return
+        await _forced_sub_admin_panel(update, context)
+        return
+
     if txt in _admin_section_map:
         await _show_admin_section(update, context, _admin_section_map[txt])
         return
@@ -12025,7 +12034,8 @@ def _compact_admin_management_keyboard(uid):
     rows=[
         ["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
         ["👥 کاربران و پاداش‌ها" if fa else "👥 Users & Rewards", "💎 اشتراک و دسترسی‌ها" if fa else "💎 Subscriptions & Access"],
-        ["📢 مدیریت کانال" if fa else "📢 Channel Management", "🤖 هوش مصنوعی" if fa else "🤖 AI Management"],
+        ["📢 مدیریت کانال" if fa else "📢 Channel Management", "🔒 عضویت اجباری کانال" if fa else "🔒 Mandatory Channel Subscription"],
+        ["🤖 هوش مصنوعی" if fa else "🤖 AI Management"],
         ["🎂 تولد و مناسبت‌ها" if fa else "🎂 Birthday & Events", "🎯 اهداف و یادآوری" if fa else "🎯 Goals & Reminders"],
         ["📈 قیمت و بازار" if fa else "📈 Prices & Market", "💳 پرداخت‌ها" if fa else "💳 Payments"],
         ["👥 مشتری و رزرو" if fa else "👥 Customers & Bookings", "🎙️ دستیار صوتی" if fa else "🎙️ Voice Assistant"],
