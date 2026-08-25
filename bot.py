@@ -44,6 +44,7 @@ from telegram.ext import (
     MessageHandler,
     PreCheckoutQueryHandler,
     PollAnswerHandler,
+    ChatMemberHandler,
     filters,
 )
 try:
@@ -11491,7 +11492,7 @@ def main():
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:"))
     app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$"))
-    app.add_handler(ChatMemberUpdatedHandler(track_channel_membership))
+    app.add_handler(ChatMemberHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
