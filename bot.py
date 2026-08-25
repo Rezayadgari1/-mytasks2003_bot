@@ -16404,7 +16404,6 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
-            [InlineKeyboardButton("📈 قیمت آنلاین", callback_data="cm:prices"), InlineKeyboardButton("🧠 مرکز من", callback_data="cm:center")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
         ]
@@ -16412,7 +16411,6 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
-            [InlineKeyboardButton("📈 Online Prices", callback_data="cm:prices"), InlineKeyboardButton("🧠 My Center", callback_data="cm:center")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
         ]
