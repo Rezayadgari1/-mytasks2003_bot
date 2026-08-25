@@ -3178,7 +3178,8 @@ def channel_keyboard():
          InlineKeyboardButton("🕘 تاریخچه انتشار", callback_data="ch:history")],
         [InlineKeyboardButton("🧩 چند پست / زمان‌بندی", callback_data="ch:batch"),
          InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
-        [InlineKeyboardButton("📢 کانال‌های متصل", callback_data="ch:channels")],
+        [InlineKeyboardButton("📢 کانال‌های متصل", callback_data="ch:channels"),
+         InlineKeyboardButton("🔒 عضویت اجباری", callback_data="forcedsub:home")],
         [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
     ])
 
@@ -10531,6 +10532,13 @@ async def forced_sub_callback(update, context):
         return
     action = data[10:]
     
+    if action == "home":
+        await _forced_sub_admin_panel(update, context)
+        return
+    if action == "check":
+        # User-facing membership check — delegate to the dedicated handler.
+        await forced_sub_check_callback(update, context)
+        return
     if action == "toggle":
         current = _forced_sub_get("forced_sub_enabled", "0")
         _forced_sub_set("forced_sub_enabled", "0" if current == "1" else "1")
@@ -10636,8 +10644,6 @@ async def forced_sub_callback(update, context):
                 c.close()
                 blocked_count += 1
         await q.answer(f"🔍 {blocked_count} کاربر محدود شد", show_alert=True)
-        await _forced_sub_admin_panel(update, context)
-    elif action == "home":
         await _forced_sub_admin_panel(update, context)
 
 
