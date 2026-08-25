@@ -2576,9 +2576,16 @@ def _safe_channel_enabled(value, default=1):
 
 
 def get_channel_config():
-    """Return the currently selected channel, while preserving legacy channel_config."""
+    """Return the active channel and repair old databases missing channel tables."""
     c=db()
     try:
+        # Older deployments might have a database created before managed_channels.
+        # Create the table here as a safe additive migration before any SELECT.
+        c.execute("""CREATE TABLE IF NOT EXISTS managed_channels(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+        c.commit()
         active=get_system_setting("active_channel_id", "") if "get_system_setting" in globals() else ""
         if active:
             r=c.execute("SELECT channel_id,enabled,updated_at FROM managed_channels WHERE channel_id=?",(active,)).fetchone()
@@ -13378,9 +13385,22 @@ def _targeted_record_username(user):
         uid=int(user.id)
         uname=(getattr(user,"username",None) or "").strip().lstrip("@").lower() or None
         first=getattr(user,"first_name",None) or ""
+        now=datetime.now(TZ).isoformat()
         c=db()
-        c.execute("UPDATE users SET username=?, first_name=COALESCE(NULLIF(?,''),first_name), last_active_at=? WHERE user_id=?",(uname,first,datetime.now(TZ).isoformat(),uid))
-        c.execute("UPDATE management_roles SET username=?, updated_at=? WHERE user_id=? AND username IS NOT ?",(uname,datetime.now(TZ).isoformat(),uid,uname))
+        # INSERT first. The old code only UPDATEd users, so a valid username
+        # was lost when the user row did not exist yet.
+        c.execute(
+            "INSERT OR IGNORE INTO users(user_id,first_name,language,created_at,last_active_at) VALUES(?,?,?,?,?)",
+            (uid,first,"fa",now,now)
+        )
+        c.execute(
+            "UPDATE users SET username=?, first_name=COALESCE(NULLIF(?,''),first_name), last_active_at=? WHERE user_id=?",
+            (uname,first,now,uid)
+        )
+        c.execute(
+            "UPDATE management_roles SET username=?, updated_at=? WHERE user_id=? AND username IS NOT ?",
+            (uname,now,uid,uname)
+        )
         c.commit(); c.close()
     except Exception:
         logger.exception("Username tracking failed")
@@ -13483,17 +13503,36 @@ def _targeted_permissions_keyboard(uid,target):
 
 # ---------- Add/disable manager by username OR numeric ID ----------
 async def _targeted_resolve_manager_ref(context,bot,ref):
-    ref=ref.strip();
-    if ref.isdigit(): return int(ref), None
-    uname=ref.lstrip("@").lower()
-    if not uname or not re.fullmatch(r"[A-Za-z0-9_]{3,32}",uname): return None,None
-    c=db(); r=c.execute("SELECT user_id,username FROM users WHERE lower(username)=? LIMIT 1",(uname,)).fetchone(); c.close()
-    if r: return int(r["user_id"]),uname
+    """Resolve a manager by numeric Telegram ID or a username already known to the bot.
+
+    Telegram Bot API does not provide a general user lookup by @username.
+    get_chat(@username) is for public chats such as channels and groups, not arbitrary users.
+    """
+    ref=(ref or "").strip()
+    if ref.isdigit():
+        return int(ref), None
+    uname=ref.lstrip("@").strip().lower()
+    if not uname or not re.fullmatch(r"[A-Za-z0-9_]{3,32}",uname):
+        return None,None
+
+    c=db()
     try:
-        chat=await bot.get_chat("@"+uname)
-        return int(chat.id),uname
-    except Exception:
-        return None,uname
+        # Search all local user sources. Users who have sent any message to the bot
+        # are recorded by _targeted_record_username.
+        r=c.execute("SELECT user_id,username FROM users WHERE lower(username)=? LIMIT 1",(uname,)).fetchone()
+        if r:
+            return int(r["user_id"]),uname
+        r=c.execute("SELECT user_id,username FROM management_roles WHERE lower(username)=? LIMIT 1",(uname,)).fetchone()
+        if r:
+            return int(r["user_id"]),uname
+        r=c.execute("SELECT telegram_user_id,telegram_username FROM customers WHERE lower(telegram_username)=? AND telegram_user_id IS NOT NULL LIMIT 1",(uname,)).fetchone()
+        if r:
+            return int(r["telegram_user_id"]),uname
+    finally:
+        c.close()
+
+    # Do not use bot.get_chat('@username') here. It does not resolve normal users.
+    return None,uname
 
 # ---------- Live prices: online only, manager controls which assets appear ----------
 def _targeted_enabled_prices():
@@ -13684,21 +13723,35 @@ async def text_router(update,context):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
         if not target:
-            await update.message.reply_text('❌ کاربر پیدا نشد. @username معتبر یا ID عددی بفرست.'); return
+            await update.message.reply_text(
+                '❌ این @username در ربات شناخته نشده است.\n\n'
+                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
+                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
+            ); return
         context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Fix legacy add-manager flow too: accept username and store it.
     if context.user_data.get('master_add_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
+        if not target:
+            await update.message.reply_text(
+                '❌ این @username در ربات شناخته نشده است.\n\n'
+                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
+                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
+            ); return
         context.user_data['master_add_manager']=False; context.user_data['master_pending_manager_id']=target; context.user_data['master_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Legacy disable flow: accept username too.
     if context.user_data.get('master_disable_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
+        if not target:
+            await update.message.reply_text(
+                '❌ این @username در ربات شناخته نشده است.\n\n'
+                'کاربر هدف باید یک بار ربات را باز کند و /start بزند. سپس دوباره @username را بفرست.\n'
+                'اگر کاربر قبلاً ربات را باز کرده است، ID عددی Telegram را بفرست.'
+            ); return
         if target==master_owner_id(): await update.message.reply_text('❌ Owner قابل لغو نیست.'); return
         c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('✅ مدیریت این کاربر لغو شد.',reply_markup=keyboard(uid)); return
     return await _OLD_TEXT_ROUTER_TARGETED(update,context)
