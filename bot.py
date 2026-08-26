@@ -7983,7 +7983,8 @@ async def v25_reminders_menu(update,context):
     else:
         listing="هنوز یادآوری مهمی نداری." if fa else "No important reminders yet."
     heading="🔔 <b>یادآوری‌های مهم</b>" if fa else "🔔 <b>Important Reminders</b>"
-    await update.message.reply_text(heading+"\n\n"+listing,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    target = update.callback_query.message if update.callback_query else update.message
+    await target.reply_text(heading+"\n\n"+listing,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_profile_menu(update,context,edit=False):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; p=v25_profile(uid); c=db(); perms=c.execute("SELECT scope,field,enabled FROM profile_share WHERE user_id=? ORDER BY scope,field",(uid,)).fetchall(); c.close()
