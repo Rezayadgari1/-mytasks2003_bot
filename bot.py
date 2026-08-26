@@ -12588,7 +12588,7 @@ async def master_management_callback(update, context):
                 show_alert=True
             )
             return
-        target = int(context.user_data.get("master_pending_manager_id") or 0)
+        target = int(context.user_data.get("targeted_pending_manager_id") or context.user_data.get("master_pending_manager_id") or 0)
         if not target:
             await q.answer(
                 "❌ آیدی مدیر پیدا نشد. دوباره شروع کن."
