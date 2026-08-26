@@ -11317,6 +11317,7 @@ def main():
     app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
     app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
     app.add_handler(CallbackQueryHandler(condition_callback, pattern=r"^cond:"))
+    app.add_handler(CallbackQueryHandler(ready_detail_callback, pattern=r"^rdetail:"))
     app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
     app.add_handler(CallbackQueryHandler(goal_reminder_callback, pattern=r"^goalrem:"))
     app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
@@ -13893,6 +13894,76 @@ def _ready_template(name,category):
         return [('start_date','📅 تاریخ شروع برنامه:'),('location','📍 محل تمرین (اختیاری):'),('duration','⏱ مدت تمرین به دقیقه:')]
     return [('note','📝 توضیحات این هدف (اختیاری):')]
 
+
+def _ready_detail_nav_keyboard(uid, idx, total):
+    """Build prev/next InlineKeyboard for ready-detail field steps."""
+    fa = lang(uid) == 'fa'
+    rows = []
+    nav = []
+    if idx > 0:
+        nav.append(InlineKeyboardButton('⬅️ قبلی' if fa else '⬅️ Previous', callback_data='rdetail:prev'))
+    if idx < total - 1:
+        nav.append(InlineKeyboardButton('⏭️ رد شدن' if fa else '⏭️ Skip', callback_data='rdetail:next'))
+    else:
+        nav.append(InlineKeyboardButton('✅ تمام' if fa else '✅ Done', callback_data='rdetail:next'))
+    if nav:
+        rows.append(nav)
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
+async def ready_detail_callback(update, context):
+    """Handle prev/next navigation in ready-detail field steps."""
+    q = update.callback_query
+    await q.answer()
+    uid = q.from_user.id
+    if not context.user_data.get('ready_detail_mode'):
+        return
+    action = q.data.split(':')[1]
+    fields = context.user_data.get('ready_detail_fields') or []
+    idx = int(context.user_data.get('ready_detail_index', 0))
+
+    if action == 'prev' and idx > 0:
+        idx -= 1
+        context.user_data['ready_detail_index'] = idx
+        key, prompt = fields[idx]
+        context.user_data['ready_detail_key'] = key
+        fa = lang(uid) == 'fa'
+        kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
+        text = (prompt + "\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else prompt + "\n\n(For optional fields, send '-'.)")
+        if kb:
+            await q.message.edit_text(text, reply_markup=kb)
+        else:
+            await q.message.edit_text(text)
+        return
+
+    if action == 'next':
+        key = context.user_data.get('ready_detail_key')
+        if key:
+            _pending = {k: v for k, v in context.user_data.get('ready_details', [])}
+            _pending[key] = ''
+            context.user_data['ready_details'] = list(_pending.items())
+        idx += 1
+        if idx < len(fields):
+            context.user_data['ready_detail_index'] = idx
+            nk, np = fields[idx]
+            context.user_data['ready_detail_key'] = nk
+            fa = lang(uid) == 'fa'
+            kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
+            prompt_text = (np + "\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else np + "\n\n(For optional fields, send '-'.)")
+            if kb:
+                await q.message.edit_text(prompt_text, reply_markup=kb)
+            else:
+                await q.message.edit_text(prompt_text)
+        else:
+            context.user_data.pop('ready_detail_mode', None)
+            context.user_data.pop('ready_detail_fields', None)
+            context.user_data.pop('ready_detail_key', None)
+            context.user_data.pop('ready_detail_index', None)
+            await q.message.edit_text(
+                "⭐ اولویت هدف را انتخاب کن:" if lang(uid) == 'fa' else "⭐ Choose goal priority:",
+                reply_markup=priority_keyboard(uid)
+            )
+
 async def new_goal_pick(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id
     category=context.user_data.get('ready_category')
@@ -13908,7 +13979,13 @@ async def new_goal_pick(update,context):
     fields=_ready_template(name,category)
     context.user_data['ready_detail_fields']=fields; context.user_data['ready_detail_index']=0
     key,prompt=fields[0]; context.user_data['ready_detail_key']=key; context.user_data['ready_detail_mode']=True
-    await q.message.edit_text(prompt+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if lang(uid)=='fa' else prompt+"\n\n(For optional fields, send '-'.)")
+    fa = lang(uid) == 'fa'
+    kb = _ready_detail_nav_keyboard(uid, 0, len(fields))
+    text = (prompt+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else prompt+"\n\n(For optional fields, send '-'.)")
+    if kb:
+        await q.message.edit_text(text, reply_markup=kb)
+    else:
+        await q.message.edit_text(text)
 
 async def ready_detail_text_save(update,context):
     if not context.user_data.get('ready_detail_mode'): return False
@@ -13919,7 +13996,13 @@ async def ready_detail_text_save(update,context):
     context.user_data['ready_details']=list(_pending.items()); idx+=1
     if idx < len(fields):
         context.user_data['ready_detail_index']=idx; nk,np=fields[idx]; context.user_data['ready_detail_key']=nk
-        await update.message.reply_text(np+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if lang(uid)=='fa' else np+"\n\n(For optional fields, send '-'.)")
+        fa = lang(uid) == 'fa'
+        kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
+        prompt_text = (np+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else np+"\n\n(For optional fields, send '-'.)")
+        if kb:
+            await update.message.reply_text(prompt_text, reply_markup=kb)
+        else:
+            await update.message.reply_text(prompt_text)
         return True
     context.user_data.pop('ready_detail_mode',None); context.user_data.pop('ready_detail_fields',None); context.user_data.pop('ready_detail_key',None); context.user_data.pop('ready_detail_index',None)
     await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=='fa' else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
