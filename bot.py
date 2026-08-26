@@ -1699,6 +1699,21 @@ def duration_keyboard(uid):
     return InlineKeyboardMarkup(rows)
 
 
+def condition_keyboard(uid):
+    fa = lang(uid) == "fa"
+    rows = [
+        [InlineKeyboardButton("🚫 بدون شرط" if fa else "🚫 No condition", callback_data="condition:none")],
+        [InlineKeyboardButton("☀️ اگر هوا خوب بود" if fa else "☀️ If weather is good", callback_data="condition:weather"),
+         InlineKeyboardButton("⏰ اگر وقت داشتم" if fa else "⏰ If I have time", callback_data="condition:time")],
+        [InlineKeyboardButton("🏠 اگر در خانه بودم" if fa else "🏠 If I'm home", callback_data="condition:home"),
+         InlineKeyboardButton("🏢 اگر سر کار بودم" if fa else "🏢 If I'm at work", callback_data="condition:work")],
+        [InlineKeyboardButton("💡 اگر انرژی داشتم" if fa else "💡 If I have energy", callback_data="condition:energy"),
+         InlineKeyboardButton("😊 اگر حالم خوب بود" if fa else "😊 If I feel good", callback_data="condition:mood")],
+        [InlineKeyboardButton("✏️ شرط دلخواه" if fa else "✏️ Custom condition", callback_data="condition:custom")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
 @subscription_required
 async def priority_callback(update, context):
     q = update.callback_query
