@@ -13431,7 +13431,7 @@ async def text_router(update,context):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
         if not target:
-            await update.message.reply_text('❌ کاربر پیدا نشد.\n\n💡 ممکنه کاربر هنوز ربات را Start نکرده باشد.\nاز @userinfobot بخواهید آیدی عددی خود را برایتان بفرستد.\n\nیا آیدی عددی صحیح را ارسال کنید.'); return
+            await update.message.reply_text('❌ کاربر <b>@'+txt.lstrip('@')+'</b> پیدا نشد.\n\n🔍 بررسی کنید:\n• آیا کاربر @username رو دقیق فرستاده؟\n• آیا کاربر قبلاً ربات رو Start کرده و یه پیام فرستاده؟\n\n✅ ساده‌ترین راه: از کاربر بخواهید آیدی عددی خود رو از @userinfobot بگیره و همون رو بفرسته.',parse_mode='HTML'); return
         context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Fix legacy add-manager flow too: accept username and store it.
