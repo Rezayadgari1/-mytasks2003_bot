@@ -13427,6 +13427,20 @@ async def text_router(update,context):
     if update.message and update.effective_user:
         _targeted_record_username(update.effective_user)
     uid=update.effective_user.id if update.effective_user else 0; txt=(update.message.text or '').strip() if update.message else ''; fa=lang(uid)=='fa'
+    # Navigation buttons must cancel any pending manager-add/disable input mode
+    _nav_labels = ('🏠 منوی اصلی','🏠 Main Menu','⬅️ برگشت','⬅️ Back',
+                    '👥 کاربران و نقش‌ها','👥 Users & Roles',
+                    '🛡 مدیریت ربات','🛡 Bot Management',
+                    '⚙️ تنظیمات سیستم','⚙️ System Settings',
+                    '📊 داشبورد و گزارش','📊 Dashboard & Reports',
+                    '👤 استفاده از ربات','👤 Use Bot',
+                    '🤖 مدیریت AI','🤖 AI Management')
+    if context.user_data.get('targeted_add_manager') and txt in _nav_labels:
+        context.user_data.pop('targeted_add_manager', None)
+    if context.user_data.get('master_add_manager') and txt in _nav_labels:
+        context.user_data.pop('master_add_manager', None)
+    if context.user_data.get('master_disable_manager') and txt in _nav_labels:
+        context.user_data.pop('master_disable_manager', None)
     if context.user_data.get('targeted_add_manager'):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
