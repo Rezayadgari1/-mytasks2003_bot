@@ -13387,7 +13387,7 @@ async def v25_callback(update,context):
             await q.answer(); await q.message.edit_text(_targeted_manager_text(uid),parse_mode='HTML',reply_markup=_targeted_manager_keyboard(uid)); return
         if action=='manager_add':
             if not _manager_is_owner(uid): await q.answer('⛔ Owner only.',show_alert=True); return
-            context.user_data.clear(); context.user_data['targeted_add_manager']=True; await q.answer(); await q.message.edit_text('🆔 @username یا آیدی عددی مدیر جدید را بفرست.' if fa else '🆔 Send the new manager @username or numeric ID.'); return
+            context.user_data.clear(); context.user_data['targeted_add_manager']=True; await q.answer(); await q.message.edit_text('🆔 @username یا آیدی عددی مدیر جدید را بفرست.\n\n💡 نکته: کاربر باید قبلاً ربات را Start کرده باشد.\nبرای پیدا کردن آیدی عددی از @userinfobot استفاده کن.' if fa else '🆔 Send the new manager @username or numeric ID.\n\n💡 Note: The user must have started the bot first.\nUse @userinfobot to find their numeric ID.'); return
         if action=='manager_disable_list':
             await q.answer(); rows=[]
             for r in _targeted_manager_rows():
@@ -13431,7 +13431,7 @@ async def text_router(update,context):
         if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
         if not target:
-            await update.message.reply_text('❌ کاربر پیدا نشد. @username معتبر یا ID عددی بفرست.'); return
+            await update.message.reply_text('❌ کاربر پیدا نشد.\n\n💡 ممکنه کاربر هنوز ربات را Start نکرده باشد.\nاز @userinfobot بخواهید آیدی عددی خود را برایتان بفرستد.\n\nیا آیدی عددی صحیح را ارسال کنید.'); return
         context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
         await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
     # Fix legacy add-manager flow too: accept username and store it.
