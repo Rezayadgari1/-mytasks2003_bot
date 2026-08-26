@@ -12323,14 +12323,25 @@ def _master_managers_text(uid):
     ]
     if not rows:
         lines.append("مدیری ثبت نشده است." if fa else "No managers are registered.")
-    for r in rows:
-        state = "🟢 فعال" if r["active"] else "🔴 غیرفعال"
+    else:
+        active_count = sum(1 for r in rows if r["active"])
+        disabled_count = len(rows) - active_count
+        header = f"📊 {active_count} فعال"
+        if disabled_count:
+            header += f" | {disabled_count} غیرفعال"
         if not fa:
-            state = "🟢 Active" if r["active"] else "🔴 Disabled"
-        lines.append(
-            f"{state}  <code>{r['user_id']}</code>  "
-            f"{html.escape(_manager_role_label(r['role'], fa))}"
-        )
+            header = f"📊 {active_count} active"
+            if disabled_count:
+                header += f" | {disabled_count} disabled"
+        lines.append(header)
+        lines.append("─" * 20)
+        for i, r in enumerate(rows, 1):
+            state = "🟢" if r["active"] else "🔴"
+            role_label = html.escape(_manager_role_label(r["role"], fa))
+            lines.append(
+                f"{state} <b>{i}.</b> <code>{r['user_id']}</code> — {role_label}"
+            )
+        lines.append("─" * 20)
     return "\n".join(lines)
 
 def _master_manager_keyboard(uid):
@@ -12527,15 +12538,21 @@ async def master_management_callback(update, context):
                 show_alert=True
             )
             return
+        # Preserve pending manager ID if already set, only clear other state
+        _saved_id = context.user_data.get("master_pending_manager_id")
         context.user_data.clear()
         context.user_data["_flow_started_at"] = datetime.now(TZ).timestamp()
         context.user_data["master_add_manager"] = True
+        if _saved_id:
+            context.user_data["master_pending_manager_id"] = _saved_id
         await q.answer()
         await q.message.edit_text(
             "🆔 آیدی عددی تلگرام مدیر جدید را ارسال کن.\n\n"
+            "💡 برای پیدا کردن آیدی، از ربات @userinfobot استفاده کن.\n\n"
             "مثال: <code>123456789</code>"
             if fa else
             "🆔 Send the new manager's numeric Telegram ID.\n\n"
+            "💡 Use @userinfobot to find the ID.\n\n"
             "Example: <code>123456789</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
