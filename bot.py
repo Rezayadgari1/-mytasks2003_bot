@@ -13929,7 +13929,8 @@ async def ready_detail_callback(update, context):
         context.user_data['ready_detail_key'] = key
         fa = lang(uid) == 'fa'
         kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-        text = (prompt + "\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else prompt + "\n\n(For optional fields, send '-'.)")
+        progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
+        text = prompt + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
         if kb:
             await q.message.edit_text(text, reply_markup=kb)
         else:
@@ -13949,7 +13950,8 @@ async def ready_detail_callback(update, context):
             context.user_data['ready_detail_key'] = nk
             fa = lang(uid) == 'fa'
             kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-            prompt_text = (np + "\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else np + "\n\n(For optional fields, send '-'.)")
+            progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
+            prompt_text = np + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
             if kb:
                 await q.message.edit_text(prompt_text, reply_markup=kb)
             else:
@@ -13981,7 +13983,8 @@ async def new_goal_pick(update,context):
     key,prompt=fields[0]; context.user_data['ready_detail_key']=key; context.user_data['ready_detail_mode']=True
     fa = lang(uid) == 'fa'
     kb = _ready_detail_nav_keyboard(uid, 0, len(fields))
-    text = (prompt+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else prompt+"\n\n(For optional fields, send '-'.)")
+    progress = f"\n\n📊 مرحله 1 از {len(fields)}" if fa else f"\n\n📊 Step 1 of {len(fields)}"
+    text = prompt + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
     if kb:
         await q.message.edit_text(text, reply_markup=kb)
     else:
@@ -13998,7 +14001,8 @@ async def ready_detail_text_save(update,context):
         context.user_data['ready_detail_index']=idx; nk,np=fields[idx]; context.user_data['ready_detail_key']=nk
         fa = lang(uid) == 'fa'
         kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-        prompt_text = (np+"\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else np+"\n\n(For optional fields, send '-'.)")
+        progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
+        prompt_text = np + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
         if kb:
             await update.message.reply_text(prompt_text, reply_markup=kb)
         else:
