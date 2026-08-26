@@ -387,8 +387,10 @@ def init_db():
         run_at TEXT, enabled INTEGER NOT NULL DEFAULT 1, last_sent_at TEXT,
         created_at TEXT NOT NULL, created_by INTEGER NOT NULL)""")
     user_cols={r["name"] for r in c.execute("PRAGMA table_info(users)").fetchall()}
-    for col,ddl in [("xp","INTEGER NOT NULL DEFAULT 0"),("blocked","INTEGER NOT NULL DEFAULT 0"),("warnings","INTEGER NOT NULL DEFAULT 0"),("vip_until","TEXT"),("referrer_id","INTEGER"),("referral_code","TEXT")]:
+    for col,ddl in [("xp","INTEGER NOT NULL DEFAULT 0"),("blocked","INTEGER NOT NULL DEFAULT 0"),("warnings","INTEGER NOT NULL DEFAULT 0"),("vip_until","TEXT"),("referrer_id","INTEGER"),("referral_code","TEXT"),("username","TEXT"),("manager_user_id","INTEGER")]:
         if col not in user_cols: c.execute(f"ALTER TABLE users ADD COLUMN {col} {ddl}")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_users_manager ON users(manager_user_id)")
     c.execute("""CREATE TABLE IF NOT EXISTS user_feature_preferences(
         user_id INTEGER NOT NULL, feature_key TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT NOT NULL, PRIMARY KEY(user_id, feature_key)
@@ -401,6 +403,13 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS admin_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,admin_id INTEGER,action TEXT,target_user INTEGER,details TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS xp_log(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,amount INTEGER NOT NULL,reason TEXT,created_at TEXT NOT NULL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS referrals(id INTEGER PRIMARY KEY AUTOINCREMENT,inviter_id INTEGER NOT NULL,invited_id INTEGER UNIQUE NOT NULL,created_at TEXT NOT NULL,rewarded INTEGER NOT NULL DEFAULT 0)""")
+    # Referral migration: keep old databases compatible with the enhanced referral flow.
+    referral_cols={r["name"] for r in c.execute("PRAGMA table_info(referrals)").fetchall()}
+    if "source" not in referral_cols:
+        c.execute("ALTER TABLE referrals ADD COLUMN source TEXT NOT NULL DEFAULT 'link'")
+    if "status" not in referral_cols:
+        c.execute("ALTER TABLE referrals ADD COLUMN status TEXT NOT NULL DEFAULT 'registered'")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_invited_unique ON referrals(invited_id)")
     # --- Enhanced Referral System Tables ---
     c.execute("""CREATE TABLE IF NOT EXISTS referral_settings(
         key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -436,7 +445,7 @@ def init_db():
         "ref_bilateral_reward": "1", "ref_tokens_per_success": "10",
         "ref_invitee_tokens": "5", "ref_vip_milestone": "10",
         "ref_vip_days": "30", "ref_success_condition": "first_goal",
-        "ref_daily_limit": "50", "ref_weekly_limit": "200",
+        "ref_daily_limit": "0", "ref_weekly_limit": "0",
         "ref_monthly_limit": "800", "ref_auto_approve": "1",
         "ref_leaderboard_enabled": "1", "ref_campaign_active": "0",
         "ref_custom_invite_text": "👋 من از ربات MyTasks استفاده می‌کنم. تو هم امتحان کن!",
@@ -704,16 +713,18 @@ def init_db():
     c.close()
 
 
-def register_user(uid, first_name):
+def register_user(uid, first_name, username=None):
     now = datetime.now(TZ).isoformat()
+    username = (username or "").strip().lstrip("@").lower() or None
     c = db()
     c.execute(
-        """INSERT INTO users(user_id, first_name, created_at, last_active_at)
-           VALUES(?,?,?,?)
+        """INSERT INTO users(user_id, first_name, username, created_at, last_active_at)
+           VALUES(?,?,?,?,?)
            ON CONFLICT(user_id) DO UPDATE SET
            first_name=excluded.first_name,
+           username=COALESCE(excluded.username, users.username),
            last_active_at=excluded.last_active_at""",
-        (uid, first_name or "", now, now),
+        (uid, first_name or "", username, now, now),
     )
     c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(secrets.token_urlsafe(12),uid))
     c.commit()
@@ -1341,7 +1352,7 @@ async def subscription_check_callback(update, context):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     name = update.effective_user.first_name or "دوست من"
-    register_user(uid, name)
+    register_user(uid, name, getattr(update.effective_user, "username", None))
     if context.args:
         arg=context.args[0]
         if arg.startswith("book_"):
@@ -3639,7 +3650,7 @@ async def admin_referral_callback(update, context):
             f"🎁 توکن دعوت‌شده: <b>{settings['ref_invitee_tokens']}</b>\n"
             f"💎 هر <b>{settings['ref_vip_milestone']}</b> دعوت = <b>{settings['ref_vip_days']}</b> روز VIP\n"
             f"🎯 شرط موفقیت: <b>{cond_map.get(settings['ref_success_condition'], settings['ref_success_condition'])}</b>\n"
-            f"📅 سقف روزانه: <b>{settings['ref_daily_limit']}</b>"
+            "📅 سقف روزانه: <b>بدون محدودیت</b>"
         )
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 تغییر شرط موفقیت", callback_data="adm:referral:toggle_cond")],
@@ -5188,7 +5199,7 @@ async def hide_main_reply_keyboard(update):
 
 async def text_router(update, context):
     uid = update.effective_user.id
-    register_user(uid, update.effective_user.first_name or "")
+    register_user(uid, update.effective_user.first_name or "", getattr(update.effective_user, "username", None))
 
     # Safety timeout: a stale text-input flow expires after 15 minutes.
     flow_started = context.user_data.get("_flow_started_at")
@@ -5305,6 +5316,8 @@ async def text_router(update, context):
     if await support_text(update, context):
         return
     if await admin_health_time_save(update, context):
+        return
+    if await admin_manager_assign_text(update, context):
         return
     if await final_admin_text(update, context):
         return
@@ -5831,13 +5844,30 @@ async def admin_user_detail_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     try:
-        await q.answer(); target=int(q.data.split(":",1)[1]); c=db(); u=c.execute("SELECT * FROM users WHERE user_id=?",(target,)).fetchone()
-        if not u: c.close(); await q.message.reply_text("❌ کاربر پیدا نشد.",reply_markup=final_admin_keyboard()); return
-        usage=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=?",(target,)).fetchone()["n"]; usage30=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=? AND created_at>=?",(target,(datetime.now(TZ)-timedelta(days=30)).isoformat())).fetchone()["n"]
-        goals=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=?",(target,)).fetchone()["n"]; done=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND status='done'",(target,)).fetchone()["n"]; reactions=c.execute("SELECT COUNT(*) n FROM channel_reactions WHERE user_id=?",(target,)).fetchone()["n"]; polls=c.execute("SELECT COUNT(*) n FROM channel_poll_votes WHERE user_id=?",(target,)).fetchone()["n"]; referrals=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(target,)).fetchone()["n"]; appts=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=?",(target,)).fetchone()["n"]; subs=c.execute("SELECT * FROM subscription_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",(target,)).fetchall(); c.close()
+        await q.answer(); target=int(q.data.split(":",1)[1]); c=db()
+        u=c.execute("SELECT * FROM users WHERE user_id=?",(target,)).fetchone()
+        if not u:
+            c.close(); await q.message.reply_text("❌ کاربر پیدا نشد.",reply_markup=final_admin_keyboard()); return
+        usage=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=?",(target,)).fetchone()["n"]
+        usage30=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=? AND created_at>=?",(target,(datetime.now(TZ)-timedelta(days=30)).isoformat())).fetchone()["n"]
+        goals=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=?",(target,)).fetchone()["n"]
+        done=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND status='done'",(target,)).fetchone()["n"]
+        reactions=c.execute("SELECT COUNT(*) n FROM channel_reactions WHERE user_id=?",(target,)).fetchone()["n"]
+        polls=c.execute("SELECT COUNT(*) n FROM channel_poll_votes WHERE user_id=?",(target,)).fetchone()["n"]
+        referrals=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(target,)).fetchone()["n"]
+        appts=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=?",(target,)).fetchone()["n"]
+        subs=c.execute("SELECT * FROM subscription_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",(target,)).fetchall()
+        manager=c.execute("SELECT u.user_id,u.first_name,u.username FROM users u JOIN users t ON t.manager_user_id=u.user_id WHERE t.user_id=?",(target,)).fetchone()
+        c.close()
         sub_lines="\n".join(f"• {r['plan']} | {r['duration_days']} روز | {r['source']} | تا {r['expires_at'] or '—'}" for r in subs) or "سابقه‌ای ثبت نشده"
-        text=(f"👤 <b>پرونده کاربر</b>\n\nنام: {html.escape(u['first_name'] or 'بدون نام')}\n🆔 ID: <code>{target}</code>\nوضعیت: {'⛔ محدود' if u['blocked'] else '🟢 فعال'}\n💎 اشتراک: {'فعال تا '+(u['vip_until'] or '')[:16] if u['vip_until'] else 'رایگان'}\n⭐ XP: {u['xp']}\n\n📊 <b>آمار استفاده</b>\n🤖 رویدادهای ربات: {usage}\n📅 ۳۰ روز اخیر: {usage30}\n🎯 اهداف: {goals} | انجام‌شده: {done}\n📣 واکنش کانال: {reactions}\n🗳 نظرسنجی: {polls}\n🤝 دعوت موفق: {referrals}\n👥 نوبت‌های کسب‌وکار: {appts}\n\n💳 <b>سوابق اشتراک/تمدید</b>\n{sub_lines}")
-        kb=[[InlineKeyboardButton("🚫 محدود کردن" if not u['blocked'] else "🔓 رفع محدودیت",callback_data=f"admu_block:{target}")],[InlineKeyboardButton("🎁 ۷ روز رایگان",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("💎 ۳۰ روز",callback_data=f"admu_vip:{target}:30")],[InlineKeyboardButton("♾️ اشتراک نامحدود",callback_data=f"admu_unlimited:{target}")],[InlineKeyboardButton("✏️ ویرایش اشتراک",callback_data=f"admu_editvip:{target}")],[InlineKeyboardButton("👨‍💼 ارتقاء به مدیر",callback_data=f"admu_promote:{target}")],[InlineKeyboardButton("⬅️ کاربران",callback_data="adm:users")]]
+        uname=("@"+u["username"]) if u["username"] else "ثبت نشده"
+        manager_name=(f"@{manager['username']}" if manager and manager['username'] else (manager['first_name'] if manager else "ثبت نشده"))
+        text=(f"👤 <b>پرونده کاربر</b>\n\nنام: {html.escape(u['first_name'] or 'بدون نام')}\n👤 Username: <code>{html.escape(uname)}</code>\n🆔 ID: <code>{target}</code>\n👨‍💼 مدیر مرتبط: <b>{html.escape(manager_name)}</b>\nوضعیت: {'⛔ محدود' if u['blocked'] else '🟢 فعال'}\n💎 اشتراک: {'فعال تا '+(u['vip_until'] or '')[:16] if u['vip_until'] else 'رایگان'}\n⭐ XP: {u['xp']}\n\n📊 <b>آمار استفاده</b>\n🤖 رویدادهای ربات: {usage}\n📅 ۳۰ روز اخیر: {usage30}\n🎯 اهداف: {goals} | انجام‌شده: {done}\n📣 واکنش کانال: {reactions}\n🗳 نظرسنجی: {polls}\n🤝 دعوت موفق: {referrals}\n👥 نوبت‌های کسب‌وکار: {appts}\n\n💳 <b>سوابق اشتراک/تمدید</b>\n{sub_lines}")
+        kb=[[InlineKeyboardButton("🚫 محدود کردن" if not u['blocked'] else "🔓 رفع محدودیت",callback_data=f"admu_block:{target}")],
+            [InlineKeyboardButton("🎁 ۷ روز رایگان",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("💎 ۳۰ روز",callback_data=f"admu_vip:{target}:30")],
+            [InlineKeyboardButton("♾️ اشتراک نامحدود",callback_data=f"admu_unlimited:{target}"),InlineKeyboardButton("✏️ ویرایش اشتراک",callback_data=f"admu_editvip:{target}")],
+            [InlineKeyboardButton("👨‍💼 ارتقاء به مدیر",callback_data=f"admu_promote:{target}"),InlineKeyboardButton("👨‍💼 مدیر مرتبط",callback_data=f"admu_manager:{target}")],
+            [InlineKeyboardButton("⬅️ کاربران",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")]]
         try: await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
         except Exception: await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
     except Exception as e:
@@ -5864,6 +5894,12 @@ async def admin_user_action_callback(update,context):
         expires="9999-12-31T23:59:59"; c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Unlimited",0,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_unlimited",target); await q.answer("♾️ اشتراک نامحدود شد")
     elif action=="editvip":
         c.close(); await q.message.reply_text("✏️ <b>ویرایش اشتراک</b>\n\nروز مثبت = اضافه کردن\nروز منفی = کم کردن\n0 = لغو کامل\nمثال: -7 یا 15",parse_mode="HTML",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return
+    elif action=="manager":
+        c.close()
+        context.user_data["admin_manager_target"] = target
+        await q.answer()
+        await q.message.edit_text("👨‍💼 <b>مدیر مرتبط</b>\n\nUsername یا Telegram ID مدیر را بفرست.\nبرای حذف مدیر، عبارت «حذف» را بفرست.",parse_mode="HTML",reply_markup=nav_keyboard(uid))
+        return
     elif action=="promote":
         if target==master_owner_id(): c.close(); await q.answer("❌ Owner همیشه مدیر است.",show_alert=True); return
         existing=c.execute("SELECT user_id FROM management_roles WHERE user_id=?",(target,)).fetchone()
@@ -5989,14 +6025,75 @@ def admin_capacity_text():
             "ℹ️ در کد فعلی سقف عددیِ ثابت برای تعداد کاربران تعریف نشده است. ظرفیت واقعی به منابع سرور، دیتابیس، APIها و محدودیت‌های Telegram بستگی دارد.\n"
             "📌 این نسخه از SQLite استفاده می‌کند؛ برای تعداد بسیار زیاد کاربر بهتر است بعداً دیتابیس سروری مثل PostgreSQL و صف/کش اضافه شود.")
 
+
+async def admin_users_navigation_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id
+    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    parts=(q.data or "").split(":"); action=parts[1] if len(parts)>1 else "list"
+    page=int(parts[2]) if len(parts)>2 and parts[2].isdigit() else 1
+    page=max(1,page)
+    per_page=10
+    c=db(); total=c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
+    pages=max(1,(total+per_page-1)//per_page); page=min(page,pages); offset=(page-1)*per_page
+    rows=c.execute("""SELECT u.user_id,u.first_name,u.username,u.xp,u.blocked,u.vip_until,u.manager_user_id,
+                            m.first_name manager_name,m.username manager_username
+                     FROM users u LEFT JOIN users m ON m.user_id=u.manager_user_id
+                     ORDER BY u.created_at DESC LIMIT ? OFFSET ?""",(per_page,offset)).fetchall(); c.close()
+    lines=[f"👥 <b>کاربران</b>\nصفحه {page} از {pages} | کل: {total}",""]
+    kb=[]
+    for r in rows:
+        uname=("@"+r["username"]) if r["username"] else "بدون username"
+        mgr=("@"+r["manager_username"]) if r["manager_username"] else (r["manager_name"] or "بدون مدیر")
+        state="⛔" if r["blocked"] else "🟢"
+        vip="💎" if r["vip_until"] and str(r["vip_until"])[:4] != "9999" else ("♾️" if r["vip_until"] else "")
+        lines.append(f"{state} {html.escape(r['first_name'] or 'بدون نام')} | {html.escape(uname)} | ⭐{r['xp']} {vip}\n👨‍💼 {html.escape(mgr)} | ID: <code>{r['user_id']}</code>")
+        kb.append([InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | {uname}",callback_data=f"admu:{r['user_id']}")])
+    nav=[]
+    if page>1: nav.append(InlineKeyboardButton("⬅️ قبلی",callback_data=f"adm:users:{page-1}"))
+    if page<pages: nav.append(InlineKeyboardButton("بعدی ➡️",callback_data=f"adm:users:{page+1}"))
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+    context.user_data["admin_users_page"]=page
+    await q.answer()
+    await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+
+async def admin_manager_assign_text(update,context):
+    uid=update.effective_user.id
+    target=context.user_data.get("admin_manager_target")
+    if not target or not admin_guard(uid): return False
+    text=(update.message.text or "").strip()
+    context.user_data.pop("admin_manager_target",None)
+    if text.lower() in ("حذف","remove","none","-"):
+        c=db(); c.execute("UPDATE users SET manager_user_id=NULL WHERE user_id=?",(int(target),)); c.commit(); c.close(); admin_log(uid,"manager_unassigned",target); await update.message.reply_text("✅ مدیر مرتبط حذف شد.",reply_markup=final_admin_keyboard()); return True
+    ref=text.lstrip("@").strip().lower()
+    c=db()
+    if ref.isdigit():
+        manager=c.execute("SELECT user_id,first_name,username FROM users WHERE user_id=?",(int(ref),)).fetchone()
+    else:
+        manager=c.execute("SELECT user_id,first_name,username FROM users WHERE lower(username)=?",(ref,)).fetchone()
+    if not manager:
+        c.close(); await update.message.reply_text("❌ مدیر پیدا نشد. Username یا ID معتبر مدیر را بفرست.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+    role=c.execute("SELECT active FROM management_roles WHERE user_id=?",(int(manager["user_id"]),)).fetchone()
+    if not role or not role["active"]:
+        c.close(); await update.message.reply_text("❌ این کاربر مدیر فعال نیست.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+    if int(manager["user_id"])==int(target):
+        c.close(); await update.message.reply_text("❌ کاربر نمی‌تواند مدیر خودش باشد.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+    c.execute("UPDATE users SET manager_user_id=? WHERE user_id=?",(int(manager["user_id"]),int(target))); c.commit(); c.close()
+    admin_log(uid,"manager_assigned",target,str(manager["user_id"]))
+    await update.message.reply_text(f"✅ مدیر مرتبط روی {('@'+manager['username']) if manager['username'] else manager['first_name'] or manager['user_id']} تنظیم شد.",reply_markup=final_admin_keyboard()); return True
+
 async def final_admin_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]
     if a=="stats":
         s=admin_stats(); text="📊 داشبورد مرکزی\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n✅ انجام‌شده امروز: {s['done_today']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}\n📅 نوبت امروز: {s['appointments_today']}\n💎 VIP فعال: {s['vip_users']}\n🎫 تیکت باز: {s['open_tickets']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
-    if a=="users":
-        c=db(); rows=c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked,warnings FROM users ORDER BY created_at DESC LIMIT 50").fetchall(); c.close(); kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | ID: {r['user_id']} | ⭐{r['xp']}",callback_data=f"admu:{r['user_id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]); await q.message.edit_text("👥 <b>تمام کاربران</b>\n\nروی هر کاربر بزن تا پرونده کاملش باز شود.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+    if a.startswith("users"):
+        page=int(a.split(":",1)[1]) if ":" in a and a.split(":",1)[1].isdigit() else 1
+        context.user_data["admin_users_page"]=page
+        # Render through the same paginated user-list implementation.
+        q.data=f"adm:users:{page}"
+        return await admin_users_navigation_callback(update,context)
     if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
     if a=="tools": context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="xpvip":
@@ -6317,8 +6414,12 @@ async def final_admin_text(update,context):
     mode=context.user_data.pop("admin_tool_mode"); text=update.message.text.strip()
     try:
         if mode=="search":
-            c=db(); rows=c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked,warnings FROM users WHERE CAST(user_id AS TEXT) LIKE ? OR first_name LIKE ? LIMIT 10",(f"%{text}%",f"%{text}%")).fetchall(); c.close()
-            await update.message.reply_text("🔎 نتایج:\n\n"+"\n".join(f"{r['first_name']} | {r['user_id']} | XP {r['xp']} | ⚠️{r['warnings']} | {'⛔' if r['blocked'] else '🟢'}" for r in rows) or "یافت نشد",reply_markup=final_admin_keyboard()); return True
+            ref=text.lstrip("@").strip().lower()
+            c=db(); rows=c.execute("""SELECT user_id,first_name,username,COALESCE(xp,0) xp,blocked,warnings
+                                      FROM users WHERE CAST(user_id AS TEXT) LIKE ? OR lower(COALESCE(username,'')) LIKE ? OR first_name LIKE ? LIMIT 20""",(f"%{ref}%",f"%{ref}%",f"%{text}%")).fetchall(); c.close()
+            kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | @{r['username']}" if r['username'] else f"👤 {r['first_name'] or 'بدون نام'} | {r['user_id']}",callback_data=f"admu:{r['user_id']}")] for r in rows]
+            kb.append([InlineKeyboardButton("⬅️ کاربران",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")])
+            await update.message.reply_text("🔎 نتایج:\n\n"+"\n".join(f"{r['first_name'] or 'بدون نام'} | @{r['username'] if r['username'] else '—'} | {r['user_id']} | XP {r['xp']} | {'⛔' if r['blocked'] else '🟢'}" for r in rows) or "یافت نشد",reply_markup=InlineKeyboardMarkup(kb)); return True
         parts=text.split(":"); cmd=parts[0].upper(); target=int(parts[1]); c=db()
         if cmd=="BLOCK": c.execute("UPDATE users SET blocked=1 WHERE user_id=?",(target,)); action="block"
         elif cmd=="UNBLOCK": c.execute("UPDATE users SET blocked=0 WHERE user_id=?",(target,)); action="unblock"
@@ -9771,19 +9872,13 @@ def register_referral(inviter_uid, invitee_uid, source="link"):
     """Register a new referral. Returns True if successful."""
     if inviter_uid == invitee_uid:
         return False  # Self-referral blocked
-    if int(ref_get("ref_daily_limit", "50")) <= 0:
-        return False
+    # Daily referral limits are intentionally disabled. A user may invite without a daily cap.
     c = db()
     try:
         existing = c.execute("SELECT id FROM referrals WHERE invited_id=?", (invitee_uid,)).fetchone()
         if existing:
             c.close(); return False  # Already registered
-        # Anti-fraud: check inviter's daily limit
-        today = datetime.now(TZ).date().isoformat()
-        daily_count = c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=? AND substr(created_at,1,10)=?",
-                                (inviter_uid, today)).fetchone()["n"]
-        if daily_count >= int(ref_get("ref_daily_limit", "50")):
-            c.close(); return False
+        # No daily referral cap. Duplicate referrals stay blocked by invited_id uniqueness.
         now = datetime.now(TZ).isoformat()
         c.execute("INSERT INTO referrals(inviter_id,invited_id,created_at,source,status) VALUES(?,?,?,?,?)",
                   (inviter_uid, invitee_uid, now, source, "registered"))
@@ -11282,7 +11377,8 @@ def main():
     app.add_handler(ChatMemberHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
-    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote):"))
+    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote|manager):"))
+    app.add_handler(CallbackQueryHandler(admin_users_navigation_callback, pattern=r"^adm:users:\d+$"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
