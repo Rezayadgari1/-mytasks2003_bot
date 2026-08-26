@@ -5837,8 +5837,9 @@ async def admin_user_detail_callback(update,context):
         goals=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=?",(target,)).fetchone()["n"]; done=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND status='done'",(target,)).fetchone()["n"]; reactions=c.execute("SELECT COUNT(*) n FROM channel_reactions WHERE user_id=?",(target,)).fetchone()["n"]; polls=c.execute("SELECT COUNT(*) n FROM channel_poll_votes WHERE user_id=?",(target,)).fetchone()["n"]; referrals=c.execute("SELECT COUNT(*) n FROM referrals WHERE inviter_id=?",(target,)).fetchone()["n"]; appts=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=?",(target,)).fetchone()["n"]; subs=c.execute("SELECT * FROM subscription_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",(target,)).fetchall(); c.close()
         sub_lines="\n".join(f"• {r['plan']} | {r['duration_days']} روز | {r['source']} | تا {r['expires_at'] or '—'}" for r in subs) or "سابقه‌ای ثبت نشده"
         text=(f"👤 <b>پرونده کاربر</b>\n\nنام: {html.escape(u['first_name'] or 'بدون نام')}\n🆔 ID: <code>{target}</code>\nوضعیت: {'⛔ محدود' if u['blocked'] else '🟢 فعال'}\n💎 اشتراک: {'فعال تا '+(u['vip_until'] or '')[:16] if u['vip_until'] else 'رایگان'}\n⭐ XP: {u['xp']}\n\n📊 <b>آمار استفاده</b>\n🤖 رویدادهای ربات: {usage}\n📅 ۳۰ روز اخیر: {usage30}\n🎯 اهداف: {goals} | انجام‌شده: {done}\n📣 واکنش کانال: {reactions}\n🗳 نظرسنجی: {polls}\n🤝 دعوت موفق: {referrals}\n👥 نوبت‌های کسب‌وکار: {appts}\n\n💳 <b>سوابق اشتراک/تمدید</b>\n{sub_lines}")
-        kb=[[InlineKeyboardButton("🚫 محدود کردن" if not u['blocked'] else "🔓 رفع محدودیت",callback_data=f"admu_block:{target}")],[InlineKeyboardButton("🎁 ۷ روز رایگان",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("💎 ۳۰ روز",callback_data=f"admu_vip:{target}:30")],[InlineKeyboardButton("♾️ اشتراک نامحدود",callback_data=f"admu_unlimited:{target}")],[InlineKeyboardButton("✏️ ویرایش اشتراک",callback_data=f"admu_editvip:{target}")],[InlineKeyboardButton("⬅️ کاربران",callback_data="adm:users")]]
-        await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+        kb=[[InlineKeyboardButton("🚫 محدود کردن" if not u['blocked'] else "🔓 رفع محدودیت",callback_data=f"admu_block:{target}")],[InlineKeyboardButton("🎁 ۷ روز رایگان",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("💎 ۳۰ روز",callback_data=f"admu_vip:{target}:30")],[InlineKeyboardButton("♾️ اشتراک نامحدود",callback_data=f"admu_unlimited:{target}")],[InlineKeyboardButton("✏️ ویرایش اشتراک",callback_data=f"admu_editvip:{target}")],[InlineKeyboardButton("👨‍💼 ارتقاء به مدیر",callback_data=f"admu_promote:{target}")],[InlineKeyboardButton("⬅️ کاربران",callback_data="adm:users")]]
+        try: await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+        except Exception: await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
     except Exception as e:
         logger.exception("admin_user_detail_callback failed")
         try: await q.message.reply_text(f"❌ خطا در نمایش اطلاعات کاربر: <code>{type(e).__name__}</code>",parse_mode="HTML",reply_markup=final_admin_keyboard())
@@ -5863,6 +5864,17 @@ async def admin_user_action_callback(update,context):
         expires="9999-12-31T23:59:59"; c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Unlimited",0,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_unlimited",target); await q.answer("♾️ اشتراک نامحدود شد")
     elif action=="editvip":
         c.close(); await q.message.reply_text("✏️ <b>ویرایش اشتراک</b>\n\nروز مثبت = اضافه کردن\nروز منفی = کم کردن\n0 = لغو کامل\nمثال: -7 یا 15",parse_mode="HTML",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return
+    elif action=="promote":
+        if target==master_owner_id(): c.close(); await q.answer("❌ Owner همیشه مدیر است.",show_alert=True); return
+        existing=c.execute("SELECT user_id FROM management_roles WHERE user_id=?",(target,)).fetchone()
+        if existing:
+            c.execute("UPDATE management_roles SET active=1,updated_at=? WHERE user_id=?",(now,target))
+        else:
+            c.execute("INSERT INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",(target,"general_manager","general",json.dumps(sorted(MASTER_ROLE_PERMISSIONS.get("general_manager",set()))),now,now))
+        c.commit(); c.close(); admin_log(uid,"manager_promoted",target,"general_manager"); await q.answer("✅ کاربر به مدیر ارتقا یافت.",show_alert=True)
+        try: q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
+        except Exception: pass
+        return
     else: c.close(); return
     q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
 
@@ -11270,7 +11282,7 @@ def main():
     app.add_handler(ChatMemberHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
-    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip):"))
+    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote):"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
     app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
