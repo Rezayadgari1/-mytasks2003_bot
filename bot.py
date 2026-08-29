@@ -14296,15 +14296,53 @@ async def time_callback(update,context):
     context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
 
 async def custom_time_save(update,context):
-    # Preserve legacy custom-goal flow, but persist ready-goal metadata when present.
-    if context.user_data.get('ready_details'):
-        uid=update.effective_user.id; reminder=parse_time((update.message.text or '').strip())
-        if reminder is None: await update.message.reply_text(T[lang(uid)]['bad_time']); return True
-        name=context.user_data.get('name'); category=context.user_data.get('category'); priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes'); add_goal(uid,name,category,reminder,priority,duration)
-        c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close()
-        for k,v in context.user_data.get('ready_details',[]): _goal_store_meta(uid,int(gid),k,v)
-        context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); await update.message.reply_text('🔁 مدت تکرار یادآوری را انتخاب کن:',reply_markup=_targeted_repeat_keyboard(uid)); return True
-    return await _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE(update,context)
+    # Handle custom goal time here directly. This avoids falling back through
+    # older router revisions that can conflict with the current flow state.
+    if not context.user_data.get('awaiting_custom_time'):
+        return False
+
+    uid = update.effective_user.id
+    reminder = parse_time((update.message.text or '').strip())
+    if reminder is None:
+        await update.message.reply_text(T[lang(uid)]['bad_time'])
+        return True
+
+    name = context.user_data.get('name')
+    category = context.user_data.get('category')
+    if not name or not category:
+        return False
+
+    priority = context.user_data.get('priority', 2)
+    duration = context.user_data.get('duration_minutes')
+    condition = context.user_data.get('condition')
+    ready_details = list(context.user_data.get('ready_details') or [])
+
+    c = db()
+    try:
+        cur = c.execute(
+            "INSERT INTO goals(user_id,name,category,reminder_time,priority,duration_minutes,condition,created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (uid, name, category, reminder, priority, duration, condition, datetime.now(TZ).isoformat()),
+        )
+        gid = int(cur.lastrowid)
+        c.commit()
+    finally:
+        c.close()
+
+    for k, v in ready_details:
+        _goal_store_meta(uid, gid, k, v)
+
+    for key in ('awaiting_custom_time', 'name', 'category', 'priority',
+                'duration_minutes', 'condition', 'ready_details',
+                '_flow_started_at'):
+        context.user_data.pop(key, None)
+    context.user_data['pending_repeat_goal_id'] = gid
+
+    await update.message.reply_text(
+        '🔁 مدت تکرار یادآوری را انتخاب کن:' if lang(uid) == 'fa' else
+        '🔁 Choose reminder duration:',
+        reply_markup=_targeted_repeat_keyboard(uid),
+    )
+    return True
 
 _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE=globals().get('custom_time_save')
 if _OLD_CUSTOM_TIME_SAVE_GOALS_UPGRADE is None:
