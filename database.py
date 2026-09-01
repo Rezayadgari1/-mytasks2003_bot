@@ -7,6 +7,7 @@ All functions are pure data-access — no Telegram handler logic.
 import os
 import sqlite3
 import secrets
+from contextlib import contextmanager
 from datetime import datetime
 from config import DB_PATH, DB_BACKUP_PATH, DB_SCHEMA_VERSION, TZ
 
@@ -165,6 +166,25 @@ def db():
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA synchronous=NORMAL")
     return c
+
+
+@contextmanager
+def db_context():
+    """Context manager that guarantees the connection is closed.
+
+    Usage::
+        with db_context() as c:
+            c.execute("SELECT …")
+            c.commit()  # commit is NOT automatic
+    """
+    c = db()
+    try:
+        yield c
+    finally:
+        try:
+            c.close()
+        except Exception:
+            logger.debug("db_context close failed", exc_info=True)
 
 
 def init_db():

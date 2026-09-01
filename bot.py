@@ -66,7 +66,7 @@ from config import (
 from database import (
     restore_database_if_missing, backup_database, backup_database_snapshot,
     ensure_column, get_schema_version, set_schema_version, migrate_database,
-    db, init_db, register_user, log_activity, lang, set_lang, set_gender,
+    db, db_context, init_db, register_user, log_activity, lang, set_lang, set_gender,
     user_info, display_name, add_goal, get_goals, get_goal, set_status,
     get_status, add_step, get_steps, toggle_step, calculate_streak,
     unlock_achievement, achievement_check, achievement_text,
@@ -16128,7 +16128,7 @@ async def birthday_occasion_job(context):
                 u = c.execute("SELECT first_name FROM users WHERE user_id=?", (uid,)).fetchone()
                 name = u["first_name"] if u else ""
             except Exception:
-                pass
+                logger.debug("birthday_occasion_job: failed to fetch user name for uid=%s", uid)
             desc = ""
             gkind = bd_get("bd_gift_kind", "xp")
             if gkind != "none" and bd_get("bd_gift_enabled", "1") == "1":
@@ -16142,7 +16142,7 @@ async def birthday_occasion_job(context):
             try:
                 await context.bot.send_message(uid, msg)
             except Exception:
-                pass
+                logger.warning("birthday_occasion_job: failed to send congratulation to uid=%s", uid)
         if bd_get("bd_reminder_enabled", "1") == "1":
             try:
                 nd = max(1, int(bd_get("bd_reminder_days", "3")))
@@ -16159,7 +16159,7 @@ async def birthday_occasion_job(context):
                 try:
                     await context.bot.send_message(uid, f"🔔 سلام! {nd} روز تا تولدت مونده 🎂 آمادهٔ جشن باش!")
                 except Exception:
-                    pass
+                    logger.warning("birthday_occasion_job: failed to send reminder to uid=%s", uid)
 
     for o in c.execute("SELECT * FROM occasions WHERE active=1 AND auto_send=1 AND substr(date,1,5)=? AND last_sent_year<?",
                        (mmdd, year)).fetchall():
@@ -16186,7 +16186,7 @@ async def birthday_occasion_job(context):
                 await context.bot.send_message(uid, base + desc)
                 count += 1
             except Exception:
-                pass
+                logger.warning("birthday_occasion_job: failed to send occasion to uid=%s", uid)
         master_log(master_owner_id() or 0, "occasion_sent", o["name"], f"{count} users")
     c.close()
 
@@ -16273,7 +16273,7 @@ async def poll_callback(update, context):
         c.commit()
         c.close()
     except Exception:
-        pass
+        logger.debug("poll_callback: failed to log poll response", exc_info=True)
     await q.answer(f"ممنون! نظرت ثبت شد: {label}", show_alert=True)
     try:
         await q.message.edit_text(
@@ -16281,7 +16281,7 @@ async def poll_callback(update, context):
             parse_mode="HTML"
         )
     except Exception:
-        pass
+        logger.debug("poll_callback: failed to edit poll message", exc_info=True)
 
 
 
