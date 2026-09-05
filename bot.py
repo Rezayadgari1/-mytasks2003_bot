@@ -1282,21 +1282,42 @@ def required_channel_url():
 
 
 async def is_channel_member(bot, uid):
+    """Check current Telegram membership. Do not trust stale local tracking."""
     channel = required_channel()
+
+    # If the normal channel setting is empty, use a public forced-sub URL.
+    if not channel and "_forced_sub_get" in globals():
+        forced_url = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
+        m = re.match(r"^https?://t\.me/([A-Za-z0-9_]{5,32})/?$", forced_url)
+        if m:
+            channel = "@" + m.group(1)
+
     if not channel:
         return True
-    # مدیر ربات نیازی به عضویت اجباری ندارد.
-    if uid in ADMIN_IDS:
+
+    if uid in ADMIN_IDS or admin_guard(uid):
         return True
+
     try:
         member = await bot.get_chat_member(chat_id=channel, user_id=uid)
-        return member.status in {
+        status = getattr(member, "status", None)
+
+        if status in {
             ChatMemberStatus.MEMBER,
             ChatMemberStatus.ADMINISTRATOR,
             ChatMemberStatus.OWNER,
-        } or (member.status == ChatMemberStatus.RESTRICTED and bool(getattr(member, "is_member", False)))
+        }:
+            return True
+
+        if status == ChatMemberStatus.RESTRICTED:
+            return bool(getattr(member, "is_member", False))
+
+        return False
     except Exception as e:
-        logger.error("Membership check failed for %s in %s: %s", uid, channel, e)
+        logger.error(
+            "Live membership check failed for uid=%s channel=%s: %s",
+            uid, channel, e
+        )
         return False
 
 
@@ -1389,7 +1410,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Forced subscription check (admin-configurable)
     # Owner is exempt - check before enforce function
     if _forced_sub_is_enabled() and not admin_guard(uid):
-        is_ok, result = _forced_sub_enforce(uid)
+        is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
         if not is_ok:
             msg, kb = result
             await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
@@ -2314,7 +2335,8 @@ def _safe_channel_enabled(value, default=1):
 
 
 def get_channel_config():
-    """Return the currently selected channel, while preserving legacy channel_config."""
+    """Return the selected channel and repair old channel schemas first."""
+    _ensure_channel_runtime_schema()
     c=db()
     try:
         active=get_system_setting("active_channel_id", "") if "get_system_setting" in globals() else ""
@@ -2331,6 +2353,7 @@ def get_channel_config():
         c.close()
 
 def list_managed_channels():
+    _ensure_channel_runtime_schema()
     c=db(); rows=c.execute("SELECT * FROM managed_channels ORDER BY id").fetchall(); c.close(); return rows
 
 def set_active_channel(channel_id):
@@ -2906,6 +2929,111 @@ async def approval_reject_callback(update,context):
     await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.edit_text("❌ پست رد شد و منتشر نمی‌شود.")
 
 
+
+def _ensure_channel_runtime_schema():
+    """Self-heal channel tables for older SQLite databases before channel UI queries."""
+    c = db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS system_settings(
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS channel_config(
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            channel_id TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL DEFAULT ''
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS managed_channels(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS channel_posts(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL DEFAULT '',
+            schedule_type TEXT NOT NULL DEFAULT 'once',
+            schedule_time TEXT,
+            weekday INTEGER,
+            run_at TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            last_sent_at TEXT,
+            created_at TEXT NOT NULL DEFAULT '',
+            created_by INTEGER NOT NULL DEFAULT 0
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS auto_post_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL,
+            topic TEXT NOT NULL DEFAULT '',
+            category TEXT,
+            content TEXT NOT NULL DEFAULT '',
+            content_hash TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT '',
+            UNIQUE(channel_id, content_hash)
+        )""")
+
+        def ensure_column(table, column, ddl):
+            cols = {row["name"] for row in c.execute(
+                f"PRAGMA table_info({table})"
+            ).fetchall()}
+            if column not in cols:
+                c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+        for column, ddl in (
+            ("channel_id", "TEXT NOT NULL DEFAULT ''"),
+            ("enabled", "INTEGER NOT NULL DEFAULT 1"),
+            ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            ensure_column("channel_config", column, ddl)
+
+        for column, ddl in (
+            ("channel_id", "TEXT NOT NULL DEFAULT ''"),
+            ("title", "TEXT NOT NULL DEFAULT ''"),
+            ("enabled", "INTEGER NOT NULL DEFAULT 1"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+            ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            ensure_column("managed_channels", column, ddl)
+
+        for column, ddl in (
+            ("content", "TEXT NOT NULL DEFAULT ''"),
+            ("schedule_type", "TEXT NOT NULL DEFAULT 'once'"),
+            ("schedule_time", "TEXT"),
+            ("weekday", "INTEGER"),
+            ("run_at", "TEXT"),
+            ("enabled", "INTEGER NOT NULL DEFAULT 1"),
+            ("last_sent_at", "TEXT"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+            ("created_by", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            ensure_column("channel_posts", column, ddl)
+
+        for column, ddl in (
+            ("channel_id", "TEXT NOT NULL DEFAULT ''"),
+            ("topic", "TEXT NOT NULL DEFAULT ''"),
+            ("category", "TEXT"),
+            ("content", "TEXT NOT NULL DEFAULT ''"),
+            ("content_hash", "TEXT NOT NULL DEFAULT ''"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            ensure_column("auto_post_history", column, ddl)
+
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auto_history_channel_created "
+            "ON auto_post_history(channel_id, created_at)"
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auto_history_topic_created "
+            "ON auto_post_history(topic, created_at)"
+        )
+        c.commit()
+    finally:
+        c.close()
+
 def channel_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
@@ -3235,6 +3363,7 @@ async def smart_post_callback(update,context):
 
 @subscription_required
 async def channel_panel_callback(update, context):
+    _ensure_channel_runtime_schema()
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
@@ -10303,36 +10432,78 @@ def _forced_sub_check_user(uid):
             return False  # hasn't stayed long enough
     return True
 
+async def _forced_sub_enforce_async(uid, bot):
+    """Live-check Telegram membership and enforce the configured duration."""
+    if not _forced_sub_is_enabled() or admin_guard(uid):
+        return True, None
+
+    # Always ask Telegram for the current status.
+    live_member = await is_channel_member(bot, uid)
+    if not live_member:
+        return False, _forced_sub_failure_payload()
+
+    required_hours = _forced_sub_duration_hours()
+
+    # Forever means current membership is enough.
+    if required_hours == 0:
+        return True, None
+
+    # Timed membership: create the start time on the first live confirmation.
+    c = db()
+    r = c.execute(
+        "SELECT joined_at,is_member FROM user_channel_membership WHERE user_id=?",
+        (uid,),
+    ).fetchone()
+    c.close()
+
+    if not r or not r["joined_at"] or not r["is_member"]:
+        _forced_sub_record_join(uid)
+
+    if _forced_sub_check_user(uid):
+        return True, None
+
+    return False, _forced_sub_failure_payload()
+
+
+def _forced_sub_failure_payload():
+    channel_url = _forced_sub_get("forced_sub_channel_url", "") or required_channel_url()
+    msg = _forced_sub_get("forced_sub_message", "")
+
+    if not msg:
+        dtype = _forced_sub_get("forced_sub_duration_type", "hours")
+        try:
+            dval = int(_forced_sub_get("forced_sub_duration_value", "24"))
+        except (ValueError, TypeError):
+            dval = 24
+
+        if dtype == "forever":
+            duration_text = "باید دائمی عضو کانال باشید"
+        elif dtype == "days":
+            duration_text = f"باید حداقل {dval} روز عضو کانال باشید"
+        else:
+            duration_text = f"باید حداقل {dval} ساعت عضو کانال باشید"
+
+        msg = (
+            f"🔒 {duration_text}\n\n"
+            "برای استفاده از ربات، ابتدا عضو کانال شوید و سپس «بررسی مجدد» را بزنید."
+        )
+
+    kb_lines = []
+    if channel_url:
+        kb_lines.append([
+            InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)
+        ])
+    kb_lines.append([
+        InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")
+    ])
+    return msg, InlineKeyboardMarkup(kb_lines)
+
+
 def _forced_sub_enforce(uid):
-    """Enforce forced subscription. Returns (is_ok, message_or_None)."""
-    if not _forced_sub_is_enabled():
+    """Compatibility helper for old synchronous callers."""
+    if not _forced_sub_is_enabled() or admin_guard(uid):
         return True, None
-    # Owner/admin is exempt
-    if admin_guard(uid):
-        return True, None
-    if not _forced_sub_check_user(uid):
-        channel_url = _forced_sub_get("forced_sub_channel_url", "")
-        msg = _forced_sub_get("forced_sub_message", "")
-        if not msg:
-            dtype = _forced_sub_get("forced_sub_duration_type", "hours")
-            try:
-                dval = int(_forced_sub_get("forced_sub_duration_value", "24"))
-            except (ValueError, TypeError):
-                dval = 24
-            if dtype == "forever":
-                duration_text = f"باید دائمی عضو کانال باشید"
-            elif dtype == "days":
-                duration_text = f"باید حداقل {dval} روز عضو کانال باشید"
-            else:
-                duration_text = f"باید حداقل {dval} ساعت عضو کانال باشید"
-            msg = f"🔒 {duration_text}\n\nبرای استفاده از ربات، ابتدا عضو کانال شوید و حداقل زمان مشخص‌شده را بمانید."
-        kb_lines = []
-        if channel_url:
-            kb_lines.append([InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)])
-        kb_lines.append([InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")])
-        kb = InlineKeyboardMarkup(kb_lines) if kb_lines else None
-        return False, (msg, kb)
-    return True, None
+    return _forced_sub_check_user(uid), None
 
 
 async def _forced_sub_admin_panel(update, context):
@@ -10518,7 +10689,7 @@ async def forced_sub_check_callback(update, context):
     """Handle forcedsub:check callback from users."""
     q = update.callback_query
     uid = q.from_user.id
-    is_ok, result = _forced_sub_enforce(uid)
+    is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
     if is_ok:
         await q.answer("✅ عضویت شما تأیید شد.", show_alert=True)
         fa = lang(uid) == "fa"
