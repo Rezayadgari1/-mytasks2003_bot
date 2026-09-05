@@ -1273,8 +1273,15 @@ def required_channel():
 
 
 def required_channel_url():
+    # Dedicated forced-subscription URL has priority while that feature is active.
+    if "_forced_sub_get" in globals() and _forced_sub_is_enabled():
+        forced_url = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
+        if forced_url:
+            return forced_url
+
     if REQUIRED_CHANNEL_URL:
         return REQUIRED_CHANNEL_URL
+
     channel = required_channel()
     if channel.startswith("@"):
         return f"https://t.me/{channel[1:]}"
@@ -1331,10 +1338,28 @@ def subscription_keyboard():
 
 
 async def require_subscription(update, context):
+    """Legacy channel gate. Forced-subscription mode owns the check when enabled."""
     uid = update.effective_user.id
-    # Owner/admin is exempt from forced subscription
+
     if admin_guard(uid):
         return True
+
+    # Do not run the old channel_config gate when the admin has enabled the
+    # dedicated forced-subscription system. Otherwise two different channels
+    # may be checked and a valid user is rejected by the wrong one.
+    if _forced_sub_is_enabled():
+        ok, result = await _forced_sub_enforce_async(uid, context.bot)
+        if ok:
+            return True
+        msg, kb = result
+        if update.callback_query:
+            await update.callback_query.answer("ابتدا عضو کانال شوید.", show_alert=True)
+            await update.callback_query.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+        elif update.message:
+            await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+        return False
+
+    # Legacy subscription system.
     if await is_channel_member(context.bot, uid):
         return True
 
@@ -1347,8 +1372,9 @@ async def require_subscription(update, context):
     else:
         text = (
             "🔒 برای استفاده از امکانات ربات، ابتدا عضو کانال شوید.\n\n"
-            "لینک عضویت کانال هنوز برای ربات تنظیم نشده است. مدیر باید REQUIRED_CHANNEL_URL را تنظیم کند."
+            "لینک عضویت کانال هنوز برای ربات تنظیم نشده است."
         )
+
     if update.callback_query:
         await update.callback_query.answer("ابتدا عضو کانال شوید.", show_alert=True)
         await update.callback_query.message.reply_text(text, reply_markup=subscription_keyboard())
@@ -1407,14 +1433,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.exception("Referral success notification failed")
     if not await require_subscription(update, context):
         return
-    # Forced subscription check (admin-configurable)
-    # Owner is exempt - check before enforce function
-    if _forced_sub_is_enabled() and not admin_guard(uid):
-        is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
-        if not is_ok:
-            msg, kb = result
-            await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
-            return
+    # Forced subscription is already checked by require_subscription().
     info = user_info(uid)
 
     if info["gender"] is None:
