@@ -1310,13 +1310,13 @@ async def is_channel_member(bot, uid):
         status = getattr(member, "status", None)
 
         if status in {
-            ChatMemberStatus.MEMBER,
-            ChatMemberStatus.ADMINISTRATOR,
-            ChatMemberStatus.OWNER,
+            "member",
+            "administrator",
+            "creator",
         }:
             return True
 
-        if status == ChatMemberStatus.RESTRICTED:
+        if status == "restricted":
             return bool(getattr(member, "is_member", False))
 
         return False
@@ -2408,9 +2408,9 @@ async def bot_can_manage_channel(bot, channel):
     """Check that the bot is an administrator with permission to post in the channel."""
     me = await bot.get_me()
     member = await bot.get_chat_member(chat_id=channel, user_id=me.id)
-    if member.status not in {ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER}:
+    if member.status not in {"administrator", "creator"}:
         return False, "❌ ربات در کانال ادمین نیست. ابتدا ربات را ادمین کانال کن."
-    if member.status == ChatMemberStatus.ADMINISTRATOR and not bool(getattr(member, "can_post_messages", False)):
+    if member.status == "administrator" and not bool(getattr(member, "can_post_messages", False)):
         return False, "❌ ربات ادمین است، ولی اجازه ارسال پست ندارد. دسترسی ارسال پیام را فعال کن."
     return True, "OK"
 
@@ -7441,7 +7441,7 @@ async def run_health_checks(bot,admin_id=0):
             chat=await bot.get_chat(cfg["channel_id"])
             me=await bot.get_me()
             member=await bot.get_chat_member(cfg["channel_id"],me.id)
-            allowed = member.status in {ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER}
+            allowed = member.status in {"administrator","creator"}
             if allowed:
                 checks.append(("Channel","OK",f"کانال {getattr(chat,'title',cfg['channel_id'])} قابل دسترسی و ربات ادمین است."))
             else:
@@ -7846,15 +7846,27 @@ async def error_handler(update, context):
                 pass
             data = q.data or ""
             retry = data if data else "v25:hub"
-            await q.message.reply_text(
+            recovery_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 تلاش دوباره", callback_data=retry)],
+                [InlineKeyboardButton("⬅️ مرکز من", callback_data="v25:hub"), main_menu_button(uid)],
+            ])
+            recovery_text = (
                 f"⚠️ اجرای این بخش با خطا متوقف شد.\n\nکد خطا: <code>{err_name}</code>\n"
-                "صفحه فعلی پاک نشد؛ می‌توانی دوباره امتحان کنی.",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data=retry)],
-                    [InlineKeyboardButton("⬅️ مرکز من", callback_data="v25:hub"), main_menu_button(uid)],
-                ]),
+                "صفحه فعلی پاک نشد؛ می‌توانی دوباره امتحان کنی."
             )
+            # CallbackQuery can be message-less for inline messages. Do not let
+            # the recovery handler raise a second AttributeError.
+            if q.message is not None:
+                await q.message.reply_text(
+                    recovery_text, parse_mode="HTML", reply_markup=recovery_markup
+                )
+            elif getattr(q, "inline_message_id", None):
+                try:
+                    await q.edit_message_text(
+                        recovery_text, parse_mode="HTML", reply_markup=recovery_markup
+                    )
+                except Exception:
+                    logger.exception("Failed to recover inline callback error")
         elif update.message:
             await update.message.reply_text(
                 f"⚠️ اجرای این بخش با خطا متوقف شد.\nکد خطا: <code>{err_name}</code>\n"
