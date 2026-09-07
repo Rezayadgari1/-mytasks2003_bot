@@ -11437,7 +11437,7 @@ async def text_router(update, context):
         return
     if txt in ("📊 آمار و گزارش", "📊 Reports & Analytics", "📊 Stats & Reports"):
         clear_flow(context)
-        await show_stats(update, context)
+        await _compact_menu_show(update, context, "reports")
         return
     if txt in ("🛠️ ابزارها", "🛠️ Tools"):
         clear_flow(context)
