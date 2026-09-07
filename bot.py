@@ -1377,6 +1377,7 @@ async def is_channel_member(bot, uid):
         member = await bot.get_chat_member(chat_id=channel, user_id=uid)
         status = getattr(member, "status", None)
         status_value = getattr(status, "value", status)
+        status_value = str(status_value).lower() if status_value is not None else ""
 
         if status_value in {"member", "administrator", "creator", "owner"}:
             return True
@@ -6105,11 +6106,11 @@ def final_admin_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("💰 هزینه/سرویس‌ها",callback_data="adm:costs")],
         [InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip"),InlineKeyboardButton("👥 ظرفیت/کاربران",callback_data="adm:capacity")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("⏰ زمان‌بندی چکاپ",callback_data="adm:health_schedule"),InlineKeyboardButton("⏸ توقف موقت ربات",callback_data="adm:pause")],[InlineKeyboardButton("🧪 مرکز تست",callback_data="adm:test"),InlineKeyboardButton("💾 بکاپ",callback_data="adm:backup")],[InlineKeyboardButton("🔎 عیب‌یابی کامل",callback_data="adm:diagnostics"),InlineKeyboardButton("📝 لاگ مدیران",callback_data="adm:audit")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
 
-async def admin_user_detail_callback(update,context):
+async def admin_user_detail_callback(update,context, target_override=None):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     try:
-        await q.answer(); target=int(q.data.split(":",1)[1]); c=db()
+        await q.answer(); target=int(target_override) if target_override is not None else int(q.data.split(":",1)[1]); c=db()
         u=c.execute("SELECT * FROM users WHERE user_id=?",(target,)).fetchone()
         if not u:
             c.close(); await q.message.reply_text("❌ کاربر پیدا نشد.",reply_markup=final_admin_keyboard()); return
@@ -6147,7 +6148,7 @@ async def admin_user_action_callback(update,context):
     if action=="block":
         r=c.execute("SELECT blocked FROM users WHERE user_id=?",(target,)).fetchone(); new=0 if r and r["blocked"] else 1; c.execute("UPDATE users SET blocked=? WHERE user_id=?",(new,target)); c.commit(); c.close(); admin_log(uid,"user_block_toggle",target,str(new)); await q.answer("🔓 رفع محدودیت شد" if not new else "🚫 محدود شد")
         try:
-            q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
+            await admin_user_detail_callback(update,context,target)
         except Exception:
             logger.exception("admin_user_detail_callback after block failed")
             try: await q.message.reply_text("✅ وضعیت کاربر تغییر کرد.",reply_markup=final_admin_keyboard())
@@ -6173,11 +6174,11 @@ async def admin_user_action_callback(update,context):
         else:
             c.execute("INSERT INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",(target,"general_manager","general",json.dumps(sorted(MASTER_ROLE_PERMISSIONS.get("general_manager",set()))),now,now))
         c.commit(); c.close(); admin_log(uid,"manager_promoted",target,"general_manager"); await q.answer("✅ کاربر به مدیر ارتقا یافت.",show_alert=True)
-        try: q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
+        try: await admin_user_detail_callback(update,context,target)
         except Exception: pass
         return
     else: c.close(); return
-    q.data=f"admu:{target}"; await admin_user_detail_callback(update,context)
+    await admin_user_detail_callback(update,context,target)
 
 
 def _admin_db_diagnostics():
@@ -6291,11 +6292,11 @@ def admin_capacity_text():
             "📌 این نسخه از SQLite استفاده می‌کند؛ برای تعداد بسیار زیاد کاربر بهتر است بعداً دیتابیس سروری مثل PostgreSQL و صف/کش اضافه شود.")
 
 
-async def admin_users_navigation_callback(update,context):
+async def admin_users_navigation_callback(update,context, page_override=None):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
     parts=(q.data or "").split(":"); action=parts[1] if len(parts)>1 else "list"
-    page=int(parts[2]) if len(parts)>2 and parts[2].isdigit() else 1
+    page=(int(page_override) if page_override is not None else (int(parts[2]) if len(parts)>2 and parts[2].isdigit() else 1))
     page=max(1,page)
     per_page=10
     c=db(); total=c.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
@@ -6357,8 +6358,7 @@ async def final_admin_panel_callback(update,context):
         page=int(a.split(":",1)[1]) if ":" in a and a.split(":",1)[1].isdigit() else 1
         context.user_data["admin_users_page"]=page
         # Render through the same paginated user-list implementation.
-        q.data=f"adm:users:{page}"
-        return await admin_users_navigation_callback(update,context)
+        return await admin_users_navigation_callback(update,context,page_override=page)
     if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
     if a=="tools": context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="xpvip":
