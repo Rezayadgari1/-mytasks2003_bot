@@ -204,7 +204,11 @@ def ensure_column(c, table, column, ddl):
     """Add a column only when the old database does not have it."""
     columns = {r["name"] for r in c.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in columns:
-        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        try:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
 
 
 def get_schema_version(c):
@@ -3059,8 +3063,21 @@ async def approval_reject_callback(update,context):
 
 
 
+_CHANNEL_SCHEMA_READY = False
+_CHANNEL_SCHEMA_LOCK = threading.Lock()
+
 def _ensure_channel_runtime_schema():
     """Self-heal channel tables for older SQLite databases before channel UI queries."""
+    global _CHANNEL_SCHEMA_READY
+    if _CHANNEL_SCHEMA_READY:
+        return
+    with _CHANNEL_SCHEMA_LOCK:
+        if _CHANNEL_SCHEMA_READY:
+            return
+        _channel_runtime_schema_ddl()
+        _CHANNEL_SCHEMA_READY = True
+
+def _channel_runtime_schema_ddl():
     c = db()
     try:
         c.execute("""CREATE TABLE IF NOT EXISTS system_settings(
@@ -3105,19 +3122,12 @@ def _ensure_channel_runtime_schema():
             UNIQUE(channel_id, content_hash)
         )""")
 
-        def ensure_column(table, column, ddl):
-            cols = {row["name"] for row in c.execute(
-                f"PRAGMA table_info({table})"
-            ).fetchall()}
-            if column not in cols:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-
         for column, ddl in (
             ("channel_id", "TEXT NOT NULL DEFAULT ''"),
             ("enabled", "INTEGER NOT NULL DEFAULT 1"),
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),
         ):
-            ensure_column("channel_config", column, ddl)
+            ensure_column(c, "channel_config", column, ddl)
 
         for column, ddl in (
             ("channel_id", "TEXT NOT NULL DEFAULT ''"),
@@ -3126,7 +3136,7 @@ def _ensure_channel_runtime_schema():
             ("created_at", "TEXT NOT NULL DEFAULT ''"),
             ("updated_at", "TEXT NOT NULL DEFAULT ''"),
         ):
-            ensure_column("managed_channels", column, ddl)
+            ensure_column(c, "managed_channels", column, ddl)
 
         for column, ddl in (
             ("content", "TEXT NOT NULL DEFAULT ''"),
@@ -3139,7 +3149,7 @@ def _ensure_channel_runtime_schema():
             ("created_at", "TEXT NOT NULL DEFAULT ''"),
             ("created_by", "INTEGER NOT NULL DEFAULT 0"),
         ):
-            ensure_column("channel_posts", column, ddl)
+            ensure_column(c, "channel_posts", column, ddl)
 
         for column, ddl in (
             ("channel_id", "TEXT NOT NULL DEFAULT ''"),
@@ -3149,7 +3159,7 @@ def _ensure_channel_runtime_schema():
             ("content_hash", "TEXT NOT NULL DEFAULT ''"),
             ("created_at", "TEXT NOT NULL DEFAULT ''"),
         ):
-            ensure_column("auto_post_history", column, ddl)
+            ensure_column(c, "auto_post_history", column, ddl)
 
         c.execute(
             "CREATE INDEX IF NOT EXISTS idx_auto_history_channel_created "
@@ -3495,7 +3505,6 @@ async def smart_post_callback(update,context):
 
 @subscription_required
 async def channel_panel_callback(update, context):
-    _ensure_channel_runtime_schema()
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
@@ -3503,6 +3512,7 @@ async def channel_panel_callback(update, context):
         return
     await q.answer()
     try:
+        _ensure_channel_runtime_schema()
         await _channel_panel_inner(update, context)
     except Exception as e:
         logger.exception("channel_panel_callback error")
@@ -6516,7 +6526,7 @@ def get_system_setting(key, default=""):
     finally:
         c.close()
 
-def set_system_setting(key, value):
+def set_system_setting(key, value, updated_by=None):
     c=db()
     try:
         c.execute("""INSERT INTO system_settings(key,value,updated_at) VALUES(?,?,?)
@@ -6850,7 +6860,8 @@ async def referral(update, context):
         f"👥 دعوت‌ها: <b>{stats['total']}</b> | موفق: <b>{stats['success']}</b> | در انتظار: <b>{stats['pending']}</b>\n"
         f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن"
     )
-    await update.message.reply_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
+    target = update.message or (update.callback_query.message if update.callback_query else None)
+    await target.reply_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
 
 
 async def referral_callback(update, context):
@@ -10864,7 +10875,7 @@ async def _show_admin_section(update, context, section):
     elif section == 'finance':
         c = db()
         payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()['n']
-        revenue = c.execute("SELECT COALESCE(SUM(amount),0) n FROM payments WHERE status='completed'").fetchone()['n']
+        revenue = c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()['n']
         vip = c.execute("SELECT COUNT(*) n FROM subscription_history").fetchone()['n']
         c.close()
         text = (
@@ -11022,7 +11033,16 @@ async def text_router(update, context):
         if not admin_guard(uid):
             await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
             return
-        await admin_gifts_callback(update, context)
+        text = (
+            "🎁 <b>هدیه مدیریتی</b>\n\n"
+            "برای ارسال هدیه به کاربر:\n"
+            "1️⃣ شناسه کاربر رو بفرست\n"
+            "2️⃣ نوع هدیه رو انتخاب کن\n"
+            "3️⃣ مقدار و مدت رو تعیین کن"
+        )
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        context.user_data["admin_gift_mode"] = "user_id"
         return
     # New admin menu items (restructured)
     if txt in ("👥 کاربران و پاداش‌ها", "👥 Users & Rewards"):
@@ -11107,7 +11127,7 @@ async def text_router(update, context):
             return
         c = db()
         payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"]
-        revenue = c.execute("SELECT COALESCE(SUM(amount),0) n FROM payments WHERE status='completed'").fetchone()["n"]
+        revenue = c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()["n"]
         c.close()
         text = f"💳 <b>پرداخت‌ها</b>\n\n💳 تراکنش‌ها: {payments}\n💵 مبلغ: {revenue:,}"
         kb = InlineKeyboardMarkup([
@@ -11120,7 +11140,7 @@ async def text_router(update, context):
         if not admin_guard(uid):
             await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
             return
-        await final_admin_panel_callback(update, context)
+        await _show_admin_section(update, context, "users")
         return
     if txt in ("🎙️ دستیار صوتی", "🎙️ Voice Assistant"):
         if not admin_guard(uid):
