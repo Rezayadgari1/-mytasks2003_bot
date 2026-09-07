@@ -239,45 +239,66 @@ def migrate_database(c):
     """
     version = get_schema_version(c)
 
-    # Add future columns here. Each migration must be additive.
-    # Example:
-    # if version < 19:
-    #     ensure_column(c, "users", "new_field", "TEXT")
-    #     set_schema_version(c, 19)
-
-    if version < 22:
-        ensure_column(c, "business_profiles", "business_name", "TEXT NOT NULL DEFAULT ''")
-        ensure_column(c, "business_profiles", "contact_phone", "TEXT NOT NULL DEFAULT ''")
-        ensure_column(c, "business_profiles", "contact_telegram", "TEXT NOT NULL DEFAULT ''")
-        ensure_column(c, "business_profiles", "contact_instagram", "TEXT NOT NULL DEFAULT ''")
-        c.execute("""CREATE TABLE IF NOT EXISTS subscription_history(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, plan TEXT NOT NULL,
-            duration_days INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'admin', amount INTEGER NOT NULL DEFAULT 0,
-            started_at TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL
-        )""")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_subscription_history_user ON subscription_history(user_id, created_at)")
-        set_schema_version(c, 22)
-    if version < 25:
-        c.execute("""CREATE TABLE IF NOT EXISTS weekly_reports(
-            report_week TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )""")
-        set_schema_version(c, 25)
-    if version < 26:
-        c.execute("""CREATE TABLE IF NOT EXISTS user_channel_membership(
-            user_id INTEGER PRIMARY KEY,
-            joined_at TEXT,
-            left_at TEXT,
-            is_member INTEGER DEFAULT 0,
-            last_check TEXT
-        )""")
-        set_schema_version(c, 26)
+    # Every step below is idempotent (IF NOT EXISTS / ensure_column) and runs
+    # unconditionally: databases that already stored a schema_version before a
+    # step was added to that version would otherwise skip it forever.
+    ensure_column(c, "business_profiles", "business_name", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(c, "business_profiles", "contact_phone", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(c, "business_profiles", "contact_telegram", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(c, "business_profiles", "contact_instagram", "TEXT NOT NULL DEFAULT ''")
+    c.execute("""CREATE TABLE IF NOT EXISTS subscription_history(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, plan TEXT NOT NULL,
+        duration_days INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'admin', amount INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL
+    )""")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_subscription_history_user ON subscription_history(user_id, created_at)")
+    c.execute("""CREATE TABLE IF NOT EXISTS weekly_reports(
+        report_week TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_channel_membership(
+        user_id INTEGER PRIMARY KEY,
+        joined_at TEXT,
+        left_at TEXT,
+        is_member INTEGER DEFAULT 0,
+        last_check TEXT
+    )""")
+    for column, ddl in (
+        ("joined_at", "TEXT"),
+        ("left_at", "TEXT"),
+        ("is_member", "INTEGER DEFAULT 0"),
+        ("last_check", "TEXT"),
+    ):
+        ensure_column(c, "user_channel_membership", column, ddl)
     if version < DB_SCHEMA_VERSION:
         set_schema_version(c, DB_SCHEMA_VERSION)
 
 
 _DB_PRAGMA_LOCK = threading.RLock()
+
+def release_leaked_connections(exc):
+    """Roll back and close sqlite connections left open by a failed handler.
+
+    Many handlers do ``c = db(); ...; c.close()`` without try/finally. When they
+    raise, the traceback keeps the frame (and its open write transaction) alive,
+    and every other handler then fails with "database is locked" until GC runs.
+    """
+    tb = getattr(exc, "__traceback__", None)
+    seen = set()
+    while tb is not None:
+        for value in list(tb.tb_frame.f_locals.values()):
+            if isinstance(value, sqlite3.Connection) and id(value) not in seen:
+                seen.add(id(value))
+                try:
+                    value.rollback()
+                except Exception:
+                    pass
+                try:
+                    value.close()
+                except Exception:
+                    pass
+        tb = tb.tb_next
 
 def db():
     """Open SQLite safely under concurrent Telegram updates."""
@@ -743,20 +764,22 @@ def init_db():
 
 def register_user(uid, first_name, username=None):
     now = datetime.now(TZ).isoformat()
-    username = (username or "").strip().lstrip("@").lower() or None
+    username = (username or "").strip().lstrip("@").lower()
     c = db()
-    c.execute(
-        """INSERT INTO users(user_id, first_name, username, created_at, last_active_at)
-           VALUES(?,?,?,?,?)
-           ON CONFLICT(user_id) DO UPDATE SET
-           first_name=excluded.first_name,
-           username=COALESCE(excluded.username, users.username),
-           last_active_at=excluded.last_active_at""",
-        (uid, first_name or "", username, now, now),
-    )
-    c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(secrets.token_urlsafe(12),uid))
-    c.commit()
-    c.close()
+    try:
+        c.execute(
+            """INSERT INTO users(user_id, first_name, username, created_at, last_active_at)
+               VALUES(?,?,?,?,?)
+               ON CONFLICT(user_id) DO UPDATE SET
+               first_name=excluded.first_name,
+               username=CASE WHEN excluded.username!='' THEN excluded.username ELSE users.username END,
+               last_active_at=excluded.last_active_at""",
+            (uid, first_name or "", username, now, now),
+        )
+        c.execute("UPDATE users SET referral_code=COALESCE(referral_code,?) WHERE user_id=?",(secrets.token_urlsafe(12),uid))
+        c.commit()
+    finally:
+        c.close()
 
 
 def log_activity(uid, activity):
@@ -3516,6 +3539,7 @@ async def channel_panel_callback(update, context):
         await _channel_panel_inner(update, context)
     except Exception as e:
         logger.exception("channel_panel_callback error")
+        release_leaked_connections(e)
         try:
             await q.answer("❌ خطا رخ داد", show_alert=True)
         except Exception:
@@ -7963,6 +7987,7 @@ admin_keyboard=final_admin_keyboard
 async def error_handler(update, context):
     """Global recovery must preserve the user's current flow instead of masking errors with Home."""
     logger.error("Bot error", exc_info=context.error)
+    release_leaked_connections(context.error)
     try:
         uid = update.effective_user.id if update and update.effective_user else None
         if not uid:
@@ -12151,6 +12176,7 @@ async def compact_menu_callback(update, context):
             await fn(proxy, context)
         except Exception as exc:
             logger.exception("Compact menu route failed: %s", data)
+            release_leaked_connections(exc)
             # Never hide a route failure by resetting the whole bot to the home menu.
             # Offer a direct retry and a controlled back path instead.
             retry_text = (
