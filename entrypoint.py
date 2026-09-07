@@ -15,6 +15,7 @@ PATCHES = [
     'goals_quality_patch.py',
     'quality_ux_security_patch.py',
     'quality_ux_security_patch_v2.py',
+    'navigation_back_fix.py',
 ]
 
 for patch in PATCHES:
