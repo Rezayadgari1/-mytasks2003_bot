@@ -16,6 +16,7 @@ PATCHES = [
     'quality_ux_security_patch.py',
     'quality_ux_security_patch_v2.py',
     'navigation_back_fix.py',
+    'forced_subscription_menu_final.py',
 ]
 
 for patch in PATCHES:
