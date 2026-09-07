@@ -16755,7 +16755,7 @@ async def text_router(update, context):
         "📈 قیمت آنلاین": "prices", "📈 Online Prices": "prices",
         "📅 تقویم و یادآوری": "calendar", "📅 Calendar & Reminders": "calendar",
         "👤 حساب من": "account", "👤 My Account": "account",
-        "📊 آمار و گزارش": "reports", "📊 Stats & Reports": "reports",
+        "📊 آمار و گزارش": "reports", "📊 Stats & Reports": "reports", "📊 Reports & Analytics": "reports",
         "🛠️ ابزارها": "tools", "🛠️ Tools": "tools",
         "🎫 پشتیبانی": "support", "🎫 Support": "support",
         "⚙️ تنظیمات": "settings", "⚙️ Settings": "settings",
