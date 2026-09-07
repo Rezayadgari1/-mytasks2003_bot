@@ -16,6 +16,7 @@ import random
 import hashlib
 import secrets
 import time
+import threading
 import html
 import difflib
 # Pillow is optional: image generation is disabled by default and must never
@@ -272,14 +273,37 @@ def migrate_database(c):
         set_schema_version(c, DB_SCHEMA_VERSION)
 
 
+_DB_PRAGMA_LOCK = threading.RLock()
+
 def db():
-    c = sqlite3.connect(DB_PATH, timeout=30)
-    c.row_factory = sqlite3.Row
-    c.execute("PRAGMA busy_timeout=30000")
-    c.execute("PRAGMA foreign_keys=ON")
-    c.execute("PRAGMA journal_mode=WAL")
-    c.execute("PRAGMA synchronous=NORMAL")
-    return c
+    """Open SQLite safely under concurrent Telegram updates."""
+    last_error = None
+    for delay in (0.0, 0.05, 0.15, 0.35, 0.75):
+        if delay:
+            time.sleep(delay)
+        try:
+            c = sqlite3.connect(DB_PATH, timeout=30)
+            c.row_factory = sqlite3.Row
+            c.execute("PRAGMA busy_timeout=30000")
+            c.execute("PRAGMA foreign_keys=ON")
+            # journal_mode is a database-level pragma. Serialize it so concurrent
+            # handlers do not turn a temporary SQLite lock into an OperationalError.
+            with _DB_PRAGMA_LOCK:
+                try:
+                    c.execute("PRAGMA journal_mode=WAL")
+                except sqlite3.OperationalError:
+                    # The database might already be in WAL mode and another process
+                    # might hold the short journal-mode lock. Normal queries still work.
+                    pass
+            c.execute("PRAGMA synchronous=NORMAL")
+            return c
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            try:
+                c.close()
+            except Exception:
+                pass
+    raise last_error
 
 
 def init_db():
@@ -1272,8 +1296,48 @@ def required_channel():
     return cfg["channel_id"] if cfg and cfg["channel_id"] else ""
 
 
+def _forced_sub_join_url():
+    raw = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if raw.startswith("@"):
+        return f"https://t.me/{raw[1:]}"
+    return ""
+
+
+def _forced_sub_channel_ref():
+    """Return a Telegram chat reference from the forced-subscription setting."""
+    raw = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
+    if not raw:
+        return ""
+
+    # Numeric channel/supergroup ID.
+    if re.fullmatch(r"-?\d+", raw):
+        try:
+            return int(raw)
+        except ValueError:
+            return ""
+
+    # @username.
+    if re.fullmatch(r"@[A-Za-z0-9_]{5,32}", raw):
+        return raw
+
+    # Public t.me username link.
+    m = re.match(r"^https?://t\.me/([A-Za-z0-9_]{5,32})/?$", raw, re.I)
+    if m:
+        return "@" + m.group(1)
+
+    # Telegram internal private-channel links expose the numeric peer ID.
+    # t.me/c/1234567890/... maps to -1001234567890.
+    m = re.match(r"^https?://t\.me/c/(\d+)(?:/\d+)?/?$", raw, re.I)
+    if m:
+        return int("-100" + m.group(1))
+
+    return ""
+
+
 def required_channel_url():
-    # Dedicated forced-subscription URL has priority while that feature is active.
+    # The dedicated forced-subscription channel always has priority while active.
     if "_forced_sub_get" in globals() and _forced_sub_is_enabled():
         forced_url = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
         if forced_url:
@@ -1283,21 +1347,25 @@ def required_channel_url():
         return REQUIRED_CHANNEL_URL
 
     channel = required_channel()
+    if isinstance(channel, int):
+        return ""
     if channel.startswith("@"):
         return f"https://t.me/{channel[1:]}"
     return ""
 
 
 async def is_channel_member(bot, uid):
-    """Check current Telegram membership. Do not trust stale local tracking."""
-    channel = required_channel()
+    """Live-check the user's membership in the configured required channel."""
+    channel = ""
 
-    # If the normal channel setting is empty, use a public forced-sub URL.
-    if not channel and "_forced_sub_get" in globals():
-        forced_url = (_forced_sub_get("forced_sub_channel_url", "") or "").strip()
-        m = re.match(r"^https?://t\.me/([A-Za-z0-9_]{5,32})/?$", forced_url)
-        if m:
-            channel = "@" + m.group(1)
+    # Forced subscription must check the exact channel configured in its panel.
+    if "_forced_sub_is_enabled" in globals() and _forced_sub_is_enabled():
+        channel = _forced_sub_channel_ref()
+
+    # Legacy channel configuration is the fallback when forced-sub has no usable
+    # channel reference. This also keeps the old subscription system working.
+    if not channel:
+        channel = required_channel()
 
     if not channel:
         return True
@@ -1308,15 +1376,12 @@ async def is_channel_member(bot, uid):
     try:
         member = await bot.get_chat_member(chat_id=channel, user_id=uid)
         status = getattr(member, "status", None)
+        status_value = getattr(status, "value", status)
 
-        if status in {
-            "member",
-            "administrator",
-            "creator",
-        }:
+        if status_value in {"member", "administrator", "creator", "owner"}:
             return True
 
-        if status == "restricted":
+        if status_value == "restricted":
             return bool(getattr(member, "is_member", False))
 
         return False
@@ -1386,14 +1451,34 @@ async def require_subscription(update, context):
 async def subscription_check_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
+
+    if _forced_sub_is_enabled():
+        is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
+        if is_ok:
+            await q.answer("✅ عضویت تأیید شد.", show_alert=True)
+            await q.message.reply_text(
+                "✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانید از امکانات ربات استفاده کنید.",
+                parse_mode="HTML",
+                reply_markup=keyboard(uid),
+            )
+        else:
+            msg, kb = result
+            await q.answer("❌ هنوز عضو کانال نیستید.", show_alert=True)
+            await q.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
+        return
+
     if await is_channel_member(context.bot, uid):
-        await q.answer("✅ عضویت تأیید شد.")
+        await q.answer("✅ عضویت تأیید شد.", show_alert=True)
         await q.message.reply_text(
             "✅ عضویت شما تأیید شد. حالا می‌توانید از همه امکانات ربات استفاده کنید.",
             reply_markup=keyboard(uid),
         )
     else:
-        await q.answer("❌ هنوز عضویت شما تأیید نشده است.", show_alert=True)
+        await q.answer("❌ هنوز عضو کانال نیستید.", show_alert=True)
+        await q.message.reply_text(
+            "🔒 ابتدا عضو کانال شوید و بعد روی «بررسی مجدد» بزنید.",
+            reply_markup=subscription_keyboard(),
+        )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2778,13 +2863,35 @@ def get_auto_topic():
     return cat, random.choice(choices)
 
 
-def compact_channel_footer(bot_username, channel_username):
-    parts = []
+def compact_channel_footer(bot_username="", channel_username=""):
+    # Every published channel post gets the configured channel username below it.
     if channel_username:
-        parts.append(f"📢 کانال: {channel_username}")
-    if bot_username:
-        parts.append(f"🤖 ربات: {bot_username}")
-    return "\n\n" + " | ".join(parts) if parts else ""
+        return f"\n\n📢 {channel_username}"
+    return ""
+
+
+async def channel_post_footer(bot, channel):
+    """Return the public @username of the configured channel for post footers."""
+    try:
+        chat = await bot.get_chat(channel)
+        username = getattr(chat, "username", None)
+        if username:
+            username = str(username).lstrip("@")
+            return f"\n\n📢 @{username}"
+    except Exception as e:
+        logger.warning("Could not resolve channel username for post footer: %s", e)
+    return ""
+
+
+def add_channel_username_footer(content, footer, max_length=None):
+    content = str(content or "").rstrip()
+    if not footer:
+        return content[:max_length] if max_length else content
+    if footer.strip() in content:
+        return content[:max_length] if max_length else content
+    if max_length and len(content) + len(footer) > max_length:
+        content = content[:max(0, max_length - len(footer))].rstrip()
+    return content + footer
 
 
 async def generate_topic_image(topic):
@@ -2844,8 +2951,8 @@ async def send_auto_channel_post(context, channel, topic, category=None):
         raise RuntimeError("auto_publish feature is disabled")
     category=category or get_auto_setting("category","random")
     content=generate_unique_auto_post(channel,category,topic)
-    bot_username,channel_username=await get_identity_handles(context.bot,channel)
-    content=content[:950]+compact_channel_footer(bot_username,channel_username)
+    footer=await channel_post_footer(context.bot, channel)
+    content=add_channel_username_footer(content, footer, 4096)
     # Channel auto-posts are intentionally text-only. Feedback is collected in
     # the end-of-day poll, not under each individual post.
     try:
@@ -2908,7 +3015,7 @@ async def auto_channel_job(context):
         preview_at=next_run-timedelta(minutes=5)
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? AND status IN ('pending','approved') ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
         if now>=preview_at and now<next_run and not pending:
-            category,topic=get_auto_topic(); content=generate_unique_auto_post(channel,category,topic); bot_username,channel_username=await get_identity_handles(context.bot,channel); content=content[:950]+compact_channel_footer(bot_username,channel_username)
+            category,topic=get_auto_topic(); content=generate_unique_auto_post(channel,category,topic); footer=await channel_post_footer(context.bot, channel); content=add_channel_username_footer(content, footer, 4096)
             c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
             kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید شده از طرف من → انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
             for admin_id in ADMIN_IDS:
@@ -2919,7 +3026,9 @@ async def auto_channel_job(context):
         c=db(); pending=c.execute("SELECT * FROM auto_pending WHERE channel_id=? AND publish_at=? ORDER BY id DESC LIMIT 1",(str(channel),next_run.isoformat())).fetchone(); c.close()
         if pending and pending["status"]=="approved":
             try:
-                bot_username,channel_username=await get_identity_handles(context.bot,channel); content=pending["content"]
+                content=pending["content"]
+                footer=await channel_post_footer(context.bot, channel)
+                content=add_channel_username_footer(content, footer, 4096)
                 await context.bot.send_message(chat_id=channel,text=content)
                 save_auto_post_history(channel,pending["topic"],get_auto_setting("category","random"),content)
                 log_activity(ADMIN_IDS[0],"auto_channel_post_approved")
@@ -3087,7 +3196,9 @@ async def channel_scheduler_job(context):
         due=(r["schedule_type"]=="daily" and r["schedule_time"]==hhmm) or (r["schedule_type"]=="weekly" and r["weekday"]==now.weekday() and r["schedule_time"]==hhmm) or (r["schedule_type"]=="once" and r["run_at"] and r["run_at"][:16]==key)
         if not due or (r["last_sent_at"] and r["last_sent_at"][:16]==key): continue
         try:
-            await context.bot.send_message(chat_id=cfg["channel_id"],text=r["content"])
+            footer=await channel_post_footer(context.bot, cfg["channel_id"])
+            post_text=add_channel_username_footer(r["content"], footer, 4096)
+            await context.bot.send_message(chat_id=cfg["channel_id"],text=post_text)
             c=db()
             if r["schedule_type"]=="once": c.execute("UPDATE channel_posts SET enabled=0,last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
             else: c.execute("UPDATE channel_posts SET last_sent_at=? WHERE id=?",(now.isoformat(),r["id"]))
@@ -3369,7 +3480,8 @@ async def smart_post_callback(update,context):
         if not data: await q.message.edit_text("❌ پیش‌نمایش منقضی شده است.",reply_markup=channel_keyboard()); return
         try:
             image=await generate_topic_image(data["topic"])
-            content=data["content"][:1024]
+            footer=await channel_post_footer(context.bot, data["channel"])
+            content=add_channel_username_footer(data["content"], footer, 1024)
             if image is not None: await context.bot.send_photo(chat_id=data["channel"],photo=image,caption=content,reply_markup=content_feedback_keyboard(data["topic"]))
             else: await context.bot.send_message(chat_id=data["channel"],text=content,reply_markup=content_feedback_keyboard(data["topic"]))
             save_auto_post_history(data["channel"],data["topic"],data["category"],content)
@@ -3538,7 +3650,12 @@ async def channel_schedule_callback(update,context):
     if a=="now":
         cfg=get_channel_config()
         if not cfg or not cfg["channel_id"]: await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-        try: await context.bot.send_message(chat_id=cfg["channel_id"],text=_clean_ai_post(context.user_data["channel_content"])); context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
+        try:
+            post_text=_clean_ai_post(context.user_data["channel_content"])
+            footer=await channel_post_footer(context.bot, cfg["channel_id"])
+            post_text=add_channel_username_footer(post_text, footer, 4096)
+            await context.bot.send_message(chat_id=cfg["channel_id"],text=post_text)
+            context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
         except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.edit_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
     elif a=="once": context.user_data["channel_state"]="once"; await q.message.edit_text("📅 تاریخ و ساعت را بفرست: ۱۴۰۵/۰۵/۲۹ ۱۸:۳۰")
     elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.edit_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
@@ -7765,7 +7882,9 @@ async def send_channel_morning_message(context):
     if not channel or get_auto_setting("channel_morning_date", "") == now.date().isoformat():
         return
     try:
-        await context.bot.send_message(chat_id=channel, text="☀️ صبح بخیر همراهان MyTasks!\n\nیک روز تازه، یک فرصت تازه برای یک قدم بهتر. 🌱\nامروز هم با هم یک موضوع کاربردی و مفید را بررسی می‌کنیم. 🎯")
+        text="☀️ صبح بخیر همراهان MyTasks!\n\nیک روز تازه، یک فرصت تازه برای یک قدم بهتر. 🌱\nامروز هم با هم یک موضوع کاربردی و مفید را بررسی می‌کنیم. 🎯"
+        text=add_channel_username_footer(text, await channel_post_footer(context.bot, channel), 4096)
+        await context.bot.send_message(chat_id=channel, text=text)
         set_auto_setting("channel_morning_date", now.date().isoformat())
     except Exception:
         logger.exception("Channel morning message failed")
@@ -7780,7 +7899,9 @@ async def send_night_channel_feedback(context):
         return
     try:
         # Night greeting is deliberately separate from both polls.
-        await context.bot.send_message(chat_id=channel, text="🌙 شب بخیر همراهان MyTasks!\n\nممنون که امروز هم همراه ما بودید. ❤️\nقبل از پایان روز، نظرتان درباره محتوای امروز را با ما در میان بگذارید.")
+        text="🌙 شب بخیر همراهان MyTasks!\n\nممنون که امروز هم همراه ما بودید. ❤️\nقبل از پایان روز، نظرتان درباره محتوای امروز را با ما در میان بگذارید."
+        text=add_channel_username_footer(text, await channel_post_footer(context.bot, channel), 4096)
+        await context.bot.send_message(chat_id=channel, text=text)
         msg = await context.bot.send_poll(chat_id=channel, question="📊 محتوای امروز چقدر برایت مفید بود؟", options=["😍 خیلی مفید بود", "👍 مفید بود", "😐 معمولی بود", "👎 مفید نبود"], is_anonymous=False)
         c=db(); c.execute("INSERT OR REPLACE INTO channel_polls(poll_id,channel_id,poll_type,question,options,created_at,report_date) VALUES(?,?,?,?,?,?,?)", (str(msg.poll.id),str(channel),"usefulness",msg.poll.question,json.dumps(msg.poll.options,ensure_ascii=False,default=lambda o:o.text),datetime.now(TZ).isoformat(),date_iso))
         c.commit(); c.close()
@@ -10443,90 +10564,52 @@ def _forced_sub_record_leave(uid):
     c.close()
 
 def _forced_sub_check_user(uid):
-    """Check if a user's membership is still valid. Returns True if OK."""
-    required_hours = _forced_sub_duration_hours()
-    if required_hours == -1:
-        return True  # not enabled
+    """Return the last locally recorded membership state."""
     c = db()
-    r = c.execute("SELECT joined_at,is_member FROM user_channel_membership WHERE user_id=?", (uid,)).fetchone()
-    c.close()
-    if not r:
-        return True  # no record = not tracked yet
-    if required_hours == 0:
-        return bool(r["is_member"])  # forever: must be member now
-    if not r["is_member"]:
-        return False  # left channel
-    if r["joined_at"]:
-        joined = datetime.fromisoformat(r["joined_at"])
-        elapsed = (datetime.now(TZ) - joined).total_seconds() / 3600
-        if elapsed < required_hours:
-            return False  # hasn't stayed long enough
-    return True
+    try:
+        r = c.execute(
+            "SELECT is_member FROM user_channel_membership WHERE user_id=?",
+            (uid,),
+        ).fetchone()
+        return bool(r["is_member"]) if r else False
+    finally:
+        c.close()
+
 
 async def _forced_sub_enforce_async(uid, bot):
-    """Live-check Telegram membership and enforce the configured duration."""
+    """Mandatory membership gate: member = continue, non-member = stay blocked."""
     if not _forced_sub_is_enabled() or admin_guard(uid):
         return True, None
 
-    # Always ask Telegram for the current status.
     live_member = await is_channel_member(bot, uid)
     if not live_member:
         return False, _forced_sub_failure_payload()
 
-    required_hours = _forced_sub_duration_hours()
-
-    # Forever means current membership is enough.
-    if required_hours == 0:
-        return True, None
-
-    # Timed membership: create the start time on the first live confirmation.
-    c = db()
-    r = c.execute(
-        "SELECT joined_at,is_member FROM user_channel_membership WHERE user_id=?",
-        (uid,),
-    ).fetchone()
-    c.close()
-
-    if not r or not r["joined_at"] or not r["is_member"]:
+    # Store the latest successful live check. The decision is always based on
+    # Telegram's current status, not on stale local data.
+    try:
         _forced_sub_record_join(uid)
+    except sqlite3.OperationalError:
+        logger.exception("Could not record forced-sub membership for uid=%s", uid)
 
-    if _forced_sub_check_user(uid):
-        return True, None
-
-    return False, _forced_sub_failure_payload()
+    return True, None
 
 
 def _forced_sub_failure_payload():
-    channel_url = _forced_sub_get("forced_sub_channel_url", "") or required_channel_url()
+    channel_url = _forced_sub_join_url() or required_channel_url()
     msg = _forced_sub_get("forced_sub_message", "")
 
     if not msg:
-        dtype = _forced_sub_get("forced_sub_duration_type", "hours")
-        try:
-            dval = int(_forced_sub_get("forced_sub_duration_value", "24"))
-        except (ValueError, TypeError):
-            dval = 24
-
-        if dtype == "forever":
-            duration_text = "باید دائمی عضو کانال باشید"
-        elif dtype == "days":
-            duration_text = f"باید حداقل {dval} روز عضو کانال باشید"
-        else:
-            duration_text = f"باید حداقل {dval} ساعت عضو کانال باشید"
-
         msg = (
-            f"🔒 {duration_text}\n\n"
-            "برای استفاده از ربات، ابتدا عضو کانال شوید و سپس «بررسی مجدد» را بزنید."
+            "🔒 <b>عضویت اجباری</b>\n\n"
+            "برای استفاده از ربات، ابتدا عضو کانال شوید.\n"
+            "بعد از عضویت روی «🔄 بررسی مجدد» بزنید."
         )
 
     kb_lines = []
-    if channel_url:
-        kb_lines.append([
-            InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)
-        ])
-    kb_lines.append([
-        InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")
-    ])
+    if channel_url and (channel_url.startswith("http://") or channel_url.startswith("https://")):
+        kb_lines.append([InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)])
+    kb_lines.append([InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")])
     return msg, InlineKeyboardMarkup(kb_lines)
 
 
@@ -10555,7 +10638,7 @@ async def _forced_sub_admin_panel(update, context):
     text = (
         f"🔒 <b>عضویت اجباری کانال</b>\n\n"
         f"وضعیت: {status}\n"
-        f"مدت الزامی: {duration}\n"
+        f"نوع بررسی: فقط وضعیت عضویت فعلی\n"
         f"کانال: {html.escape(channel_url or 'تنظیم نشده')}\n\n"
         f"👥 <b>وضعیت کاربران:</b>\n"
     )
@@ -10570,7 +10653,6 @@ async def _forced_sub_admin_panel(update, context):
     
     kb = [
         [InlineKeyboardButton("🟢 فعال‌سازی" if not enabled else "🔴 غیرفعال‌سازی", callback_data="forcedsub:toggle")],
-        [InlineKeyboardButton("⏱️ تنظیم مدت", callback_data="forcedsub:duration")],
         [InlineKeyboardButton("🔗 تنظیم لینک کانال", callback_data="forcedsub:channel")],
         [InlineKeyboardButton("✉️ تنظیم پیام", callback_data="forcedsub:message")],
         [InlineKeyboardButton("👥 لیست کاربران", callback_data="forcedsub:users")],
@@ -10655,8 +10737,11 @@ async def forced_sub_callback(update, context):
         context.user_data["forced_sub_wait"] = "channel_url"
         await q.answer()
         await q.message.reply_text(
-            "🔗 <b>لینک کانال</b>\n\n"
-            "لینک دعوت کانال را بفرستید:",
+            "🔗 <b>کانال اجباری</b>\n\n"
+            "یکی از این موارد را بفرستید:\n"
+            "@ChannelUsername\n"
+            "https://t.me/ChannelUsername\n"
+            "یا شناسه کانال مثل <code>-1001234567890</code>",
             parse_mode="HTML"
         )
     elif action == "message":
@@ -11256,12 +11341,21 @@ async def text_router(update, context):
         return
     if context.user_data.get("forced_sub_wait") == "channel_url":
         context.user_data.pop("forced_sub_wait", None)
-        url = txt.strip()
-        if url.startswith("https://t.me/") or url.startswith("http://t.me/"):
-            _forced_sub_set("forced_sub_channel_url", url)
-            await update.message.reply_text(f"✅ لینک کانال ذخیره شد:\n{url}")
+        channel_value = txt.strip()
+        valid = (
+            bool(re.fullmatch(r"@[A-Za-z0-9_]{5,32}", channel_value))
+            or bool(re.fullmatch(r"-?\d+", channel_value))
+            or bool(re.fullmatch(r"https?://t\.me/[A-Za-z0-9_]{5,32}/?", channel_value, re.I))
+            or bool(re.fullmatch(r"https?://t\.me/c/\d+(?:/\d+)?/?", channel_value, re.I))
+        )
+        if valid:
+            _forced_sub_set("forced_sub_channel_url", channel_value)
+            await update.message.reply_text(f"✅ کانال ذخیره شد:\n{channel_value}")
         else:
-            await update.message.reply_text("⚠️ لینک معتبر نیست. باید با https://t.me/ شروع شود.")
+            await update.message.reply_text(
+                "⚠️ فرمت کانال معتبر نیست.\n\n"
+                "نمونه معتبر:\n@ChannelUsername\nhttps://t.me/ChannelUsername\n-1001234567890"
+            )
         return
     if context.user_data.get("forced_sub_wait") == "custom_message":
         context.user_data.pop("forced_sub_wait", None)
@@ -11576,7 +11670,6 @@ def main():
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$") )
     app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:(?!check$)"))
-    app.add_handler(ChatMemberHandler(track_channel_membership))
     app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
     app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
     app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote|manager):"))
@@ -16498,6 +16591,11 @@ async def track_channel_membership(update, context):
         if not user or user.is_bot:
             return
         uid = user.id
+        forced_ref = _forced_sub_channel_ref() if _forced_sub_is_enabled() else required_channel()
+        event_chat_id = getattr(chat_member, "chat", None)
+        event_chat_id = getattr(event_chat_id, "id", event_chat_id)
+        if forced_ref and str(event_chat_id) != str(forced_ref):
+            return
         old_status = getattr(chat_member.old_chat_member, 'status', None)
         new_status = getattr(chat_member.new_chat_member, 'status', None)
         if old_status == new_status:
