@@ -2,15 +2,14 @@ from pathlib import Path
 
 BOT = Path('/app/bot.py')
 s = BOT.read_text(encoding='utf-8')
-MARK = 'FORCED_SUBSCRIPTION_MENU_FORCE_V2'
+MARK = 'FORCED_SUBSCRIPTION_MENU_FORCE_V3'
 
-# The screenshot uses the legacy quality panel, which calls _q_fsub_admin_keyboard.
-# Override that exact function name after all earlier patches have been applied.
 patch = r'''
 
-# ================= FORCED SUBSCRIPTION MENU FORCE V2 =================
-# FORCED_SUBSCRIPTION_MENU_FORCE_V2
+# ================= FORCED SUBSCRIPTION MENU FORCE V3 =================
+# FORCED_SUBSCRIPTION_MENU_FORCE_V3
 
+# One canonical forced-subscription admin menu.
 def _fsub_final_admin_keyboard(uid):
     fa = lang(uid) == 'fa'
     return InlineKeyboardMarkup([
@@ -25,55 +24,71 @@ def _fsub_final_admin_keyboard(uid):
 _q_fsub_admin_keyboard = _fsub_final_admin_keyboard
 _fsub_admin_keyboard = _fsub_final_admin_keyboard
 
-_old_v25_callback_force_v2 = globals().get('v25_callback')
-if _old_v25_callback_force_v2:
-    async def v25_callback(update, context):
+async def _fsub_show_canonical_menu(update, context):
+    uid = update.effective_user.id if update.effective_user else 0
+    if not _fsub_admin(uid):
+        q = getattr(update, 'callback_query', None)
+        if q:
+            await q.answer('دسترسی ندارید.', show_alert=True)
+        return True
+    text = _fsub_admin_text(uid)
+    kb = _fsub_final_admin_keyboard(uid)
+    q = getattr(update, 'callback_query', None)
+    if q:
+        await q.answer()
+        try:
+            await q.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+        except Exception:
+            await q.message.reply_text(text, parse_mode='HTML', reply_markup=kb)
+    elif update.message:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=kb)
+    return True
+
+# The screenshot is produced by the legacy text entry, not only v25_callback.
+_old_text_router_fsub_v3 = globals().get('text_router')
+if _old_text_router_fsub_v3 and not getattr(_old_text_router_fsub_v3, '_fsub_v3_wrapped', False):
+    async def text_router(update, context):
+        uid = update.effective_user.id if update.effective_user else 0
+        txt = (update.message.text or '').strip() if update.message else ''
+        if _fsub_admin(uid) and txt in ('🔒 عضویت اجباری', 'عضویت اجباری', '🔐 عضویت اجباری', 'عضویت اجباری 🔒'):
+            return await _fsub_show_canonical_menu(update, context)
+        return await _old_text_router_fsub_v3(update, context)
+    text_router._fsub_v3_wrapped = True
+
+# Also catch the legacy callback entry before older callback handlers can render the old menu.
+_old_add_handler_fsub_v3 = getattr(Application, 'add_handler', None)
+if _old_add_handler_fsub_v3 and not getattr(Application.add_handler, '_fsub_v3_installed', False):
+    async def _fsub_legacy_callback(update, context):
         q = getattr(update, 'callback_query', None)
         data = str(getattr(q, 'data', '') or '') if q else ''
         uid = update.effective_user.id if update.effective_user else 0
-        if data in ('v25:fsub:panel', 'forcedsub:home'):
-            if not _fsub_admin(uid):
-                await q.answer('دسترسی ندارید.', show_alert=True)
-                return True
-            await q.answer()
-            await q.message.edit_text(_fsub_admin_text(uid), parse_mode='HTML', reply_markup=_fsub_final_admin_keyboard(uid))
-            return True
-        if data == 'v25:fsub:setbot':
-            return await _fsub_force_setbot(update, context)
-        if data == 'v25:fsub:delete_list':
-            if not _fsub_admin(uid):
-                await q.answer('دسترسی ندارید.', show_alert=True)
-                return True
-            rows = _fsub_channels(True)
-            buttons = [[InlineKeyboardButton('🗑 ' + str(r['title'] or r['channel_id']), callback_data=f'v25:fsub:remove:{r["id"]}')] for r in rows]
-            buttons.append([InlineKeyboardButton('⬅️ بازگشت', callback_data='v25:fsub:home')])
-            await q.answer()
-            await q.message.edit_text('🗑 حذف کانال اجباری\n\nکانال موردنظر را انتخاب کن.', reply_markup=InlineKeyboardMarkup(buttons))
-            return True
-        if data == 'v25:fsub:home':
-            if _fsub_admin(uid):
-                await q.answer()
-                await q.message.edit_text(_fsub_admin_text(uid), parse_mode='HTML', reply_markup=_fsub_final_admin_keyboard(uid))
-            else:
-                await q.answer('دسترسی ندارید.', show_alert=True)
-            return True
-        if data.startswith('v25:fsub:remove:'):
-            try:
-                c = db()
-                c.execute('DELETE FROM managed_channels WHERE id=?', (int(data.rsplit(':', 1)[1]),))
-                c.commit()
-                c.close()
-                await q.answer('کانال حذف شد.')
-                await _fsub_list_callback(update, context)
-            except Exception:
-                logger.exception('forced subscription channel removal failed')
-                await q.answer('خطا در حذف کانال.', show_alert=True)
-            return True
-        return await _old_v25_callback_force_v2(update, context)
+        low = data.lower()
+        panel_aliases = {
+            'v25:fsub:panel', 'forcedsub:home', 'fsub:panel',
+            'forcedsub:panel', 'forced_subscription:panel',
+            'admin:forcedsub', 'admin:forced_subscription',
+            'channel:forcedsub', 'channel:forced_subscription',
+        }
+        is_panel = data in panel_aliases or ('fsub' in low and ('panel' in low or 'home' in low)) or ('forcedsub' in low and ('panel' in low or 'home' in low))
+        if is_panel:
+            return await _fsub_show_canonical_menu(update, context)
+        return False
+
+    _fsub_legacy_handler = CallbackQueryHandler(_fsub_legacy_callback, pattern=r'(?i).*')
+
+    def _fsub_add_handler(self, handler, group=0, *args, **kwargs):
+        if not getattr(self, '_fsub_v3_interceptor_added', False):
+            _old_add_handler_fsub_v3(self, _fsub_legacy_handler, group=-100)
+            self._fsub_v3_interceptor_added = True
+        return _old_add_handler_fsub_v3(self, handler, group=group, *args, **kwargs)
+
+    _fsub_add_handler._fsub_v3_installed = True
+    Application.add_handler = _fsub_add_handler
+
 '''
 
 if MARK not in s:
     s += patch
 
 BOT.write_text(s, encoding='utf-8')
-print('Forced subscription final menu V2 applied')
+print('Forced subscription legacy entry point intercepted')
