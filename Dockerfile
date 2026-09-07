@@ -6,12 +6,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy bot code and deployment-time runtime patches
-COPY bot.py config.py database.py ai_runtime_patch.py feature_visibility_patch.py ./
+# Copy deployment-time runtime patches
+COPY bot.py config.py database.py ai_runtime_patch.py feature_visibility_patch.py forced_subscription_patch.py ./
 
-# Apply runtime resilience and manager-controlled feature visibility before startup.
+# Apply runtime resilience, feature visibility and forced-subscription controls before startup.
 RUN python3 ai_runtime_patch.py
 RUN python3 feature_visibility_patch.py
+RUN python3 forced_subscription_patch.py
 
 # Health check the same database path used by the bot.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
