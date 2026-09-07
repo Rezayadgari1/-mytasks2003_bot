@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+ARG FORCE_REBUILD=2026-09-08-final-features-v1
+RUN echo "MyTasks forced rebuild: ${FORCE_REBUILD}"
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
