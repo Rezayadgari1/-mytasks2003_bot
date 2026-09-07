@@ -6,14 +6,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy bot code
+# Copy bot code and deployment-time resilience patch
 COPY bot.py config.py database.py ai_runtime_patch.py ./
 
-# Apply the AI SQLite reliability patch before startup.
+# Apply runtime resilience fixes before startup.
 RUN python3 ai_runtime_patch.py
 
+# Health check the same database path used by the bot.
 HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
-    CMD python3 -c "import sqlite3; c=sqlite3.connect('goals.db',timeout=5); c.execute('SELECT 1'); c.close()" || exit 1
+    CMD python3 -c "import os,sqlite3; p=os.environ.get('DB_PATH','goals.db'); c=sqlite3.connect(p,timeout=10); c.execute('SELECT 1'); c.close()" || exit 1
 
-# Run the bot
 CMD ["python3", "bot.py"]
