@@ -1,0 +1,106 @@
+name: Fix edit goals persistence
+on:
+  push:
+    branches: [main]
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch bot.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('bot.py')
+          s=p.read_text(encoding='utf-8')
+          marker='# === ONE-TIME EDIT GOALS PERSISTENCE REPAIR 2026-09-08 ==='
+          if marker not in s:
+              block=r'''# === ONE-TIME EDIT GOALS PERSISTENCE REPAIR 2026-09-08 ===
+          _EDIT_REPAIR_OLD_TEXT_ROUTER = text_router
+          _EDIT_REPAIR_OLD_RENAME_SAVE = rename_save
+          _EDIT_REPAIR_OLD_CUSTOM_EDIT_TIME_SAVE = custom_edit_time_save
+
+          async def rename_save(update, context):
+              if not context.user_data.get("awaiting_rename"):
+                  return await _EDIT_REPAIR_OLD_RENAME_SAVE(update, context)
+              uid = update.effective_user.id
+              gid = context.user_data.get("edit_id")
+              name = (getattr(update.message, "text", "") or "").strip()
+              if not gid or not name:
+                  return True
+              c = db()
+              try:
+                  cur = c.execute("UPDATE goals SET name=? WHERE user_id=? AND id=?", (name, uid, int(gid)))
+                  c.commit()
+                  changed = cur.rowcount
+              finally:
+                  c.close()
+              if not changed:
+                  context.user_data.clear()
+                  await update.message.reply_text("❌ هدف پیدا نشد یا تغییر اعمال نشد.")
+                  return True
+              context.user_data.pop("edit_id", None)
+              context.user_data.pop("awaiting_rename", None)
+              log_activity(uid, "goal_renamed")
+              await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+              return True
+
+          async def custom_edit_time_save(update, context):
+              if not context.user_data.get("awaiting_edit_time") and not context.user_data.get("awaiting_custom_edit_time"):
+                  return await _EDIT_REPAIR_OLD_CUSTOM_EDIT_TIME_SAVE(update, context)
+              uid = update.effective_user.id
+              gid = context.user_data.get("edit_reminder_id")
+              reminder = parse_time((getattr(update.message, "text", "") or "").strip())
+              if reminder is None:
+                  await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
+                  return True
+              if not gid:
+                  context.user_data.pop("awaiting_edit_time", None)
+                  context.user_data.pop("awaiting_custom_edit_time", None)
+                  await update.message.reply_text("❌ هدف ویرایش پیدا نشد.")
+                  return True
+              c = db()
+              try:
+                  cur = c.execute("UPDATE goals SET reminder_time=? WHERE user_id=? AND id=?", (reminder, uid, int(gid)))
+                  c.commit()
+                  changed = cur.rowcount
+              finally:
+                  c.close()
+              context.user_data.pop("edit_reminder_id", None)
+              context.user_data.pop("awaiting_edit_time", None)
+              context.user_data.pop("awaiting_custom_edit_time", None)
+              if not changed:
+                  await update.message.reply_text("❌ تغییر زمان اعمال نشد.")
+                  return True
+              log_activity(uid, "reminder_changed")
+              await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+              return True
+
+          async def text_router(update, context):
+              if update.message and getattr(update.message, "text", None):
+                  if context.user_data.get("awaiting_rename"):
+                      return await rename_save(update, context)
+                  if context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time"):
+                      return await custom_edit_time_save(update, context)
+              return await _EDIT_REPAIR_OLD_TEXT_ROUTER(update, context)
+
+          # The MessageHandler already references the global text_router name at startup,
+          # so this final definition is the one registered by main().
+          '''
+              s=s.replace('\nif __name__ == "__main__":\n    main()\n', '\n'+block+'\nif __name__ == "__main__":\n    main()\n')
+              p.write_text(s,encoding='utf-8')
+          PY
+          python -m py_compile bot.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add bot.py
+          git diff --cached --quiet || git commit -m 'Fix goal edit persistence'
+          git push
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/fix-edit-goals.yml || true
+          git commit -m 'Remove temporary repair workflow' || true
+          git push || true
