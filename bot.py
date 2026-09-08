@@ -2212,7 +2212,7 @@ async def change_reminder(update, context):
     context.user_data["edit_reminder_id"] = gid
     await q.message.edit_text(
         T[lang(uid)]["choose_time"],
-        reply_markup=time_keyboard(uid),
+        reply_markup=edit_time_keyboard(uid),
     )
 
 
@@ -15129,7 +15129,7 @@ async def flush_owner_notifications_job(context):
 
 _OLD_ERROR_HANDLER_REPORTS = error_handler
 async def error_handler(update, context):
-    """Record every unhandled error to error_events, then keep prior behavior."""
+    """Global recovery: isolate a failed flow so one bad section cannot trap the user."""
     try:
         uid = update.effective_user.id if getattr(update, "effective_user", None) else None
         err = context.error
@@ -15143,7 +15143,22 @@ async def error_handler(update, context):
         c.commit(); c.close()
     except Exception:
         logger.exception("error_events insert failed")
-    return await _OLD_ERROR_HANDLER_REPORTS(update, context)
+
+    # Never leave a broken text-input state active after an exception.
+    try:
+        if context and getattr(context, "user_data", None):
+            clear_flow(context)
+            context.user_data.pop("edit_reminder_id", None)
+            context.user_data.pop("edit_id", None)
+    except Exception:
+        logger.exception("Failed to clear broken user flow")
+
+    try:
+        return await _OLD_ERROR_HANDLER_REPORTS(update, context)
+    except Exception:
+        # Error handling itself must never bring down the update processing loop.
+        logger.exception("Previous error handler failed")
+        return None
 
 
 def _fmt_num(n):
@@ -17365,12 +17380,47 @@ async def custom_edit_time_save(update, context):
     return True
 
 async def text_router(update, context):
-    if update.message and getattr(update.message, "text", None):
+    """Final isolated text router. A broken flow must never block normal navigation."""
+    if not update.message or not getattr(update.message, "text", None):
+        return await _GOAL_EDIT_REPAIR_OLD_ROUTER(update, context)
+
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+
+    # Navigation always wins, even when an older flow left a stale input flag.
+    if text in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+        clear_flow(context)
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        await update.message.chat.send_message("🏠", reply_markup=keyboard(uid))
+        return True
+
+    try:
         if context.user_data.get("awaiting_rename"):
             return await rename_save(update, context)
         if context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time"):
             return await custom_edit_time_save(update, context)
-    return await _GOAL_EDIT_REPAIR_OLD_ROUTER(update, context)
+        return await _GOAL_EDIT_REPAIR_OLD_ROUTER(update, context)
+    except Exception as exc:
+        logger.exception("Isolated text flow failed for uid=%s", uid)
+        # Clear only transient flow state. Persistent user/goal data is untouched.
+        try:
+            clear_flow(context)
+            context.user_data.pop("edit_reminder_id", None)
+            context.user_data.pop("edit_id", None)
+        except Exception:
+            logger.exception("Failed to clear isolated text flow for uid=%s", uid)
+        try:
+            await update.message.reply_text(
+                "⚠️ این بخش با خطا مواجه شد، اما ربات قفل نشد.\n"
+                "اطلاعات ذخیره‌شده حفظ شده است. از منو ادامه بده.",
+                reply_markup=keyboard(uid),
+            )
+        except Exception:
+            logger.exception("Failed to send isolated flow recovery for uid=%s", uid)
+        return True
 
 if __name__ == "__main__":
     main()
