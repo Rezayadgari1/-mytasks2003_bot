@@ -1,8 +1,9 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
 WORKDIR /app
 
-ARG FORCE_REBUILD=2026-09-08-menu-speed-back-v7
+ARG FORCE_REBUILD=2026-09-08-menu-speed-back-v8
 RUN echo "MyTasks rebuild: ${FORCE_REBUILD}"
 
 COPY requirements.txt .
@@ -12,32 +13,62 @@ COPY bot.py config.py database.py ./
 
 RUN python3 - <<'PY'
 from pathlib import Path
-import re
-
 p = Path('bot.py')
 s = p.read_text(encoding='utf-8')
+marker = '# ===================== FINAL UI / FLOW QUALITY LAYER ====================='
+if marker in s:
+    s = s.split(marker, 1)[0].rstrip() + '\n\nif __name__ == "__main__":\n    main()\n'
 
-# Never truncate bot.py. Remove early startup calls so the complete file loads,
-# including its final navigation fixes, then start once at the very end.
-s = re.sub(r'\nif __name__\s*==\s*["\']__main__["\']\s*:\s*\n\s*main\(\)\s*\n?', '\n', s)
+a = s.index('def db():')
+b = s.index('\ndef init_db():', a)
+new_db = '''def db():
+    # Fast connection path. WAL is initialized during startup.
+    c = sqlite3.connect(DB_PATH, timeout=30)
+    c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=30000")
+    c.execute("PRAGMA foreign_keys=ON")
+    c.execute("PRAGMA synchronous=NORMAL")
+    return c
+'''
+s = s[:a] + new_db + s[b+1:]
 
-# If an old final UI marker exists, keep the code after it. It contains runtime
-# navigation/feature definitions and must not be discarded at build time.
-
-s = s.rstrip() + '\n\n# Final startup after every function/router definition.\nif __name__ == "__main__":\n    main()\n'
+a = s.index('async def navigation_callback(update, context):')
+b = s.index('\n# Keep the settings callback', a)
+new_nav = '''async def navigation_callback(update, context):
+    # Reliable inline navigation to the real root menu.
+    q = update.callback_query
+    if not q:
+        return
+    uid = q.from_user.id
+    try:
+        await q.answer()
+    except Exception:
+        pass
+    clear_flow(context)
+    if (q.data or "") == "nav:main":
+        await q.message.edit_text(
+            _root_menu_text(uid),
+            parse_mode="HTML",
+            reply_markup=_compact_root_inline(uid),
+        )
+        return
+'''
+s = s[:a] + new_nav + s[b:]
 p.write_text(s, encoding='utf-8')
+print('direct bot.py UI repair applied')
 PY
 
 RUN python3 -m py_compile bot.py config.py database.py
 RUN python3 - <<'PY'
 from pathlib import Path
 import ast
-s=Path('bot.py').read_text(encoding='utf-8')
-t=ast.parse(s)
-calls=[n.lineno for n in ast.walk(t) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='main']
-assert len(calls)==1, calls
-assert calls[0] == len(s.splitlines()), (calls, len(s.splitlines()))
-print('bot.py startup order OK')
+s = Path('bot.py').read_text(encoding='utf-8')
+t = ast.parse(s)
+assert '# ===================== FINAL UI / FLOW QUALITY LAYER =====================' not in s
+calls = [n for n in ast.walk(t) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'main']
+assert len(calls) == 1
+assert calls[0].lineno == len(s.splitlines())
+print('bot.py syntax and startup checks OK')
 PY
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
