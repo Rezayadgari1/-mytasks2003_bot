@@ -2,31 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-ARG FORCE_REBUILD=2026-09-08-forced-sub-menu-force-v1
-RUN echo "MyTasks forced rebuild: ${FORCE_REBUILD}"
+ARG FORCE_REBUILD=2026-09-08-direct-bot-v1
+RUN echo "MyTasks direct source rebuild: ${FORCE_REBUILD}"
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY bot.py config.py database.py ai_runtime_patch.py feature_visibility_patch.py forced_subscription_patch.py forced_subscription_patch_v2.py admin_management_patch.py feature_control_final_patch.py feature_control_final_v3_patch.py goals_quality_patch.py quality_ux_security_patch.py quality_ux_security_patch_v2.py navigation_back_fix.py forced_subscription_menu_final.py forced_subscription_menu_force.py entrypoint.py ./
+COPY bot.py config.py database.py ./
 
-RUN python3 ai_runtime_patch.py
-RUN python3 feature_visibility_patch.py
-RUN python3 forced_subscription_patch.py
-RUN python3 forced_subscription_patch_v2.py
-RUN python3 admin_management_patch.py
-RUN python3 feature_control_final_patch.py
-RUN python3 feature_control_final_v3_patch.py
-RUN python3 goals_quality_patch.py
-RUN python3 quality_ux_security_patch.py
-RUN python3 quality_ux_security_patch_v2.py
-RUN python3 navigation_back_fix.py
-RUN python3 forced_subscription_menu_final.py
-RUN python3 forced_subscription_menu_force.py
-
-RUN python3 -m py_compile bot.py config.py database.py ai_runtime_patch.py feature_visibility_patch.py forced_subscription_patch.py forced_subscription_patch_v2.py admin_management_patch.py feature_control_final_patch.py feature_control_final_v3_patch.py goals_quality_patch.py quality_ux_security_patch.py quality_ux_security_patch_v2.py navigation_back_fix.py forced_subscription_menu_final.py forced_subscription_menu_force.py entrypoint.py
+RUN python3 -m py_compile bot.py config.py database.py
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
     CMD python3 -c "import os,sqlite3; p=os.environ.get('DB_PATH','goals.db'); c=sqlite3.connect(p,timeout=10); c.execute('SELECT 1'); c.close()" || exit 1
 
-CMD ["python3", "/app/entrypoint.py"]
+CMD ["python3", "bot.py"]
