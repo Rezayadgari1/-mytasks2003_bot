@@ -276,6 +276,7 @@ def migrate_database(c):
 
 
 _DB_PRAGMA_LOCK = threading.RLock()
+_DB_WAL_READY = False
 
 def release_leaked_connections(exc):
     """Roll back and close sqlite connections left open by a failed handler.
@@ -315,7 +316,23 @@ def db():
             # handlers do not turn a temporary SQLite lock into an OperationalError.
             with _DB_PRAGMA_LOCK:
                 try:
-                    c.execute("PRAGMA journal_mode=WAL")
+                    global _DB_WAL_READY
+
+                    if not _DB_WAL_READY:
+
+                        with _DB_PRAGMA_LOCK:
+
+                            if not _DB_WAL_READY:
+
+                                try:
+
+                                    c.execute("PRAGMA journal_mode=WAL")
+
+                                except sqlite3.OperationalError:
+
+                                    pass
+
+                                _DB_WAL_READY = True
                 except sqlite3.OperationalError:
                     # The database might already be in WAL mode and another process
                     # might hold the short journal-mode lock. Normal queries still work.
@@ -16822,6 +16839,6 @@ async def text_router(update, context):
         return await _render_rewards_page(update, context)
     return await _FINAL_OLD_TEXT_ROUTER_UI(update, context)
 
-
+# Startup must be last so every final router/navigation definition is active.
 if __name__ == "__main__":
     main()
