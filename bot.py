@@ -14630,17 +14630,26 @@ async def goals_navigation_callback(update, context):
             await q.answer()
         except Exception:
             pass
+        # Keep the current Telegram message alive and render the main menu in-place.
+        # This prevents the Quick Access message from disappearing when Goals List is pressed.
         try:
-            await q.message.delete()
+            await q.message.edit_text(
+                _root_menu_text(uid),
+                parse_mode="HTML",
+                reply_markup=compact_keyboard(uid),
+            )
         except Exception:
-            pass
-        fa = lang(uid) == "fa"
-        await context.bot.send_message(
-            chat_id=uid,
-            text=_root_menu_text(uid),
-            parse_mode="HTML",
-            reply_markup=compact_keyboard(uid),
-        )
+            # If the message cannot be edited (for example, it is too old or
+            # unchanged), fall back to sending the menu without deleting state.
+            try:
+                await context.bot.send_message(
+                    chat_id=uid,
+                    text=_root_menu_text(uid),
+                    parse_mode="HTML",
+                    reply_markup=compact_keyboard(uid),
+                )
+            except Exception:
+                logger.exception("Failed to render main menu from goals callback")
         return
     try:
         await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
