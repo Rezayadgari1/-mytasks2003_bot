@@ -920,8 +920,13 @@ def normalize_digits(s):
 
 
 def parse_time(s):
-    s = normalize_digits(s.strip()).replace(".", ":").replace("：", ":")
+    """Parse goal/reminder time and return normalized HH:MM."""
+    if s is None:
+        return None
+    s = normalize_digits(str(s).strip()).replace("：", ":").replace(".", ":")
     s = re.sub(r"\s+", "", s)
+    if not s:
+        return None
     if s.isdigit():
         if len(s) <= 2:
             h, m = int(s), 0
@@ -932,14 +937,13 @@ def parse_time(s):
         else:
             return None
     else:
-        x = re.fullmatch(r"(\d{1,2}):(\d{1,2})", s)
-        if not x:
+        mobj = re.fullmatch(r"(\d{1,2}):(\d{1,2})", s)
+        if not mobj:
             return None
-        h, m = int(x.group(1)), int(x.group(2))
-    if 0 <= h <= 23 and 0 <= m <= 59:
-        return f"{h:02d}:{m:02d}"
-    return None
-
+        h, m = int(mobj.group(1)), int(mobj.group(2))
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        return None
+    return f"{h:02d}:{m:02d}"
 
 def add_goal(uid, name, category, reminder, priority=2, duration_minutes=None, condition=None):
     c = db()
@@ -16657,7 +16661,7 @@ _FINAL_DIRECT_FEATURE_ALIASES = {
     "weekly_table": "weekly", "referral": "referrals", "price": "price_data",
     "price_data": "price_data", "customer": "customers", "customers": "customers",
     "ai_chat": "ai", "ai": "ai", "voice": "voice", "vip": "vip",
-    "support": "support", "settings": "settings", "goals": "goals",
+    "support": "support", "settings": "settings", "goals": "goals", "edit": "goals",
     "reminders": "reminders", "calendar": "calendar_hub", "profile": "profile",
     "achievements": "achievements", "xp": "xp", "stats": "stats",
 }
@@ -17266,6 +17270,37 @@ def main():
     logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+# === ONE-TIME BUTTON/TIME REPAIR 2026-09-08 ===
+_FINAL_REPAIR_FEATURE_ALIASES = {"edit": "goals", "calendar": "calendar_hub"}
+_FINAL_REPAIR_OLD_FEATURE_ALLOWED = user_feature_allowed
+def user_feature_allowed(uid, key):
+    key = _FINAL_REPAIR_FEATURE_ALIASES.get(str(key or ""), str(key or ""))
+    return _FINAL_REPAIR_OLD_FEATURE_ALLOWED(uid, key)
+
+_FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE = custom_time_save
+async def custom_time_save(update, context):
+    if not context.user_data.get("awaiting_custom_time"):
+        return await _FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE(update, context)
+    text = (getattr(update.message, "text", "") or "").strip()
+    tm = parse_time(text)
+    if tm is None:
+        await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
+        return True
+    context.user_data["_final_manual_goal_time"] = tm
+    return await _FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE(update, context)
+
+_FINAL_REPAIR_OLD_TEXT_ROUTER = text_router
+async def text_router(update, context):
+    if update.message and getattr(update.message, "text", None) and context.user_data.get("awaiting_custom_time"):
+        try:
+            if await custom_time_save(update, context):
+                return
+        except Exception:
+            logger.exception("Final manual goal time repair failed")
+            await update.message.reply_text("❌ ثبت ساعت انجام نشد. مثال: 18:30")
+            return
+    return await _FINAL_REPAIR_OLD_TEXT_ROUTER(update, context)
 
 if __name__ == "__main__":
     main()
