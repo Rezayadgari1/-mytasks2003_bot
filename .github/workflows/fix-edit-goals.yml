@@ -2,6 +2,8 @@ name: Fix edit goals persistence
 on:
   push:
     branches: [main]
+permissions:
+  contents: write
 jobs:
   repair:
     runs-on: ubuntu-latest
@@ -51,12 +53,12 @@ jobs:
                   return await _GOAL_EDIT_REPAIR_OLD_EDIT_TIME(update, context)
               uid = update.effective_user.id
               gid = context.user_data.get("edit_reminder_id")
-              raw = (getattr(update.message, "text", "") or "").strip()
-              reminder = parse_time(raw)
+              reminder = parse_time((getattr(update.message, "text", "") or "").strip())
               if reminder is None:
                   await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
                   return True
               if not gid:
+                  context.user_data.pop("edit_reminder_id", None)
                   context.user_data.pop("awaiting_edit_time", None)
                   context.user_data.pop("awaiting_custom_edit_time", None)
                   await update.message.reply_text("❌ هدف ویرایش پیدا نشد.")
@@ -85,10 +87,10 @@ jobs:
                       return await custom_edit_time_save(update, context)
               return await _GOAL_EDIT_REPAIR_OLD_ROUTER(update, context)
           '''
-              marker_main='\nif __name__ == "__main__":\n    main()\n'
-              if marker_main not in s:
+              main='\nif __name__ == "__main__":\n    main()\n'
+              if main not in s:
                   raise SystemExit('main marker not found')
-              s=s.replace(marker_main, '\n'+block+marker_main)
+              s=s.replace(main, '\n'+block+main)
               p.write_text(s,encoding='utf-8')
           PY
           python -m py_compile bot.py
