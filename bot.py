@@ -17302,5 +17302,75 @@ async def text_router(update, context):
             return
     return await _FINAL_REPAIR_OLD_TEXT_ROUTER(update, context)
 
+# === FINAL GOAL EDIT PERSISTENCE REPAIR 2026-09-08 ===
+_GOAL_EDIT_REPAIR_OLD_RENAME = rename_save
+_GOAL_EDIT_REPAIR_OLD_EDIT_TIME = custom_edit_time_save
+_GOAL_EDIT_REPAIR_OLD_ROUTER = text_router
+
+async def rename_save(update, context):
+    if not context.user_data.get("awaiting_rename"):
+        return await _GOAL_EDIT_REPAIR_OLD_RENAME(update, context)
+    uid = update.effective_user.id
+    gid = context.user_data.get("edit_id")
+    name = (getattr(update.message, "text", "") or "").strip()
+    if not gid:
+        return True
+    if not name:
+        await update.message.reply_text("❌ نام هدف نمی‌تواند خالی باشد.")
+        return True
+    c = db()
+    try:
+        row = c.execute("SELECT id FROM goals WHERE id=? AND user_id=?", (int(gid), uid)).fetchone()
+        if not row:
+            await update.message.reply_text("❌ هدف پیدا نشد.")
+            return True
+        c.execute("UPDATE goals SET name=? WHERE id=? AND user_id=?", (name, int(gid), uid))
+        c.commit()
+    finally:
+        c.close()
+    context.user_data.pop("edit_id", None)
+    context.user_data.pop("awaiting_rename", None)
+    await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+    return True
+
+async def custom_edit_time_save(update, context):
+    if not (context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time")):
+        return await _GOAL_EDIT_REPAIR_OLD_EDIT_TIME(update, context)
+    uid = update.effective_user.id
+    gid = context.user_data.get("edit_reminder_id")
+    reminder = parse_time((getattr(update.message, "text", "") or "").strip())
+    if reminder is None:
+        await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
+        return True
+    if not gid:
+        context.user_data.pop("edit_reminder_id", None)
+        context.user_data.pop("awaiting_edit_time", None)
+        context.user_data.pop("awaiting_custom_edit_time", None)
+        await update.message.reply_text("❌ هدف ویرایش پیدا نشد.")
+        return True
+    c = db()
+    try:
+        row = c.execute("SELECT id FROM goals WHERE id=? AND user_id=?", (int(gid), uid)).fetchone()
+        if not row:
+            await update.message.reply_text("❌ هدف پیدا نشد.")
+            return True
+        c.execute("UPDATE goals SET reminder_time=? WHERE id=? AND user_id=?", (reminder, int(gid), uid))
+        c.commit()
+    finally:
+        c.close()
+    context.user_data.pop("edit_reminder_id", None)
+    context.user_data.pop("awaiting_edit_time", None)
+    context.user_data.pop("awaiting_custom_edit_time", None)
+    await update.message.reply_text(T[lang(uid)]["changed"], reply_markup=keyboard(uid))
+    return True
+
+async def text_router(update, context):
+    if update.message and getattr(update.message, "text", None):
+        if context.user_data.get("awaiting_rename"):
+            return await rename_save(update, context)
+        if context.user_data.get("awaiting_edit_time") or context.user_data.get("awaiting_custom_edit_time"):
+            return await custom_edit_time_save(update, context)
+    return await _GOAL_EDIT_REPAIR_OLD_ROUTER(update, context)
+
 if __name__ == "__main__":
     main()
