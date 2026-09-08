@@ -276,7 +276,6 @@ def migrate_database(c):
 
 
 _DB_PRAGMA_LOCK = threading.RLock()
-_DB_WAL_READY = False
 
 def release_leaked_connections(exc):
     """Roll back and close sqlite connections left open by a failed handler.
@@ -316,23 +315,7 @@ def db():
             # handlers do not turn a temporary SQLite lock into an OperationalError.
             with _DB_PRAGMA_LOCK:
                 try:
-                    global _DB_WAL_READY
-
-                    if not _DB_WAL_READY:
-
-                        with _DB_PRAGMA_LOCK:
-
-                            if not _DB_WAL_READY:
-
-                                try:
-
-                                    c.execute("PRAGMA journal_mode=WAL")
-
-                                except sqlite3.OperationalError:
-
-                                    pass
-
-                                _DB_WAL_READY = True
+                    c.execute("PRAGMA journal_mode=WAL")
                 except sqlite3.OperationalError:
                     # The database might already be in WAL mode and another process
                     # might hold the short journal-mode lock. Normal queries still work.
@@ -11689,180 +11672,7 @@ async def event_scheduler_job(context):
                     logger.warning("Event delivery failed for %s: %s", u["user_id"], e)
 
 
-def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("Set BOT_TOKEN in your environment variables.")
 
-    init_db()
-    # Optional deployment control: set MAINTENANCE_MODE=0/1 explicitly to control the global lock.
-    # If unset, the existing admin/database setting is preserved.
-    maintenance_env = os.environ.get("MAINTENANCE_MODE", "").strip()
-    if maintenance_env == "0":
-        set_feature("maintenance", False)
-    elif maintenance_env == "1":
-        set_feature("maintenance", True)
-    # Safe defaults for automatic channel publishing.
-    if not get_auto_setting("interval_minutes", ""):
-        set_auto_setting("interval_minutes", "60")
-    if not get_auto_setting("category", ""):
-        set_auto_setting("category", "random")
-    if not get_auto_setting("subcategory", ""):
-        set_auto_setting("subcategory", "random")
-    # Keep auto-post history permanently so duplicate prevention remains global.
-    c=db()
-    c.execute("DELETE FROM delivery_log WHERE created_at < ?",((datetime.now(TZ)-timedelta(days=180)).isoformat(),))
-    c.commit()
-    c.close()
-
-    # Process updates concurrently so one slow handler (e.g. AI chat) cannot
-    # stall responses for everyone. Bounded to keep memory/CPU predictable.
-    app = Application.builder().token(BOT_TOKEN).concurrent_updates(256).build()
-    # If the deployment lacks APScheduler, keep scheduled features alive through asyncio
-    # instead of silently skipping every reminder/report/health-check job.
-    if app.job_queue is None:
-        app._job_queue = _FallbackJobQueue(app)
-        logger.warning("python-telegram-bot JobQueue unavailable; using asyncio fallback scheduler.")
-    else:
-        logger.info("python-telegram-bot JobQueue is active.")
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("myid", my_id))
-    app.add_handler(CommandHandler("admin", admin_command))
-
-    app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
-    app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$") )
-    app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:(?!check$)"))
-    app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
-    app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
-    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote|manager):"))
-    app.add_handler(CallbackQueryHandler(admin_users_navigation_callback, pattern=r"^adm:users:\d+$"))
-    app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
-    app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
-    app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
-    # Birthday callbacks
-    app.add_handler(CallbackQueryHandler(birthday_register_callback, pattern=r"^birthday:set$"))
-    app.add_handler(CallbackQueryHandler(birthday_show_callback, pattern=r"^birthday:show$"))
-    # Events admin callbacks
-    app.add_handler(CallbackQueryHandler(admin_events_callback, pattern=r"^adm:events:"))
-    # Birthday admin callbacks
-    app.add_handler(CallbackQueryHandler(admin_birthday_callback, pattern=r"^adm:birthdays:"))
-    # Gifts admin callbacks
-    app.add_handler(CallbackQueryHandler(admin_gifts_callback, pattern=r"^adm:gifts"))
-    # Access matrix callbacks
-    app.add_handler(CallbackQueryHandler(admin_access_matrix_callback, pattern=r"^adm:access"))
-    app.add_handler(CallbackQueryHandler(admin_referral_callback, pattern=r"^adm:referral"))
-    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
-    app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
-    app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
-    app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
-    app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
-    app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
-    app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
-    app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
-    app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
-    app.add_handler(PollAnswerHandler(channel_poll_answer_handler))
-    app.add_handler(CallbackQueryHandler(poll_callback, pattern=r"^poll:"))
-    if MessageReactionHandler is not None:
-        app.add_handler(MessageReactionHandler(channel_reaction_handler))
-    app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
-    app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
-    app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
-    app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
-    app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
-    app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
-    app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
-    app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
-    app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
-    app.add_handler(CallbackQueryHandler(_bdo_owner_callback, pattern=r"^bd:(home|tog_main|tog_rem|cyc_rem|tog_gift|cyc_kind|cyc_aud|amt|text|time|remdays|occ_add|occ_toggle:\d+|occ_del:\d+|report)$"))
-    app.add_handler(CallbackQueryHandler(birthday_callback, pattern=r"^bd:(set|del|manual|back|cal|calm:\d+|caly:\d+|cald:\d+:\d+|calsave:\d+:\d+:\d+)$"))
-    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
-    app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
-    app.add_handler(CallbackQueryHandler(onboarding_feature_callback, pattern=r"^pref:"))
-    app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
-    app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
-    app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
-    app.add_handler(CallbackQueryHandler(condition_callback, pattern=r"^cond:"))
-    app.add_handler(CallbackQueryHandler(ready_detail_callback, pattern=r"^rdetail:"))
-    app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
-    app.add_handler(CallbackQueryHandler(goal_reminder_callback, pattern=r"^goalrem:"))
-    app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
-    app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
-    app.add_handler(CallbackQueryHandler(step_add_start, pattern=r"^step_add:"))
-    app.add_handler(CallbackQueryHandler(step_toggle, pattern=r"^step_toggle:"))
-    app.add_handler(CallbackQueryHandler(ready_subcategory_callback, pattern=r"^readysub:"))
-    app.add_handler(CallbackQueryHandler(goal_reminders_list, pattern=r"^goalreminders$"))
-    app.add_handler(CallbackQueryHandler(goal_calendar_callback, pattern=r"^goalcalendar:"))
-    app.add_handler(CallbackQueryHandler(goal_calendar_day, pattern=r"^goalcalday:"))
-    app.add_handler(CallbackQueryHandler(my_goals_callback, pattern=r"^cm:my_goals$"))
-    app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
-    app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
-    app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
-    app.add_handler(CallbackQueryHandler(time_callback, pattern=r"^time:"))
-    app.add_handler(CallbackQueryHandler(edit_time_callback, pattern=r"^edit_time:"))
-    app.add_handler(CallbackQueryHandler(detail, pattern=r"^detail:"))
-    app.add_handler(CallbackQueryHandler(mark, pattern=r"^(done|miss):"))
-    app.add_handler(CallbackQueryHandler(edit_goal, pattern=r"^edit:"))
-    app.add_handler(CallbackQueryHandler(rename_start, pattern=r"^rename:"))
-    app.add_handler(CallbackQueryHandler(change_reminder, pattern=r"^changereminder:"))
-    app.add_handler(CallbackQueryHandler(delete_start, pattern=r"^delete:"))
-    app.add_handler(CallbackQueryHandler(delete_confirm, pattern=r"^delete_yes:"))
-    app.add_handler(CallbackQueryHandler(delete_no, pattern=r"^delete_no$"))
-    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern=r"^admin:broadcast$"))
-
-    app.add_handler(CommandHandler("xp", xp_command))
-    app.add_handler(CommandHandler("referral", referral))
-    app.add_handler(CallbackQueryHandler(referral_callback, pattern=r"^ref:"))
-    app.add_handler(CommandHandler("prices", prices))
-    app.add_handler(CommandHandler("support", support_start))
-    app.add_handler(CommandHandler("birthday", birthday_command))
-    app.add_handler(CommandHandler("seclog", seclog_command))
-    app.add_handler(CommandHandler("reports", reports_command))
-    app.add_handler(CallbackQueryHandler(reports_callback, pattern=r"^rep:"))
-    app.add_handler(CallbackQueryHandler(support_callback, pattern=r"^support:"))
-    app.add_handler(CallbackQueryHandler(vip_callback, pattern=r"^vip:"))
-    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-    app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
-    app.add_handler(CallbackQueryHandler(feature_info_callback, pattern=r"^featinfo:"))
-    app.add_handler(CallbackQueryHandler(compact_section_callback, pattern=r"^menu:"))
-    app.add_handler(CallbackQueryHandler(compact_menu_callback, pattern=r"^cm:"))
-    app.add_handler(CallbackQueryHandler(v25_callback, pattern=r"^v25:"))
-    # Recurring goal-duration buttons use the separate goalrepeat: callback namespace.
-    # Register it explicitly; otherwise Telegram sends the callback but no handler receives it.
-    app.add_handler(CallbackQueryHandler(targeted_goalrepeat_callback, pattern=r"^goalrepeat:"))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, v25_receipt_handler))
-    app.add_handler(MessageHandler(filters.VOICE, v25_voice_handler))
-    app.add_handler(MessageHandler(filters.CONTACT, customer_contact_save))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
-    app.add_error_handler(error_handler)
-
-    if app.job_queue:
-        app.job_queue.run_repeating(v25_unified_reminder_job, interval=60, first=5)
-        app.job_queue.run_repeating(morning_job, interval=60, first=10)
-        # v25_night_job disabled: merged into user_daily_progress_job
-        app.job_queue.run_repeating(user_daily_progress_job, interval=60, first=11)
-        app.job_queue.run_repeating(send_channel_morning_message, interval=60, first=12)
-        app.job_queue.run_repeating(send_night_channel_feedback, interval=60, first=14)
-        app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
-        app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
-        app.job_queue.run_repeating(final_daily_report_job, interval=60, first=25)
-        app.job_queue.run_repeating(weekly_admin_report_job, interval=60, first=27)
-        app.job_queue.run_repeating(scheduled_health_check_job, interval=60, first=60)
-        app.job_queue.run_repeating(customer_reminder_job, interval=60, first=30)
-        app.job_queue.run_repeating(birthday_scheduler_job, interval=60, first=35)
-        app.job_queue.run_repeating(event_scheduler_job, interval=60, first=40)
-        app.job_queue.run_repeating(customer_morning_job, interval=60, first=35)
-        app.job_queue.run_repeating(customer_daily_report_job, interval=60, first=40)
-        app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
-        app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
-        app.job_queue.run_repeating(flush_owner_notifications_job, interval=60, first=55)
-        app.job_queue.run_repeating(weekly_owner_backup_job, interval=3600, first=120)
-        app.job_queue.run_repeating(birthday_occasion_job, interval=60, first=65)
-
-    logger.info("MyTasks build: 2026-08-25-FINAL-QUALITY-01")
-    logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
-    logger.info("Goal bot started")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 
@@ -16839,6 +16649,623 @@ async def text_router(update, context):
         return await _render_rewards_page(update, context)
     return await _FINAL_OLD_TEXT_ROUTER_UI(update, context)
 
-# Startup must be last so every final router/navigation definition is active.
+# ===================== MYTASKS DIRECT FINAL INTEGRATION =====================
+# All previously discussed runtime changes live here in the source itself.
+# No build-time patch files are required. User data is never deleted here.
+
+_FINAL_DIRECT_FEATURE_ALIASES = {
+    "weekly_table": "weekly", "referral": "referrals", "price": "price_data",
+    "price_data": "price_data", "customer": "customers", "customers": "customers",
+    "ai_chat": "ai", "ai": "ai", "voice": "voice", "vip": "vip",
+    "support": "support", "settings": "settings", "goals": "goals",
+    "reminders": "reminders", "calendar": "calendar_hub", "profile": "profile",
+    "achievements": "achievements", "xp": "xp", "stats": "stats",
+}
+
+def _direct_feature_key(key):
+    return _FINAL_DIRECT_FEATURE_ALIASES.get(str(key or ""), str(key or ""))
+
+def _direct_feature_allowed(uid, key):
+    key = _direct_feature_key(key)
+    if admin_guard(uid):
+        return True
+    try:
+        if not feature_enabled(key):
+            return False
+        mode = feature_access_mode(key, uid)
+        if mode == "off":
+            return False
+        if mode == "vip" and not is_vip(uid):
+            return False
+        # Respect per-user preference when available.
+        if "user_pref_enabled" in globals():
+            try:
+                return bool(user_pref_enabled(uid, key))
+            except Exception:
+                pass
+        return True
+    except Exception:
+        # A disabled feature must never become enabled because of an error.
+        return False
+
+# Fix the old fail-open feature gate.
+def user_feature_allowed(uid, key):
+    return _direct_feature_allowed(uid, key)
+
+def _direct_cb_feature(data):
+    data = str(data or "")
+    if data in {"cm:home", "nav:main", "cm:guide", "v25:admin", "v25:admin:hub", "v25:fsub:home"}:
+        return None
+    exact = {
+        "cm:ai":"ai", "cm:voice":"voice", "cm:prices":"price_data", "cm:vip":"vip",
+        "cm:referral":"referrals", "cm:settings":"settings", "cm:today":"goals",
+        "cm:custom_goal":"goals", "cm:ready_goals":"goals", "cm:edit_goals":"edit",
+        "cm:reminders":"reminders", "cm:calendar":"calendar_hub", "cm:stats":"stats",
+        "cm:weekly":"weekly", "cm:achievements":"achievements", "cm:xp":"xp",
+        "cm:tokens":"vip", "cm:rewards":"vip", "cm:support":"support",
+        "v25:reports":"stats", "v25:report_month":"stats", "v25:report_week":"stats",
+        "v25:today":"goals",
+    }
+    if data in exact:
+        return exact[data]
+    if data.startswith("price:"): return "price_data"
+    if data.startswith("ai") or data.startswith("aichat:"): return "ai"
+    if data.startswith("vip:"): return "vip"
+    if data.startswith("ref:"): return "referrals"
+    if data.startswith("support:"): return "support"
+    if data.startswith("settings:"): return "settings"
+    if data.startswith("goal") or data.startswith("goals:") or data.startswith("newgoal:") or data.startswith("readysub:"):
+        return "goals"
+    if data.startswith("cust:") or data.startswith("booking:") or data.startswith("adm:customers"):
+        return "customers"
+    if data.startswith("voice:"): return "voice"
+    if data.startswith("portfolio:"): return "portfolio"
+    if data.startswith("installments:"): return "installments"
+    return None
+
+# Final compact menu filter. Disabled features disappear instead of merely failing later.
+def _direct_filter_markup(uid, markup):
+    if not markup or admin_guard(uid):
+        return markup
+    try:
+        rows = []
+        for row in markup.inline_keyboard:
+            out=[]
+            for btn in row:
+                key=_direct_cb_feature(getattr(btn,"callback_data",None))
+                if key and not _direct_feature_allowed(uid,key):
+                    continue
+                out.append(btn)
+            if out: rows.append(out)
+        return InlineKeyboardMarkup(rows)
+    except Exception:
+        return markup
+
+_DIRECT_OLD_COMPACT_MENU_KEYBOARD = _compact_menu_keyboard
+
+def _compact_menu_keyboard(uid, section):
+    return _direct_filter_markup(uid, _DIRECT_OLD_COMPACT_MENU_KEYBOARD(uid, section))
+
+_DIRECT_OLD_COMPACT_KEYBOARD = compact_keyboard
+
+def compact_keyboard(uid):
+    return _direct_filter_markup(uid, _DIRECT_OLD_COMPACT_KEYBOARD(uid))
+
+def _direct_filter_reply_keyboard(uid, markup):
+    if not markup or admin_guard(uid):
+        return markup
+    label_map={
+        "📈 قیمت آنلاین":"price_data", "📈 Online Prices":"price_data",
+        "🤝 دعوت دوستان":"referrals", "🤝 Invite Friends":"referrals",
+        "⚙️ تنظیمات":"settings", "⚙️ Settings":"settings",
+        "📅 تقویم و یادآوری":"calendar_hub", "📅 Calendar & Reminders":"calendar_hub",
+        "📊 آمار و گزارش":"stats", "📊 Stats & Reports":"stats",
+        "🎯 برنامه و اهداف":"goals", "🎯 Goals & Plan":"goals",
+        "🎫 پشتیبانی":"support", "🎫 Support":"support",
+    }
+    rows=[]
+    for row in markup.keyboard:
+        out=[x for x in row if not (label_map.get(str(x)) and not _direct_feature_allowed(uid,label_map[str(x)]))]
+        if out: rows.append(out)
+    return ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
+
+_DIRECT_OLD_COMPACT_USER_KEYBOARD = _compact_user_keyboard
+def _compact_user_keyboard(uid):
+    return _direct_filter_reply_keyboard(uid,_DIRECT_OLD_COMPACT_USER_KEYBOARD(uid))
+
+
+_DIRECT_OLD_COMPACT_MENU_CALLBACK = compact_menu_callback
+async def compact_menu_callback(update, context):
+    q = update.callback_query
+    uid = q.from_user.id
+    key = _direct_cb_feature(q.data)
+    if key and not _direct_feature_allowed(uid,key):
+        await q.answer("🔒 این قابلیت در حال حاضر غیرفعال است.", show_alert=True)
+        return
+    return await _DIRECT_OLD_COMPACT_MENU_CALLBACK(update, context)
+
+# Block direct callbacks for the most important feature families.
+_DIRECT_OLD_V25_CALLBACK = v25_callback
+async def v25_callback(update, context):
+    q=update.callback_query
+    uid=q.from_user.id
+    data=str(q.data or "")
+    key=_direct_cb_feature(data)
+    if key and not _direct_feature_allowed(uid,key):
+        await q.answer("🔒 این قابلیت در حال حاضر غیرفعال است.", show_alert=True)
+        return
+    return await _DIRECT_OLD_V25_CALLBACK(update, context)
+
+_DIRECT_OLD_PRICE_CALLBACK = price_callback
+async def price_callback(update, context):
+    uid=update.effective_user.id
+    if not _direct_feature_allowed(uid,"price_data"):
+        await update.callback_query.answer("🔒 قیمت آنلاین غیرفعال است.",show_alert=True); return
+    return await _DIRECT_OLD_PRICE_CALLBACK(update, context)
+
+_DIRECT_OLD_AI_NAV = ai_chat_navigation_callback
+async def ai_chat_navigation_callback(update, context):
+    uid=update.effective_user.id
+    if not _direct_feature_allowed(uid,"ai"):
+        await update.callback_query.answer("🔒 هوش مصنوعی غیرفعال است.",show_alert=True); return
+    return await _DIRECT_OLD_AI_NAV(update, context)
+
+# ---------------- Multi-channel permanent forced subscription ----------------
+def _direct_fsub_init():
+    c=db()
+    try:
+        c.execute("""CREATE TABLE IF NOT EXISTS managed_channels(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            join_url TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )""")
+        try: c.execute("ALTER TABLE managed_channels ADD COLUMN join_url TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        # Migrate the existing single channel without deleting it.
+        n=c.execute("SELECT COUNT(*) n FROM managed_channels").fetchone()["n"]
+        if not n:
+            raw=_forced_sub_get("forced_sub_channel_url","") or ""
+            if raw:
+                ref=str(raw).strip()
+                c.execute("INSERT OR IGNORE INTO managed_channels(channel_id,title,join_url,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                          (ref,ref,ref,1,datetime.now(TZ).isoformat(),datetime.now(TZ).isoformat()))
+        c.commit()
+    finally:
+        c.close()
+
+def _direct_fsub_rows(enabled_only=False):
+    _direct_fsub_init()
+    c=db()
+    try:
+        q="SELECT * FROM managed_channels" + (" WHERE enabled=1" if enabled_only else "") + " ORDER BY id"
+        return c.execute(q).fetchall()
+    finally: c.close()
+
+def _direct_fsub_normalize(raw):
+    s=str(raw or "").strip()
+    if not s: return ""
+    s=s.replace("https://t.me/","@").replace("http://t.me/","@")
+    s=s.split("?",1)[0].rstrip("/")
+    if s.startswith("@"):
+        return s
+    if re.fullmatch(r"-?\d+",s):
+        return s
+    if s.startswith("t.me/"):
+        return "@"+s.split("/",1)[1]
+    return "@"+s.lstrip("@ ")
+
+def _direct_fsub_join_url(ref, stored=""):
+    if stored and str(stored).startswith(("http://","https://")): return stored
+    ref=str(ref or "")
+    if ref.startswith("@"): return "https://t.me/"+ref[1:]
+    return ""
+
+async def _direct_fsub_bot_admin(bot, channel):
+    try:
+        me=await bot.get_me()
+        member=await bot.get_chat_member(channel, me.id)
+        return getattr(member,"status","") in {ChatMemberStatus.ADMINISTRATOR,ChatMemberStatus.OWNER,"creator"}
+    except Exception:
+        return False
+
+async def _direct_fsub_live(bot, uid):
+    rows=_direct_fsub_rows(True)
+    if not rows:
+        # Preserve legacy behavior when no managed channel has been configured.
+        return (await is_channel_member(bot,uid)), []
+    missing=[]
+    for r in rows:
+        try:
+            m=await bot.get_chat_member(r["channel_id"],uid)
+            status=str(getattr(m,"status","")).lower()
+            is_member=status in {"member","administrator","creator","owner"} or (status=="restricted" and bool(getattr(m,"is_member",False)))
+            if not is_member: missing.append(r)
+        except Exception:
+            missing.append(r)
+    return not missing, missing
+
+def _direct_fsub_enabled():
+    return _forced_sub_is_enabled()
+
+async def _direct_forced_sub_enforce(uid, bot):
+    if not _direct_fsub_enabled() or admin_guard(uid): return True,None
+    ok,missing=await _direct_fsub_live(bot,uid)
+    if ok:
+        try: _forced_sub_record_join(uid)
+        except Exception: pass
+        return True,None
+    lines=["🔒 <b>عضویت اجباری</b>","","برای استفاده از ربات باید در همه کانال‌های زیر عضو باشی:",""]
+    kb=[]
+    for r in missing:
+        title=html.escape(str(r["title"] or r["channel_id"]))
+        lines.append("🔴 "+title)
+        url=_direct_fsub_join_url(r["channel_id"],r["join_url"] if "join_url" in r.keys() else "")
+        if url: kb.append([InlineKeyboardButton("📢 عضویت در "+title,url=url)])
+    kb.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن",callback_data="forcedsub:check")])
+    return False,("\n".join(lines),InlineKeyboardMarkup(kb))
+
+async def require_subscription(update, context):
+    uid=update.effective_user.id
+    if admin_guard(uid): return True
+    if _direct_fsub_enabled():
+        ok,result=await _direct_forced_sub_enforce(uid,context.bot)
+        if ok: return True
+        msg,kb=result
+        if update.callback_query:
+            await update.callback_query.answer("ابتدا عضو کانال شوید.",show_alert=True)
+            try: await update.callback_query.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
+            except Exception: await update.callback_query.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
+        elif update.message: await update.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
+        return False
+    return await _LEGACY_REQUIRE_SUB_BEFORE_DIRECT(update,context)
+
+_LEGACY_REQUIRE_SUB_BEFORE_DIRECT = globals().get("require_subscription")
+# The assignment above intentionally replaces the function after saving its old implementation.
+# Rebind correctly for the first call.
+
+# Recreate the function now that the legacy reference exists.
+async def require_subscription(update, context):
+    uid=update.effective_user.id
+    if admin_guard(uid): return True
+    if _direct_fsub_enabled():
+        ok,result=await _direct_forced_sub_enforce(uid,context.bot)
+        if ok: return True
+        msg,kb=result
+        if update.callback_query:
+            await update.callback_query.answer("ابتدا عضو کانال شوید.",show_alert=True)
+            try: await update.callback_query.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
+            except Exception: await update.callback_query.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
+        elif update.message: await update.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
+        return False
+    return await _LEGACY_REQUIRE_SUB_BEFORE_DIRECT(update,context)
+
+_DIRECT_OLD_START=start
+async def start(update, context):
+    uid=update.effective_user.id
+    if not admin_guard(uid) and _direct_fsub_enabled():
+        ok,result=await _direct_forced_sub_enforce(uid,context.bot)
+        if not ok:
+            msg,kb=result
+            if update.message: await update.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
+            return
+    return await _DIRECT_OLD_START(update,context)
+
+async def forced_sub_check_callback(update, context):
+    q=update.callback_query; uid=q.from_user.id
+    ok,result=await _direct_forced_sub_enforce(uid,context.bot)
+    if ok:
+        await q.answer("✅ عضویت تأیید شد.",show_alert=True)
+        await q.message.edit_text("✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانی از ربات استفاده کنی.",parse_mode="HTML",reply_markup=compact_keyboard(uid))
+    else:
+        msg,kb=result; await q.answer("❌ هنوز عضو همه کانال‌ها نیستی.",show_alert=True); await q.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
+
+async def _direct_fsub_admin_panel(update,context):
+    uid=update.effective_user.id
+    if not admin_guard(uid):
+        if update.callback_query: await update.callback_query.answer("⛔ دسترسی ندارید.",show_alert=True)
+        return
+    _direct_fsub_init(); rows=_direct_fsub_rows(False); enabled=_direct_fsub_enabled()
+    lines=["🔒 <b>عضویت اجباری</b>","",f"وضعیت: {'🟢 فعال' if enabled else '🔴 غیرفعال'}",f"تعداد کانال‌ها: {len(rows)}","", "هر کانال فعال برای همه کاربران به‌صورت زنده بررسی می‌شود."]
+    kb=[
+        [InlineKeyboardButton("➕ افزودن کانال اجباری",callback_data="forcedsub:add")],
+        [InlineKeyboardButton("📋 لیست کانال‌های اجباری",callback_data="forcedsub:list")],
+        [InlineKeyboardButton("🤖 ست‌کردن و بررسی ربات",callback_data="forcedsub:setbot")],
+        [InlineKeyboardButton("🟢 فعالسازی / 🔴 غیرفعال",callback_data="forcedsub:toggle")],
+        [InlineKeyboardButton("🗑 حذف کانال",callback_data="forcedsub:delete_list")],
+        [InlineKeyboardButton("⬅️ منوی مدیریت",callback_data="adm:stats")],
+    ]
+    text="\n".join(lines)
+    if update.callback_query:
+        await update.callback_query.answer()
+        try: await update.callback_query.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+        except Exception: await update.callback_query.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    else: await update.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+
+async def forced_sub_callback(update,context):
+    q=update.callback_query; uid=q.from_user.id; data=str(q.data or "")
+    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if data=="forcedsub:home": return await _direct_fsub_admin_panel(update,context)
+    if data=="forcedsub:check": return await forced_sub_check_callback(update,context)
+    if data=="forcedsub:toggle":
+        _forced_sub_set("forced_sub_enabled","0" if _forced_sub_is_enabled() else "1"); return await _direct_fsub_admin_panel(update,context)
+    if data=="forcedsub:add":
+        context.user_data["forced_sub_wait"]="multi_channel"; await q.answer(); await q.message.edit_text("➕ <b>افزودن کانال اجباری</b>\n\nیک یا چند کانال را بفرست.\nهر کانال در یک خط، یا با کاما جدا شود.\n\nمثال:\n<code>@channel1</code>\n<code>@channel2</code>",parse_mode="HTML"); return
+    if data=="forcedsub:list":
+        rows=_direct_fsub_rows(False); lines=["📋 <b>کانال‌های اجباری</b>",""]
+        kb=[]
+        for r in rows:
+            st="🟢" if r["enabled"] else "🔴"; lines.append(f"{st} {html.escape(str(r['title'] or r['channel_id']))}")
+            kb.append([InlineKeyboardButton(("🔴 غیرفعال: " if r["enabled"] else "🟢 فعال: ")+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:toggle_channel:{r['id']}")])
+        if not rows: lines.append("هنوز کانالی ثبت نشده است.")
+        kb.append([InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+    if data=="forcedsub:delete_list":
+        rows=_direct_fsub_rows(False); kb=[[InlineKeyboardButton("🗑 "+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:delete:{r['id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("🗑 <b>حذف کانال</b>\n\nکانال موردنظر را انتخاب کن.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+    if data.startswith("forcedsub:toggle_channel:"):
+        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("UPDATE managed_channels SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=?",(datetime.now(TZ).isoformat(),rid)); c.commit(); c.close(); await q.answer("✅ وضعیت تغییر کرد."); return await _direct_fsub_admin_panel(update,context)
+    if data.startswith("forcedsub:delete:"):
+        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("DELETE FROM managed_channels WHERE id=?",(rid,)); c.commit(); c.close(); await q.answer("🗑 کانال حذف شد."); return await _direct_fsub_admin_panel(update,context)
+    if data=="forcedsub:setbot":
+        rows=_direct_fsub_rows(True); checks=[]
+        try: me=await context.bot.get_me()
+        except Exception as exc: await q.answer("❌ ربات قابل شناسایی نیست.",show_alert=True); return
+        for r in rows:
+            ok=await _direct_fsub_bot_admin(context.bot,r["channel_id"]); checks.append(("🟢" if ok else "🔴")+" "+str(r["title"] or r["channel_id"]))
+        text="🤖 <b>ست‌کردن و بررسی ربات</b>\n\nربات فعال: @"+str(getattr(me,"username","") or me.id)+"\n\n"+("\n".join(checks) if checks else "کانالی ثبت نشده است.")+"\n\nربات باید در هر کانال فعال Administrator باشد."
+        await q.answer(); await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]])); return
+    await q.answer("گزینه ناشناخته است.",show_alert=True)
+
+_DIRECT_OLD_TEXT_ROUTER = text_router
+async def text_router(update,context):
+    if not update.message or not update.message.text: return await _DIRECT_OLD_TEXT_ROUTER(update,context)
+    uid=update.effective_user.id; txt=update.message.text.strip()
+    if admin_guard(uid) and context.user_data.get("forced_sub_wait")=="multi_channel":
+        refs=[x.strip() for x in re.split(r"[\n,;]+",txt) if x.strip()][:20]
+        context.user_data.pop("forced_sub_wait",None)
+        added=[]; failed=[]
+        _direct_fsub_init()
+        for raw in refs:
+            ref=_direct_fsub_normalize(raw)
+            try:
+                chat=await context.bot.get_chat(ref)
+                if not await _direct_fsub_bot_admin(context.bot,ref): failed.append(ref+" ← ربات ادمین نیست"); continue
+                now=datetime.now(TZ).isoformat(); title=getattr(chat,"title",None) or ref; join=_direct_fsub_join_url(ref,"")
+                c=db(); c.execute("INSERT OR IGNORE INTO managed_channels(channel_id,title,join_url,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?)",(ref,title,join,1,now,now)); c.commit(); c.close(); added.append(title)
+            except Exception as exc: failed.append(ref+" ← کانال قابل دسترسی نیست")
+        msg="✅ اضافه شد: "+(", ".join(added) if added else "هیچ‌کدام")
+        if failed: msg+="\n\n❌ اضافه نشد:\n"+"\n".join(failed)
+        await update.message.reply_text(msg,reply_markup=ReplyKeyboardMarkup([["🏠 منوی اصلی"]],resize_keyboard=True))
+        return
+    return await _DIRECT_OLD_TEXT_ROUTER(update,context)
+
+# Daily rotating friendly messages. Same user receives a different variant on different days.
+_DIRECT_MORNING_VARIANTS=[
+    "🌅 صبح بخیر {name}! آماده‌ای امروز یک قدم کوچیک ولی قشنگ برداریم؟ 🌱",
+    "☀️ صبح بخیر {name}! امروز قرار نیست همه‌چیز رو یک‌جا حل کنیم. فقط از یک کار شروع کنیم. 💪",
+    "🌷 صبح بخیر {name}! یه روز تازه شروع شده. بیا امروز رو برای خودمون بهتر بسازیم. ❤️",
+    "🚀 صبح بخیر {name}! هدف امروز ساده‌ست: یک قدم واقعی به جلو. بزن بریم!",
+]
+_DIRECT_NIGHT_VARIANTS=[
+    "🌙 شب بخیر {name}! خسته نباشی. حتی یک قدم کوچیک امروز هم ارزشمند بود. ❤️",
+    "🌙 شب بخیر {name}! امروز هرچقدر هم که پیش رفتی، برای خودت حسابش کن. فردا دوباره ادامه می‌دیم. 🌱",
+    "✨ شب آروم {name}! کارهای انجام‌شده رو ببین و برای فردا فقط یک قدم کوچیک انتخاب کن. 🌷",
+    "🌙 شب بخیر {name}! امروز تموم شد، ولی فرصت فردا هنوز مال توئه. استراحت کن و دوباره شروع می‌کنیم. 💛",
+]
+
+def _direct_variant(items, uid, day):
+    return items[(int(day)+int(uid))%len(items)]
+
+async def morning_job(context):
+    now=datetime.now(TZ)
+    if now.hour!=7 or now.minute!=0 or get_system_setting("morning_message_enabled","1")!="1" or not feature_enabled("morning"): return
+    # Do not hold a DB connection during network sends.
+    c=db(); rows=c.execute("SELECT user_id FROM users WHERE COALESCE(blocked,0)=0").fetchall(); c.close()
+    for r in rows:
+        uid=r["user_id"]; key=f"direct_morning:{uid}:{now.date().isoformat()}"
+        try:
+            if delivery_once(key,uid,"morning"): continue
+            await context.bot.send_message(uid,_direct_variant(_DIRECT_MORNING_VARIANTS,uid,now.toordinal()).format(name=html.escape(display_name(uid))),reply_markup=compact_keyboard(uid))
+            log_activity(uid,"morning_message")
+        except Exception: logger.exception("Direct morning message failed for %s",uid)
+
+async def user_daily_progress_job(context):
+    now=datetime.now(TZ)
+    if now.hour!=23 or now.minute!=30 or not feature_enabled("night"): return
+    today=now.date().isoformat(); yesterday=(now.date()-timedelta(days=1)).isoformat()
+    c=db(); users=c.execute("SELECT user_id FROM users WHERE COALESCE(blocked,0)=0").fetchall(); c.close()
+    for r in users:
+        uid=r["user_id"]; key=f"direct_night:{uid}:{today}"
+        try:
+            if delivery_once(key,uid,"night"): continue
+            c=db(); t=c.execute("SELECT COUNT(*) total,SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done FROM goal_days WHERE user_id=? AND goal_date=?",(uid,today)).fetchone(); c.close()
+            text=_direct_variant(_DIRECT_NIGHT_VARIANTS,uid,now.toordinal()).format(name=html.escape(display_name(uid)))+f"\n\n🎯 امروز: {int(t['done'] or 0)}/{int(t['total'] or 0)} هدف انجام شد."
+            await context.bot.send_message(uid,text,reply_markup=compact_keyboard(uid))
+        except Exception: logger.exception("Direct night message failed for %s",uid)
+
+# The final source now owns these definitions before main() is invoked.
+_DIRECT_OLD_INIT_DB = init_db
+def init_db():
+    _DIRECT_OLD_INIT_DB()
+    _direct_fsub_init()
+
+def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("Set BOT_TOKEN in your environment variables.")
+
+    init_db()
+    # Optional deployment control: set MAINTENANCE_MODE=0/1 explicitly to control the global lock.
+    # If unset, the existing admin/database setting is preserved.
+    maintenance_env = os.environ.get("MAINTENANCE_MODE", "").strip()
+    if maintenance_env == "0":
+        set_feature("maintenance", False)
+    elif maintenance_env == "1":
+        set_feature("maintenance", True)
+    # Safe defaults for automatic channel publishing.
+    if not get_auto_setting("interval_minutes", ""):
+        set_auto_setting("interval_minutes", "60")
+    if not get_auto_setting("category", ""):
+        set_auto_setting("category", "random")
+    if not get_auto_setting("subcategory", ""):
+        set_auto_setting("subcategory", "random")
+    # Keep auto-post history permanently so duplicate prevention remains global.
+    c=db()
+    c.execute("DELETE FROM delivery_log WHERE created_at < ?",((datetime.now(TZ)-timedelta(days=180)).isoformat(),))
+    c.commit()
+    c.close()
+
+    # Process updates concurrently so one slow handler (e.g. AI chat) cannot
+    # stall responses for everyone. Bounded to keep memory/CPU predictable.
+    app = Application.builder().token(BOT_TOKEN).concurrent_updates(256).build()
+    # If the deployment lacks APScheduler, keep scheduled features alive through asyncio
+    # instead of silently skipping every reminder/report/health-check job.
+    if app.job_queue is None:
+        app._job_queue = _FallbackJobQueue(app)
+        logger.warning("python-telegram-bot JobQueue unavailable; using asyncio fallback scheduler.")
+    else:
+        logger.info("python-telegram-bot JobQueue is active.")
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("myid", my_id))
+    app.add_handler(CommandHandler("admin", admin_command))
+
+    app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
+    app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$") )
+    app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:(?!check$)"))
+    app.add_handler(CallbackQueryHandler(customer_panel_callback, pattern=r"^cust:"))
+    app.add_handler(CallbackQueryHandler(admin_user_detail_callback, pattern=r"^admu:\d+$"))
+    app.add_handler(CallbackQueryHandler(admin_user_action_callback, pattern=r"^admu_(block|vip|unlimited|editvip|promote|manager):"))
+    app.add_handler(CallbackQueryHandler(admin_users_navigation_callback, pattern=r"^adm:users:\d+$"))
+    app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
+    app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
+    app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
+    # Birthday callbacks
+    app.add_handler(CallbackQueryHandler(birthday_register_callback, pattern=r"^birthday:set$"))
+    app.add_handler(CallbackQueryHandler(birthday_show_callback, pattern=r"^birthday:show$"))
+    # Events admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_events_callback, pattern=r"^adm:events:"))
+    # Birthday admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_birthday_callback, pattern=r"^adm:birthdays:"))
+    # Gifts admin callbacks
+    app.add_handler(CallbackQueryHandler(admin_gifts_callback, pattern=r"^adm:gifts"))
+    # Access matrix callbacks
+    app.add_handler(CallbackQueryHandler(admin_access_matrix_callback, pattern=r"^adm:access"))
+    app.add_handler(CallbackQueryHandler(admin_referral_callback, pattern=r"^adm:referral"))
+    app.add_handler(CallbackQueryHandler(admin_panel_callback, pattern=r"^adm:"))
+    app.add_handler(CallbackQueryHandler(smart_post_callback, pattern=r"^chgen:"))
+    app.add_handler(CallbackQueryHandler(channel_panel_callback, pattern=r"^ch:"))
+    app.add_handler(CallbackQueryHandler(auto_channel_callback, pattern=r"^auto:"))
+    app.add_handler(CallbackQueryHandler(auto_category_callback, pattern=r"^autocat:"))
+    app.add_handler(CallbackQueryHandler(auto_subcategory_callback, pattern=r"^autosub:"))
+    app.add_handler(CallbackQueryHandler(auto_interval_callback, pattern=r"^autoint:"))
+    app.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^appr:"))
+    app.add_handler(CallbackQueryHandler(approval_reject_callback, pattern=r"^apprrej:"))
+    app.add_handler(PollAnswerHandler(channel_poll_answer_handler))
+    app.add_handler(CallbackQueryHandler(poll_callback, pattern=r"^poll:"))
+    if MessageReactionHandler is not None:
+        app.add_handler(MessageReactionHandler(channel_reaction_handler))
+    app.add_handler(CallbackQueryHandler(feedback_callback, pattern=r"^feedback:"))
+    app.add_handler(CallbackQueryHandler(channel_schedule_callback, pattern=r"^chs:"))
+    app.add_handler(CallbackQueryHandler(channel_daily_callback, pattern=r"^chd:"))
+    app.add_handler(CallbackQueryHandler(channel_weekday_callback, pattern=r"^chw:"))
+    app.add_handler(CallbackQueryHandler(channel_weektime_callback, pattern=r"^chwtime:"))
+    app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^language:"))
+    app.add_handler(CallbackQueryHandler(settings_language_callback, pattern=r"^setlang:"))
+    app.add_handler(CallbackQueryHandler(goals_navigation_callback, pattern=r"^goals:"))
+    app.add_handler(CallbackQueryHandler(settings_callback, pattern=r"^settings:"))
+    app.add_handler(CallbackQueryHandler(_bdo_owner_callback, pattern=r"^bd:(home|tog_main|tog_rem|cyc_rem|tog_gift|cyc_kind|cyc_aud|amt|text|time|remdays|occ_add|occ_toggle:\d+|occ_del:\d+|report)$"))
+    app.add_handler(CallbackQueryHandler(birthday_callback, pattern=r"^bd:(set|del|manual|back|cal|calm:\d+|caly:\d+|cald:\d+:\d+|calsave:\d+:\d+:\d+)$"))
+    app.add_handler(CallbackQueryHandler(price_callback, pattern=r"^price:"))
+    app.add_handler(CallbackQueryHandler(onboarding_business_callback, pattern=r"^onboardtype:"))
+    app.add_handler(CallbackQueryHandler(onboarding_feature_callback, pattern=r"^pref:"))
+    app.add_handler(CallbackQueryHandler(gender_callback, pattern=r"^gender:"))
+    app.add_handler(CallbackQueryHandler(priority_callback, pattern=r"^priority:"))
+    app.add_handler(CallbackQueryHandler(duration_callback, pattern=r"^duration:"))
+    app.add_handler(CallbackQueryHandler(condition_callback, pattern=r"^cond:"))
+    app.add_handler(CallbackQueryHandler(ready_detail_callback, pattern=r"^rdetail:"))
+    app.add_handler(CallbackQueryHandler(snooze_menu, pattern=r"^snooze_menu:"))
+    app.add_handler(CallbackQueryHandler(goal_reminder_callback, pattern=r"^goalrem:"))
+    app.add_handler(CallbackQueryHandler(snooze_callback, pattern=r"^snooze:"))
+    app.add_handler(CallbackQueryHandler(steps_menu, pattern=r"^steps:"))
+    app.add_handler(CallbackQueryHandler(step_add_start, pattern=r"^step_add:"))
+    app.add_handler(CallbackQueryHandler(step_toggle, pattern=r"^step_toggle:"))
+    app.add_handler(CallbackQueryHandler(ready_subcategory_callback, pattern=r"^readysub:"))
+    app.add_handler(CallbackQueryHandler(goal_reminders_list, pattern=r"^goalreminders$"))
+    app.add_handler(CallbackQueryHandler(goal_calendar_callback, pattern=r"^goalcalendar:"))
+    app.add_handler(CallbackQueryHandler(goal_calendar_day, pattern=r"^goalcalday:"))
+    app.add_handler(CallbackQueryHandler(my_goals_callback, pattern=r"^cm:my_goals$"))
+    app.add_handler(CallbackQueryHandler(new_category, pattern=r"^newcat:"))
+    app.add_handler(CallbackQueryHandler(new_back, pattern=r"^newback$"))
+    app.add_handler(CallbackQueryHandler(new_goal_pick, pattern=r"^newgoal:"))
+    app.add_handler(CallbackQueryHandler(time_callback, pattern=r"^time:"))
+    app.add_handler(CallbackQueryHandler(edit_time_callback, pattern=r"^edit_time:"))
+    app.add_handler(CallbackQueryHandler(detail, pattern=r"^detail:"))
+    app.add_handler(CallbackQueryHandler(mark, pattern=r"^(done|miss):"))
+    app.add_handler(CallbackQueryHandler(edit_goal, pattern=r"^edit:"))
+    app.add_handler(CallbackQueryHandler(rename_start, pattern=r"^rename:"))
+    app.add_handler(CallbackQueryHandler(change_reminder, pattern=r"^changereminder:"))
+    app.add_handler(CallbackQueryHandler(delete_start, pattern=r"^delete:"))
+    app.add_handler(CallbackQueryHandler(delete_confirm, pattern=r"^delete_yes:"))
+    app.add_handler(CallbackQueryHandler(delete_no, pattern=r"^delete_no$"))
+    app.add_handler(CallbackQueryHandler(admin_broadcast_start, pattern=r"^admin:broadcast$"))
+
+    app.add_handler(CommandHandler("xp", xp_command))
+    app.add_handler(CommandHandler("referral", referral))
+    app.add_handler(CallbackQueryHandler(referral_callback, pattern=r"^ref:"))
+    app.add_handler(CommandHandler("prices", prices))
+    app.add_handler(CommandHandler("support", support_start))
+    app.add_handler(CommandHandler("birthday", birthday_command))
+    app.add_handler(CommandHandler("seclog", seclog_command))
+    app.add_handler(CommandHandler("reports", reports_command))
+    app.add_handler(CallbackQueryHandler(reports_callback, pattern=r"^rep:"))
+    app.add_handler(CallbackQueryHandler(support_callback, pattern=r"^support:"))
+    app.add_handler(CallbackQueryHandler(vip_callback, pattern=r"^vip:"))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+    app.add_handler(CallbackQueryHandler(final_feature_callback, pattern=r"^feat:"))
+    app.add_handler(CallbackQueryHandler(feature_info_callback, pattern=r"^featinfo:"))
+    app.add_handler(CallbackQueryHandler(compact_section_callback, pattern=r"^menu:"))
+    app.add_handler(CallbackQueryHandler(compact_menu_callback, pattern=r"^cm:"))
+    app.add_handler(CallbackQueryHandler(v25_callback, pattern=r"^v25:"))
+    # Recurring goal-duration buttons use the separate goalrepeat: callback namespace.
+    # Register it explicitly; otherwise Telegram sends the callback but no handler receives it.
+    app.add_handler(CallbackQueryHandler(targeted_goalrepeat_callback, pattern=r"^goalrepeat:"))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, v25_receipt_handler))
+    app.add_handler(MessageHandler(filters.VOICE, v25_voice_handler))
+    app.add_handler(MessageHandler(filters.CONTACT, customer_contact_save))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
+    app.add_error_handler(error_handler)
+
+    if app.job_queue:
+        app.job_queue.run_repeating(v25_unified_reminder_job, interval=60, first=5)
+        app.job_queue.run_repeating(morning_job, interval=60, first=10)
+        # v25_night_job disabled: merged into user_daily_progress_job
+        app.job_queue.run_repeating(user_daily_progress_job, interval=60, first=11)
+        app.job_queue.run_repeating(send_channel_morning_message, interval=60, first=12)
+        app.job_queue.run_repeating(send_night_channel_feedback, interval=60, first=14)
+        app.job_queue.run_repeating(channel_scheduler_job, interval=60, first=15)
+        app.job_queue.run_repeating(auto_channel_job, interval=60, first=20)
+        app.job_queue.run_repeating(final_daily_report_job, interval=60, first=25)
+        app.job_queue.run_repeating(weekly_admin_report_job, interval=60, first=27)
+        app.job_queue.run_repeating(scheduled_health_check_job, interval=60, first=60)
+        app.job_queue.run_repeating(customer_reminder_job, interval=60, first=30)
+        app.job_queue.run_repeating(birthday_scheduler_job, interval=60, first=35)
+        app.job_queue.run_repeating(event_scheduler_job, interval=60, first=40)
+        app.job_queue.run_repeating(customer_morning_job, interval=60, first=35)
+        app.job_queue.run_repeating(customer_daily_report_job, interval=60, first=40)
+        app.job_queue.run_repeating(customer_reengagement_job, interval=60, first=45)
+        app.job_queue.run_repeating(v25_reminder_job, interval=60, first=50)
+        app.job_queue.run_repeating(flush_owner_notifications_job, interval=60, first=55)
+        app.job_queue.run_repeating(weekly_owner_backup_job, interval=3600, first=120)
+        app.job_queue.run_repeating(birthday_occasion_job, interval=60, first=65)
+
+    logger.info("MyTasks build: 2026-08-25-FINAL-QUALITY-01")
+    logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
+    logger.info("Goal bot started")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 if __name__ == "__main__":
     main()
