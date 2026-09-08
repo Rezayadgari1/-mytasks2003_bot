@@ -868,16 +868,6 @@ def set_user_pref(uid,key,enabled):
     )
     c.commit(); c.close()
 
-def user_feature_allowed(uid,key):
-    if admin_is_allowed(uid) or key=="xp": return True
-    try:
-        # Manager-level OFF always wins over a user's personal preference.
-        if not feature_enabled(key): return False
-        mode=feature_access_mode(key,uid)
-        if mode=="off" or (mode=="vip" and not is_vip(uid)): return False
-        return user_pref_enabled(uid,key)
-    except Exception:
-        return True
 
 def filter_menu_rows(uid,rows):
     out=[]
@@ -1282,24 +1272,10 @@ async def step_toggle(update, context):
     await steps_menu(update, context)
 
 
-def categories_keyboard(uid, prefix="newcat"):
-    data = GOALS_EN if lang(uid) == "en" else GOALS_FA
-    rows = []
-    for i, key in enumerate(data.keys()):
-        rows.append([InlineKeyboardButton(key, callback_data=f"{prefix}:{i}")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="goals:main")])
-    return InlineKeyboardMarkup(rows)
 
 
-def category_by_index(uid, index):
-    data = GOALS_EN if lang(uid) == "en" else GOALS_FA
-    keys = list(data.keys())
-    return keys[index]
 
 
-def goals_by_category(uid, category):
-    data = GOALS_EN if lang(uid) == "en" else GOALS_FA
-    return data[category]
 
 
 def time_keyboard(uid):
@@ -1434,50 +1410,6 @@ def subscription_keyboard():
     return InlineKeyboardMarkup(rows)
 
 
-async def require_subscription(update, context):
-    """Legacy channel gate. Forced-subscription mode owns the check when enabled."""
-    uid = update.effective_user.id
-
-    if admin_guard(uid):
-        return True
-
-    # Do not run the old channel_config gate when the admin has enabled the
-    # dedicated forced-subscription system. Otherwise two different channels
-    # may be checked and a valid user is rejected by the wrong one.
-    if _forced_sub_is_enabled():
-        ok, result = await _forced_sub_enforce_async(uid, context.bot)
-        if ok:
-            return True
-        msg, kb = result
-        if update.callback_query:
-            await update.callback_query.answer("ابتدا عضو کانال شوید.", show_alert=True)
-            await update.callback_query.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
-        elif update.message:
-            await update.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
-        return False
-
-    # Legacy subscription system.
-    if await is_channel_member(context.bot, uid):
-        return True
-
-    url = required_channel_url()
-    if url:
-        text = (
-            "🔒 برای استفاده از امکانات ربات، ابتدا عضو کانال شوید.\n\n"
-            "بعد از عضویت روی «✅ عضو شدم؛ بررسی کن» بزنید."
-        )
-    else:
-        text = (
-            "🔒 برای استفاده از امکانات ربات، ابتدا عضو کانال شوید.\n\n"
-            "لینک عضویت کانال هنوز برای ربات تنظیم نشده است."
-        )
-
-    if update.callback_query:
-        await update.callback_query.answer("ابتدا عضو کانال شوید.", show_alert=True)
-        await update.callback_query.message.reply_text(text, reply_markup=subscription_keyboard())
-    elif update.message:
-        await update.message.reply_text(text, reply_markup=subscription_keyboard())
-    return False
 
 
 async def subscription_check_callback(update, context):
@@ -1685,23 +1617,6 @@ async def settings(update, context):
     await hide_main_reply_keyboard(update)
     await update.message.reply_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
-async def goals_navigation_callback(update, context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id
-    action=q.data.split(":",1)[1] if ":" in (q.data or "") else ""
-    if action=="main":
-        clear_flow(context)
-        # Do not delete the current goals screen. Replace it with the compact root.
-        try:
-            fa = lang(uid) == "fa"
-            root_text = _root_menu_text(uid)
-            await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
-        except Exception:
-            try:
-                await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
-            except Exception:
-                pass
-        return
-    await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
 
 
 async def settings_language_callback(update, context):
@@ -1806,23 +1721,6 @@ async def new_goal(update, context):
     )
 
 
-@subscription_required
-async def new_category(update, context):
-    q = update.callback_query
-    await q.answer()
-    uid = q.from_user.id
-    category = category_by_index(uid, int(q.data.split(":")[1]))
-    context.user_data["category"] = category
-    goals = goals_by_category(uid, category)
-    buttons = [
-        [InlineKeyboardButton(x, callback_data=f"newgoal:{i}")]
-        for i, x in enumerate(goals)
-    ]
-    buttons.append([InlineKeyboardButton(T[lang(uid)]["back"], callback_data="newback")])
-    await q.message.edit_text(
-        T[lang(uid)]["choose_goal"],
-        reply_markup=InlineKeyboardMarkup(buttons),
-    )
 
 
 @subscription_required
@@ -1837,21 +1735,6 @@ async def new_back(update, context):
     )
 
 
-@subscription_required
-async def new_goal_pick(update, context):
-    q = update.callback_query
-    await q.answer()
-    uid = q.from_user.id
-    category = context.user_data.get("category")
-    if not category:
-        return
-    goals = goals_by_category(uid, category)
-    name = goals[int(q.data.split(":")[1])]
-    context.user_data["name"] = name
-    await q.message.edit_text(
-        "⭐ اولویت هدف را انتخاب کن:" if lang(uid) == "fa" else "⭐ Choose goal priority:",
-        reply_markup=priority_keyboard(uid),
-    )
 
 
 
@@ -1924,36 +1807,6 @@ async def condition_callback(update, context):
     await q.message.edit_text(T[lang(uid)]["choose_time"], reply_markup=time_keyboard(uid))
 
 
-@subscription_required
-async def time_callback(update, context):
-    q = update.callback_query
-    await q.answer()
-    uid = q.from_user.id
-    value = q.data.split(":", 1)[1]
-
-    if value == "custom":
-        context.user_data["awaiting_custom_time"] = True
-        await q.message.edit_text(T[lang(uid)]["custom_time"])
-        return
-
-    if value == "none":
-        reminder = None
-    else:
-        reminder = parse_time(value)
-
-    name = context.user_data.get("name")
-    category = context.user_data.get("category")
-    if not name or not category:
-        return
-
-    priority = context.user_data.get("priority", 2)
-    duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration, context.user_data.get("condition"))
-    context.user_data.clear()
-    log_activity(uid, "goal_created")
-    # Callback messages accept InlineKeyboardMarkup only. keyboard(uid) is a ReplyKeyboardMarkup.
-    await q.message.edit_text(T[lang(uid)]["goal_added"].format(name=display_name(uid)))
-    await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
 
 
 async def custom_duration_save(update, context):
@@ -2003,65 +1856,12 @@ async def custom_goal_save(update, context):
     return True
 
 
-async def custom_time_save(update, context):
-    uid = update.effective_user.id
-    if not context.user_data.get("awaiting_custom_time"):
-        return False
-
-    value = update.message.text.strip()
-    reminder = parse_time(value)
-    if reminder is None:
-        await update.message.reply_text(T[lang(uid)]["bad_time"])
-        return True
-
-    name = context.user_data.get("name")
-    category = context.user_data.get("category")
-    if not name or not category:
-        context.user_data.clear()
-        return False
-
-    priority = context.user_data.get("priority", 2)
-    duration = context.user_data.get("duration_minutes")
-    add_goal(uid, name, category, reminder, priority, duration, context.user_data.get("condition"))
-    context.user_data.clear()
-    log_activity(uid, "goal_created")
-    await update.message.reply_text(
-        T[lang(uid)]["goal_added"].format(name=display_name(uid)),
-        reply_markup=keyboard(uid),
-    )
-    return True
 
 
 async def ready_menu(update, context):
     await new_goal(update, context)
 
 
-async def today(update, context):
-    uid = update.effective_user.id
-    goals = get_goals(uid)
-    log_activity(uid, "view_today")
-    if not goals:
-        await update.message.reply_text(
-            T[lang(uid)]["no_goals"].format(name=display_name(uid)),
-            reply_markup=keyboard(uid),
-        )
-        return
-
-    buttons = []
-    for g in goals:
-        s = get_status(uid, g["id"])
-        icon = "✅" if s == "done" else "❌" if s == "missed" else "⬜"
-        buttons.append([
-            InlineKeyboardButton(
-                f"{icon} {g['name']}",
-                callback_data=f"detail:{g['id']}",
-            )
-        ])
-    buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
-    await update.message.reply_text(
-        T[lang(uid)]["today"],
-        reply_markup=InlineKeyboardMarkup(buttons),
-    )
 
 
 @subscription_required
@@ -2120,22 +1920,6 @@ async def mark(update, context):
     await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
 
 
-async def edit_menu(update, context):
-    uid = update.effective_user.id
-    goals = get_goals(uid)
-    log_activity(uid, "edit_goals")
-    if not goals:
-        await update.message.reply_text(
-            T[lang(uid)]["no_goals"].format(name=display_name(uid)),
-            reply_markup=keyboard(uid),
-        )
-        return
-    edit_buttons=[[InlineKeyboardButton(g["name"], callback_data=f"edit:{g['id']}")] for g in goals]
-    edit_buttons.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
-    await update.message.reply_text(
-        T[lang(uid)]["edit"].format(name=display_name(uid)),
-        reply_markup=InlineKeyboardMarkup(edit_buttons),
-    )
 
 
 @subscription_required
@@ -3220,6 +3004,10 @@ def channel_schedule_keyboard():
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
+    # BUGFIX: this helper previously returned None, so the daily/weekly channel
+    # time picker was sent without any buttons.
+    rows.append([InlineKeyboardButton("❌ لغو", callback_data="chs:cancel")])
+    return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
     if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
@@ -4410,53 +4198,7 @@ async def admin_broadcast_save(update, context):
     return True
 
 
-async def user_daily_progress_job(context):
-    now=datetime.now(TZ)
-    if now.hour!=23 or now.minute!=30 or not feature_enabled("night"): return
-    today=now.date().isoformat(); yesterday=(now.date()-timedelta(days=1)).isoformat(); c=db(); users=c.execute("SELECT user_id FROM users WHERE COALESCE(blocked,0)=0 AND user_id IN (SELECT DISTINCT user_id FROM goals)").fetchall()
-    for row in users:
-        uid=row["user_id"]
-        if not delivery_once(f"user_daily_progress:{uid}:{today}",uid,"user_daily_progress"): continue
-        try:
-            t=c.execute("SELECT COUNT(*) total,SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done FROM goal_days WHERE user_id=? AND goal_date=?",(uid,today)).fetchone(); y=c.execute("SELECT COUNT(*) total,SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done FROM goal_days WHERE user_id=? AND goal_date=?",(uid,yesterday)).fetchone()
-            tt=int(t["total"] or 0); td=int(t["done"] or 0); yt=int(y["total"] or 0); yd=int(y["done"] or 0); tp=round(td*100/tt) if tt else 0; yp=round(yd*100/yt) if yt else 0; diff=tp-yp
-            trend="📈 پیشرفت" if diff>0 else "📉 پسرفت" if diff<0 else "➡️ بدون تغییر"
-            sign="+" if diff>0 else ""
-            xp=xp_info(uid)[0]
-            text=f"🌙 <b>شب بخیر {html.escape(display_name(uid))}!</b>\n\nگزارش روزانه تو 🌙\n\n🎯 امروز: {td}/{tt} هدف انجام شد ({tp}٪)\n📅 دیروز: {yd}/{yt} هدف انجام شد ({yp}٪)\n\n{trend}: {sign}{diff}٪ نسبت به دیروز\n⭐ XP فعلی: {xp}\n\nفردا یک قدم بهتر شروع می‌کنیم. 💪"
-            await context.bot.send_message(uid,text,parse_mode="HTML",reply_markup=keyboard(uid))
-            # Send satisfaction poll after report
-            try:
-                kb_poll = InlineKeyboardMarkup([[
-                    InlineKeyboardButton("😍 عالی بود", callback_data="poll:satisfied"),
-                    InlineKeyboardButton("👍 خوب بود", callback_data="poll:ok"),
-                    InlineKeyboardButton("😐 معمولی", callback_data="poll:meh"),
-                ]])
-                await context.bot.send_message(uid, "🗣️ <b>نظرسنجی</b>\n\nاز امکانات ربات راضی بودی؟ نظرت رو بگو تا بهترش کنیم! ❤️", parse_mode="HTML", reply_markup=kb_poll)
-            except Exception: pass
-        except Exception: logger.exception("User daily progress failed for %s",uid)
-    c.close()
 
-async def morning_job(context):
-    now = datetime.now(TZ)
-    if now.hour != 7 or now.minute != 0 or not feature_enabled("morning"):
-        return
-    c = db()
-    users = c.execute(
-        "SELECT user_id FROM users WHERE COALESCE(blocked,0)=0"
-    ).fetchall()
-    c.close()
-    for row in users:
-        uid = row["user_id"]
-        try:
-            await context.bot.send_message(
-                uid,
-                T[lang(uid)]["morning"].format(name=display_name(uid)),
-                reply_markup=keyboard(uid),
-            )
-            log_activity(uid, "morning_message")
-        except Exception as e:
-            logger.error("Morning message error: %s", e)
 
 
 
@@ -6734,22 +6476,6 @@ async def final_admin_text(update,context):
     except Exception as e:
         await update.message.reply_text(f"❌ خطا: {html.escape(str(e))}", parse_mode="HTML"); return True
 
-async def navigation_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1] if ":" in (q.data or "") else ""; clear_flow(context)
-    if action=="main":
-        # Main Menu must work from every inline error/recovery screen without
-        # deleting the only visible bot message. Render the compact root in-place.
-        try:
-            fa = lang(uid) == "fa"
-            root_text = _root_menu_text(uid)
-            await q.message.edit_text(root_text, parse_mode="HTML", reply_markup=_compact_root_inline(uid))
-        except Exception:
-            # Last-resort fallback: keep the reply keyboard available.
-            try:
-                await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
-            except Exception:
-                pass
-        return
 
 def support_keyboard(uid):
     fa=lang(uid)=="fa"
@@ -7040,14 +6766,6 @@ async def referral_callback(update, context):
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
         return
 
-def prices_keyboard(uid):
-    fa=lang(uid)=="fa"
-    labels=[("usd","💵 دلار" if fa else "💵 USD"),("eur","💶 یورو" if fa else "💶 EUR"),("gold18","🪙 طلای ۱۸" if fa else "🪙 18K Gold"),("coin","🪙 سکه امامی" if fa else "🪙 Coin"),("btc","₿ BTC"),("eth","Ξ ETH"),("usdt","💵 USDT"),("bnb","🟡 BNB"),("sol","🟣 SOL"),("xrp","⚡ XRP"),("sp500","📊 S&P 500"),("nasdaq","📊 Nasdaq"),("dow","📊 Dow Jones")]
-    rows=[]
-    for i in range(0,len(labels),2): rows.append([InlineKeyboardButton(a,callback_data=f"price:{k}") for k,a in labels[i:i+2]])
-    rows.append([InlineKeyboardButton("🔄 بروزرسانی همه" if fa else "🔄 Refresh all",callback_data="price:all")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="price:main")])
-    return InlineKeyboardMarkup(rows)
 
 async def fetch_url_json(url):
     req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 MyTasksBot/1.0"})
@@ -7158,19 +6876,6 @@ async def fetch_price(asset):
         return f"{float(normalized):,.0f} ریال"
     return raw
 
-async def price_callback(update,context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(":",1)[1]
-    if asset=="main": await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
-    names={"usd":"دلار","eur":"یورو","gold18":"طلای ۱۸ عیار","coin":"سکه امامی","btc":"BTC (بازار ایران)","eth":"ETH (بازار ایران)","usdt":"USDT","bnb":"BNB","sol":"Solana","xrp":"XRP","sp500":"S&P 500","nasdaq":"Nasdaq","dow":"Dow Jones"}
-    assets=list(names) if asset=="all" else [asset]
-    lines=["📈 قیمت آنلاین", f"🕒 بروزرسانی: {fa_datetime(datetime.now(TZ), True)}", ""]
-    for a in assets:
-        try: lines.append(f"{names[a]}: {await fetch_price(a)}")
-        except Exception as e: lines.append(f"{names[a]}: ❌ دریافت نشد") ; logger.warning("Price %s failed: %s",a,e)
-    try:
-        await q.message.edit_text("\n".join(lines),reply_markup=prices_keyboard(uid))
-    except Exception:
-        await q.message.reply_text("\n".join(lines),reply_markup=prices_keyboard(uid))
 
 async def prices(update,context):
     uid=update.effective_user.id
@@ -8449,10 +8154,6 @@ async def v25_portfolio_menu(update,context):
     else: lines.append('هنوز سرمایه‌ای ثبت نکرده‌ای.')
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=v25_portfolio_menu_keyboard(uid))
 
-async def v25_portfolio_summary(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM portfolio_assets WHERE user_id=? AND enabled=1",(uid,)).fetchall(); c.close(); total_cost=sum(float(r['quantity'])*float(r['buy_price_rial'])+float(r['fees_rial'] or 0) for r in rows)
-    text=f"📊 <b>خلاصه سرمایه</b>\n\n💰 هزینه خرید ثبت‌شده: {total_cost:,.0f} ریال\n\nبرای سود/زیان لحظه‌ای، قیمت جاری هر دارایی از بخش «قیمت بازار» گرفته می‌شود."
-    await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=v25_portfolio_menu_keyboard(uid))
 
 async def v25_installments_menu(update,context):
     uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM installment_plans WHERE user_id=? AND enabled=1 ORDER BY first_due_date",(uid,)).fetchall(); c.close(); lines=['💳 <b>اقساط و تسهیلات</b>','']
@@ -8472,16 +8173,10 @@ def v25_calc_installment(principal, annual_interest, months):
     total=monthly*months; interest=total-principal
     return round(monthly),round(interest),round(total)
 
-def v25_banks():
-    return ['ملی ایران','سپهر صادرات','تجارت','ملت','رفاه کارگران','پارسیان','پاسارگاد','سامان','سپه','مسکن','کشاورزی','شهر','دی','سینا','آینده','گردشگری','خاورمیانه','ایران‌زمین','مهر ایران','رسالت','پست بانک ایران']
 
 def v25_bank_keyboard(uid):
     fa=lang(uid)=='fa'; rows=[[InlineKeyboardButton('🏦 '+b,callback_data=f'v25:instbank:{i}')] for i,b in enumerate(v25_banks())]; rows.append([InlineKeyboardButton('✏️ بانک دلخواه' if fa else '✏️ Custom Bank',callback_data='v25:instbank_custom')]); rows.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:installments'),main_menu_button(uid)]); return InlineKeyboardMarkup(rows)
 
-def v25_rates_keyboard(uid):
-    vals=[0,1,2,3,4,5,7,10,12,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,30]
-    rows=[[InlineKeyboardButton(f'{x}٪',callback_data=f'v25:instrate:{x}'),InlineKeyboardButton(f'{x+1}٪',callback_data=f'v25:instrate:{x+1}')] for x in vals[::2] if x<30]
-    rows.append([InlineKeyboardButton('✏️ نرخ دلخواه' if lang(uid)=='fa' else '✏️ Custom Rate',callback_data='v25:instrate_custom')]); rows.append([InlineKeyboardButton('⬅️ بازگشت' if lang(uid)=='fa' else '⬅️ Back',callback_data='v25:instadd'),main_menu_button(uid)]); return InlineKeyboardMarkup(rows)
 
 async def v25_business_menu(update,context):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; ensure_business_profile(uid)
@@ -8518,12 +8213,6 @@ async def v25_vip_plans(update,context):
     kb.append([InlineKeyboardButton('⬅️ بازگشت' if lang(uid)=='fa' else '⬅️ Back',callback_data='v25:business'),main_menu_button(uid)])
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
-async def v25_admin_feature_status(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT key,enabled FROM feature_flags WHERE key IN (%s) ORDER BY key" % ','.join('?'*len(V25_FEATURE_KEYS)),tuple(V25_FEATURE_KEYS)).fetchall(); c.close(); text='🔧 <b>وضعیت قابلیت‌های جدید</b>\n\n'; kb=[]
-    for r in rows:
-        key=r['key']; label=V25_FEATURE_LABELS.get(key,key); text+=f"{'🟢' if r['enabled'] else '🔴'} {label}\n"; kb.append([InlineKeyboardButton(f"{'🟢' if r['enabled'] else '🔴'} {label}",callback_data=f'v25:feat:{key}')])
-    kb.append([InlineKeyboardButton('⬅️ پنل مدیریت' if lang(uid)=='fa' else '⬅️ Admin Panel',callback_data='adm:stats')])
-    await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_voice_prompt(update,context):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; clear_flow(context); context.user_data['v25_voice_mode']=True
@@ -8917,14 +8606,6 @@ def keyboard(uid):
     if admin_is_allowed(uid): rows.append(['🛡 پنل مدیریت' if fa else '🛡 Admin Panel'])
     return ReplyKeyboardMarkup(rows,resize_keyboard=True)
 
-# Improve the online-price menu and remove crypto from the default user-facing list.
-def prices_keyboard(uid):
-    fa=lang(uid)=='fa'; labels=[('usd','💵 دلار' if fa else '💵 USD'),('eur','💶 یورو' if fa else '💶 EUR'),('gold18','🥇 طلای ۱۸ عیار' if fa else '🥇 18K Gold'),('coin','🪙 سکه امامی' if fa else '🪙 Emami Coin'),('silver','🥈 نقره' if fa else '🥈 Silver'),('copper','🟠 مس' if fa else '🟠 Copper'),('aluminum','⚙️ آلومینیوم' if fa else '⚙️ Aluminum'),('nickel','🔩 نیکل' if fa else '🔩 Nickel'),('zinc','🔘 روی' if fa else '🔘 Zinc'),('lead','⛓️ سرب' if fa else '⛓️ Lead')]
-    rows=[[InlineKeyboardButton(a,callback_data=f'price:{k}') for k,a in labels[i:i+2]] for i in range(0,len(labels),2)]
-    rows.append([InlineKeyboardButton('🔄 بروزرسانی همه' if fa else '🔄 Refresh all',callback_data='price:all')])
-    rows.append([InlineKeyboardButton('💰 سرمایه‌های من' if fa else '💰 My Portfolio',callback_data='v25:portfolio')])
-    rows.append([InlineKeyboardButton('🏠 منوی اصلی' if fa else '🏠 Main Menu',callback_data='price:main')])
-    return InlineKeyboardMarkup(rows)
 
 async def fetch_price_v25(asset):
     # Local Iran-market values from TGJU plus global-metal fallbacks converted via USD/Rial.
@@ -8945,26 +8626,7 @@ async def fetch_price_v25(asset):
         except Exception as e: raise RuntimeError(f'{asset}: {e}')
     raise KeyError(asset)
 
-async def v25_show_price(update,context,asset):
-    uid=update.effective_user.id; fa=lang(uid)=='fa'; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-    assets=list(names) if asset=='all' else [asset]; lines=['📈 <b>قیمت بازار</b>','']; stamp=fa_datetime(datetime.now(TZ), True)
-    for a in assets:
-        try:
-            val,unit,confidence=await fetch_price_v25(a); lines.append(f"{names[a]}: <b>{val:,.0f}</b> {unit} | {'🟢 اطمینان بالا' if confidence=='multi' else '🟡 یک منبع در دسترس'}")
-        except Exception:
-            lines.append(f"{names[a]}: ⚠️ در حال حاضر داده قابل‌اعتماد در دسترس نیست")
-    lines += ['',f'🕐 آخرین بررسی: {stamp}', '⚠️ قیمت‌ها لحظه‌ای‌اند و ممکن است با بازار کمی تفاوت داشته باشند.']
-    kb=prices_keyboard(uid)
-    if update.callback_query: await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
-    else: await update.message.reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
 
-async def price_callback(update,context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
-    if asset=='main':
-        await q.message.edit_text('🏠 منوی اصلی')
-        await q.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid))
-        return
-    await v25_show_price(update,context,asset)
 
 # Patch booking after a slot: use saved profile when possible, then services, then payment options.
 _LEGACY_BOOKING_SLOT_SELECT=booking_slot_select
@@ -9254,18 +8916,6 @@ async def v25_admin_menu(update, context):
     rows.append([InlineKeyboardButton('⬅️ پنل مدیریت' if fa else '⬅️ Admin Panel', callback_data='adm:stats'), main_menu_button(uid)])
     await update.callback_query.message.edit_text('🛡️ <b>مرکز مدیریت نسخه نهایی</b>\n\nتمام قابلیت‌های جدید از همین بخش کنترل می‌شوند.' if fa else '🛡️ <b>Final Admin Center</b>\n\nAll new modules are controlled here.', parse_mode='HTML', reply_markup=InlineKeyboardMarkup(rows))
 
-async def v25_admin_feature_status(update,context):
-    uid=update.effective_user.id
-    if not admin_guard(uid):
-        await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True); return
-    keys=list(V25_FEATURE_LABELS.keys())
-    c=db(); rows=c.execute("SELECT key,enabled FROM feature_flags WHERE key IN (%s) ORDER BY key" % ','.join('?'*len(keys)),tuple(keys)).fetchall(); c.close()
-    text='🔧 <b>وضعیت همه قابلیت‌ها</b>\n\n'; kb=[]
-    for r in rows:
-        label=V25_FEATURE_LABELS.get(r['key'],r['key']); state='🟢' if r['enabled'] else '🔴'; text+=f'{state} {label}\n'
-        kb.append([InlineKeyboardButton(f'{state} {label}',callback_data=f'v25:feat:{r["key"]}')])
-    kb.append([InlineKeyboardButton('⬅️ مدیریت' if lang(uid)=='fa' else '⬅️ Admin',callback_data='v25:adminmenu'), main_menu_button(uid)])
-    await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_plans(update,context):
     uid=update.effective_user.id
@@ -9400,48 +9050,7 @@ async def fetch_price_v25(asset):
         return val, unit+' | اختلاف منابع', 'disputed'
     return val,unit,conf
 
-async def v25_show_price(update,context,asset):
-    uid=update.effective_user.id; fa=lang(uid)=='fa'
-    names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-    names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead'}
-    assets=list(names) if asset=='all' else [asset]; lines=[('📈 <b>قیمت بازار</b>' if fa else '📈 <b>Market Prices</b>'),'']
-    for a in assets:
-        try:
-            val,unit,confidence=await fetch_price_v25(a)
-            if confidence=='multi': conf='🟢 تطبیق دو منبع' if fa else '🟢 Two sources agree'
-            elif confidence=='disputed': conf='🟡 اختلاف قابل‌توجه بین منابع' if fa else '🟡 Source disagreement'
-            else: conf='🟡 یک منبع در دسترس' if fa else '🟡 One source available'
-            label=names[a] if fa else names_en[a]
-            lines.append(f'{label}: <b>{val:,.0f}</b> {unit}\n{conf}')
-        except Exception:
-            label=names[a] if fa else names_en[a]; lines.append(f'{label}: ⚠️ '+('داده قابل‌اعتماد در دسترس نیست' if fa else 'Reliable data unavailable'))
-    lines += ['',('🕐 زمان بررسی: '+fa_datetime(datetime.now(TZ), True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ), True)),'⚠️ قیمت بازار قطعیِ مطلق نیست و ممکن است در لحظه تغییر کند.' if fa else '⚠️ Market prices are live indications and can move between updates.']
-    kb=prices_keyboard(uid)
-    if update.callback_query: await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
-    else: await update.message.reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=kb)
 
-# ------------------ Morning / Night / Friday unified messages ------------------
-async def morning_job(context):
-    now=datetime.now(TZ)
-    if now.hour!=7 or now.minute!=0 or get_system_setting('morning_message_enabled','1')!='1': return
-    rows=_v25_exec('SELECT user_id FROM users WHERE COALESCE(blocked,0)=0',fetchall=True)
-    for r in rows:
-        uid=r['user_id']; key=f'morning:{uid}:{now.date().isoformat()}'
-        if _v25_exec('SELECT 1 FROM delivery_log WHERE delivery_key=?',(key,),fetchone=True): continue
-        goals=get_goals(uid); today=now.date().isoformat(); done=_v25_exec("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND goal_date=? AND status='done'",(uid,today),fetchone=True)['n']; total=len(goals)
-        lines=[f'☀️ <b>صبح بخیر {html.escape(display_name(uid))}!</b>','', 'امروز این برنامه را داری 👇','']
-        if goals:
-            for g in goals[:12]:
-                st=get_status(uid,g['id']); icon='✅' if st=='done' else '⬜'
-                lines.append(f'{icon} {html.escape(g["name"])}')
-        else:
-            lines.append('🎯 هنوز هدفی برای امروز نداری. یک هدف کوچک انتخاب کن.')
-        if now.weekday()==4 and get_system_setting('friday_pause','0')=='1': lines += ['', '🗓️ <b>امروز جمعه و روز استراحت است.</b>', 'یادآوری‌های عادیِ هدف‌ها برای امروز متوقف هستند.']
-        lines += ['',f'📊 امروز: {done}/{total} هدف انجام شده', '🚀 قدم کوچک امروزت را همین حالا شروع کن.']
-        kb=InlineKeyboardMarkup([[InlineKeyboardButton('🎯 اهداف امروز' if lang(uid)=='fa' else '🎯 Today',callback_data='v25:today'),InlineKeyboardButton('🚀 بریم' if lang(uid)=='fa' else '🚀 Start',callback_data='v25:today')],[InlineKeyboardButton('🎯 هدف‌سازی' if lang(uid)=='fa' else '🎯 Build a Goal',callback_data='goals:main'),InlineKeyboardButton('📊 گزارش روزانه' if lang(uid)=='fa' else '📊 Daily Report',callback_data='v25:reports')],[main_menu_button(uid)]])
-        try:
-            await context.bot.send_message(uid,'\n'.join(lines),parse_mode='HTML',reply_markup=kb); _v25_exec('INSERT OR IGNORE INTO delivery_log(delivery_key,user_id,delivery_type,created_at) VALUES(?,?,?,?)',(key,uid,'morning',_v25_now()))
-        except Exception as e: logger.warning('morning V25 failed for %s: %s',uid,e)
 
 async def v25_night_job(context):
     now=datetime.now(TZ)
@@ -10394,12 +10003,6 @@ def redeem_tokens_for_vip(uid):
 
 # Add a token button to the unified user keyboard without disturbing legacy rows.
 _OLD_KEYBOARD_TOKEN=keyboard
-def keyboard(uid):
-    kb=_OLD_KEYBOARD_TOKEN(uid); rows=[list(r) for r in kb.keyboard]
-    fa=lang(uid)=="fa"
-    label="🎟️ توکن‌های من" if fa else "🎟️ My Tokens"
-    if not any(label in x for r in rows for x in r): rows.append([label])
-    return ReplyKeyboardMarkup(rows,resize_keyboard=True)
 
 # Re-route token text and token callbacks through the already registered v25 dispatcher.
 _OLD_V25_CALLBACK_TOKEN=v25_callback
@@ -10422,12 +10025,6 @@ admin_keyboard=final_admin_keyboard
 
 # Add token wallet text routing and minimal XP->token / token->VIP actions.
 _OLD_TEXT_ROUTER_TOKEN=text_router
-async def text_router(update,context):
-    uid=update.effective_user.id; txt=(update.message.text or '').strip()
-    if txt in ('🎟️ توکن‌های من','🎟️ My Tokens'):
-        tokens_from_xp(uid)
-        await update.message.reply_text(token_user_text(uid),parse_mode='HTML',reply_markup=token_user_keyboard(uid)); return
-    return await _OLD_TEXT_ROUTER_TOKEN(update,context)
 
 # Ensure token tables exist at every startup, without dropping or rewriting existing data.
 _OLD_INIT_DB_TOKEN=init_db
@@ -10710,154 +10307,8 @@ async def _forced_sub_admin_panel(update, context):
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
 
 
-async def forced_sub_callback(update, context):
-    """Handle forced subscription admin callbacks."""
-    q = update.callback_query
-    uid = q.from_user.id
-    if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True)
-        return
-    
-    data = q.data or ""
-    if not data.startswith("forcedsub:"):
-        return
-    action = data[10:]
-    
-    if action == "home":
-        await _forced_sub_admin_panel(update, context)
-        return
-    if action == "check":
-        # User-facing membership check — delegate to the dedicated handler.
-        await forced_sub_check_callback(update, context)
-        return
-    if action == "toggle":
-        current = _forced_sub_get("forced_sub_enabled", "0")
-        _forced_sub_set("forced_sub_enabled", "0" if current == "1" else "1")
-        await _forced_sub_admin_panel(update, context)
-    elif action == "duration":
-        text = (
-            "⏱️ <b>مدت عضویت الزامی</b>\n\n"
-            "مدت موردنظر را انتخاب کنید:"
-        )
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⏰ ۱ ساعت", callback_data="forcedsub:set_dur:1:hours"),
-             InlineKeyboardButton("⏰ ۶ ساعت", callback_data="forcedsub:set_dur:6:hours"),
-             InlineKeyboardButton("⏰ ۲۴ ساعت", callback_data="forcedsub:set_dur:24:hours")],
-            [InlineKeyboardButton("📅 ۳ روز", callback_data="forcedsub:set_dur:3:days"),
-             InlineKeyboardButton("📅 ۷ روز", callback_data="forcedsub:set_dur:7:days"),
-             InlineKeyboardButton("📅 ۳۰ روز", callback_data="forcedsub:set_dur:30:days")],
-            [InlineKeyboardButton("♾️ دائمی", callback_data="forcedsub:set_dur:0:forever")],
-            [InlineKeyboardButton("✏️ مدت دلخواه", callback_data="forcedsub:custom_dur")],
-            [InlineKeyboardButton("⬅️ بازگشت", callback_data="forcedsub:home")],
-        ])
-        await q.answer()
-        try:
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            await q.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-    elif action.startswith("set_dur:"):
-        parts = action.split(":")
-        dval = int(parts[1])
-        dtype = parts[2]
-        _forced_sub_set("forced_sub_duration_type", dtype)
-        _forced_sub_set("forced_sub_duration_value", str(dval))
-        await q.answer("✅ ذخیره شد", show_alert=True)
-        await _forced_sub_admin_panel(update, context)
-    elif action == "custom_dur":
-        context.user_data["forced_sub_wait"] = "custom_duration"
-        await q.answer()
-        await q.message.reply_text(
-            "✏️ <b>مدت دلخواه</b>\n\n"
-            "تعداد را بفرستید (مثلاً 48 برای ۴۸ ساعت یا 5 برای ۵ روز):\n"
-            "در انتها بنویسید 'h' برای ساعت یا 'd' برای روز\n"
-            "مثال: <code>48h</code> یا <code>7d</code>",
-            parse_mode="HTML"
-        )
-    elif action == "channel":
-        context.user_data["forced_sub_wait"] = "channel_url"
-        await q.answer()
-        await q.message.reply_text(
-            "🔗 <b>کانال اجباری</b>\n\n"
-            "یکی از این موارد را بفرستید:\n"
-            "@ChannelUsername\n"
-            "https://t.me/ChannelUsername\n"
-            "یا شناسه کانال مثل <code>-1001234567890</code>",
-            parse_mode="HTML"
-        )
-    elif action == "message":
-        context.user_data["forced_sub_wait"] = "custom_message"
-        await q.answer()
-        await q.message.reply_text(
-            "✉️ <b>پیام اختصاصی</b>\n\n"
-            "پیامی که کاربران غیرعضو می‌بینند را بفرستید:\n"
-            "(با <code>{duration}</code> مدت الزامی جایگذاری می‌شود)",
-            parse_mode="HTML"
-        )
-    elif action == "users":
-        c = db()
-        rows = c.execute("""
-            SELECT u.user_id, u.first_name, m.joined_at, m.is_member, m.left_at
-            FROM user_channel_membership m
-            JOIN users u ON u.user_id = m.user_id
-            ORDER BY m.is_member DESC, m.joined_at DESC
-            LIMIT 30
-        """).fetchall()
-        c.close()
-        lines = ["👥 <b>وضعیت عضویت کاربران</b>", ""]
-        for r in rows:
-            status = "🟢 عضو" if r["is_member"] else "🔴 ترک‌کرده"
-            joined = (r["joined_at"] or "")[:16]
-            lines.append(f"{status} | {r['first_name'] or 'بدون نام'} | ID: <code>{r['user_id']}</code> | {joined}")
-        if not rows:
-            lines.append("هیچ رکوردی ثبت نشده.")
-        text = "\n".join(lines)
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ بازگشت", callback_data="forcedsub:home")]])
-        await q.answer()
-        try:
-            await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            await q.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-    elif action == "check_all":
-        if not _forced_sub_is_enabled():
-            await q.answer("سیستم غیرفعال است.", show_alert=True)
-            return
-        required_hours = _forced_sub_duration_hours()
-        c = db()
-        rows = c.execute("SELECT user_id FROM user_channel_membership WHERE is_member=0").fetchall()
-        c.close()
-        bot = context.bot
-        blocked_count = 0
-        for r in rows:
-            uid_check = r["user_id"]
-            if uid_check in ADMIN_IDS:
-                continue
-            if not _forced_sub_check_user(uid_check):
-                c = db()
-                c.execute("UPDATE users SET blocked=1 WHERE user_id=? AND COALESCE(blocked,0)=0", (uid_check,))
-                c.commit()
-                c.close()
-                blocked_count += 1
-        await q.answer(f"🔍 {blocked_count} کاربر محدود شد", show_alert=True)
-        await _forced_sub_admin_panel(update, context)
 
 
-async def forced_sub_check_callback(update, context):
-    """Handle forcedsub:check callback from users."""
-    q = update.callback_query
-    uid = q.from_user.id
-    is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
-    if is_ok:
-        await q.answer("✅ عضویت شما تأیید شد.", show_alert=True)
-        fa = lang(uid) == "fa"
-        await q.message.reply_text(
-            "✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانید از امکانات ربات استفاده کنید.",
-            parse_mode="HTML",
-            reply_markup=keyboard(uid)
-        )
-    else:
-        msg, kb = result
-        await q.answer("❌ عضویت تأیید نشد.", show_alert=True)
-        await q.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
 
 
 async def _show_admin_section(update, context, section):
@@ -12474,10 +11925,17 @@ def master_tests():
     check("Time parser", lambda: parse_time("۱۸:۳۰")=="18:30" and parse_time("2360") is None)
     check("Admin isolation", lambda: (not master_guard(0)) and master_guard(master_owner_id()))
     check("RBAC default deny", lambda: not master_has_permission(999999999,"manage_finance"))
-    check("DB integrity", lambda: db().execute("PRAGMA integrity_check").fetchone()[0]=="ok")
-    check("Feature table", lambda: db().execute("SELECT 1 FROM feature_flags LIMIT 1").fetchone() is not None)
-    check("Audit table", lambda: db().execute("SELECT 1 FROM admin_logs LIMIT 1").fetchone() is not None)
-    check("Incident table", lambda: db().execute("SELECT 1 FROM incident_tickets LIMIT 1").fetchone() is not None)
+    def _q(sql):
+        # BUGFIX: every self-test used to open a connection and never close it.
+        c=db()
+        try:
+            return c.execute(sql).fetchone()
+        finally:
+            c.close()
+    check("DB integrity", lambda: _q("PRAGMA integrity_check")[0]=="ok")
+    check("Feature table", lambda: _q("SELECT 1 FROM feature_flags LIMIT 1") is not None)
+    check("Audit table", lambda: _q("SELECT 1 FROM admin_logs LIMIT 1") is not None)
+    check("Incident table", lambda: _q("SELECT 1 FROM incident_tickets LIMIT 1") is not None)
     return results
 
 
@@ -12709,21 +12167,6 @@ def _manager_settings_text(uid):
 
 # New manager access must not depend on the static ADMIN_IDS list.
 _OLD_MASTER_GUARD_FINAL = master_guard
-def master_guard(uid, permission=None):
-    if uid == master_owner_id() and uid:
-        return True if permission is None else master_has_permission(uid, permission)
-    try:
-        c = db()
-        r = c.execute(
-            "SELECT active FROM management_roles WHERE user_id=? LIMIT 1",
-            (int(uid),)
-        ).fetchone()
-        c.close()
-        if r and int(r["active"] or 0) == 1:
-            return True if permission is None else master_has_permission(uid, permission)
-    except Exception:
-        pass
-    return _OLD_MASTER_GUARD_FINAL(uid, permission)
 
 # Settings callback wrapper: add the missing manager section and a categorized menu.
 _OLD_SETTINGS_CALLBACK_MANAGER = settings_callback
@@ -13051,38 +12494,6 @@ def _is_active_manager(uid):
     except Exception:
         return uid in ADMIN_IDS if uid else False
 
-def _manager_main_keyboard(uid):
-    fa = lang(uid) == "fa"
-    role = master_role(uid)
-    role_label = _manager_role_label(role, fa)
-
-    rows = [
-        ["🛡 مدیریت ربات" if fa else "🛡 Bot Management", "📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
-        ["👥 کاربران و نقش‌ها" if fa else "👥 Users & Roles", "🎫 تیکت‌ها و Incident" if fa else "🎫 Tickets & Incidents"],
-        ["🤖 مدیریت AI" if fa else "🤖 AI Management", "📢 کانال و انتشار" if fa else "📢 Channels & Publishing"],
-        ["💰 مالی و پرداخت" if fa else "💰 Finance & Payments", "💎 VIP / XP / Token" if fa else "💎 VIP / XP / Token"],
-        ["🩺 سلامت و Diagnostics" if fa else "🩺 Health & Diagnostics", "⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings"],
-        ["🧑‍💼 مدیریت مدیران" if fa else "🧑‍💼 Manager Management", "👤 استفاده از ربات" if fa else "👤 Use Bot"],
-        ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
-    ]
-
-    # Respect RBAC: remove management entries the role cannot access.
-    if not master_has_permission(uid, "manage_roles"):
-        rows = [
-            r for r in rows
-            if not any(
-                ("مدیریت مدیران" in str(x)) or ("Manager Management" in str(x))
-                for x in r
-            )
-        ]
-
-    # Keep the role visible as the first informational row.
-    title = (
-        f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>"
-        if fa else
-        f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>"
-    )
-    return title, ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
 async def _show_manager_main(update, context):
     uid = update.effective_user.id
@@ -13628,16 +13039,6 @@ async def time_callback(update,context):
         await q.message.edit_text("🔁 چند روز/چه مدت یادآوری شود؟" if lang(uid)=='fa' else "🔁 How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return
     context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
 
-async def custom_time_save(update,context):
-    uid=update.effective_user.id
-    if not context.user_data.get('awaiting_custom_time'): return False
-    reminder=parse_time(update.message.text.strip())
-    if reminder is None: await update.message.reply_text(T[lang(uid)]['bad_time']); return True
-    name=context.user_data.get('name'); category=context.user_data.get('category')
-    if not name or not category: context.user_data.clear(); return False
-    priority=context.user_data.get('priority',2); duration=context.user_data.get('duration_minutes'); add_goal(uid,name,category,reminder,priority,duration)
-    c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close(); context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); context.user_data.pop('awaiting_custom_time',None)
-    await update.message.reply_text("🔁 چند روز/چه مدت یادآوری شود؟" if lang(uid)=='fa' else "🔁 How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return True
 
 async def reminder_job(context):
     now=datetime.now(TZ); hhmm=now.strftime('%H:%M'); today=now.date().isoformat(); c=db()
@@ -13868,22 +13269,6 @@ async def _set_root_keyboard_silently(update, uid):
     return None
 
 
-async def navigation_callback(update, context):
-    """Return to the persistent root menu without leaving a visible Home message."""
-    q = update.callback_query
-    uid = q.from_user.id
-    await q.answer()
-    clear_flow(context)
-    if (q.data or "") == "nav:main":
-        # Delete the old inline screen FIRST, then send the message that carries
-        # the persistent ReplyKeyboard. This prevents the keyboard carrier from
-        # being removed/flickering on Telegram clients.
-        try:
-            await q.message.delete()
-        except Exception:
-            pass
-        await _set_root_keyboard_silently(update, uid)
-        return
 
 # Keep the settings callback on the same message and never emit a duplicate
 # "🏠 منوی اصلی" message when the user chooses Main Menu.
@@ -16937,20 +16322,6 @@ async def _direct_forced_sub_enforce(uid, bot):
     kb.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن",callback_data="forcedsub:check")])
     return False,("\n".join(lines),InlineKeyboardMarkup(kb))
 
-async def require_subscription(update, context):
-    uid=update.effective_user.id
-    if admin_guard(uid): return True
-    if _direct_fsub_enabled():
-        ok,result=await _direct_forced_sub_enforce(uid,context.bot)
-        if ok: return True
-        msg,kb=result
-        if update.callback_query:
-            await update.callback_query.answer("ابتدا عضو کانال شوید.",show_alert=True)
-            try: await update.callback_query.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
-            except Exception: await update.callback_query.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
-        elif update.message: await update.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
-        return False
-    return await _LEGACY_REQUIRE_SUB_BEFORE_DIRECT(update,context)
 
 _LEGACY_REQUIRE_SUB_BEFORE_DIRECT = globals().get("require_subscription")
 # The assignment above intentionally replaces the function after saving its old implementation.
@@ -17160,6 +16531,11 @@ def main():
     app.add_handler(CommandHandler("myid", my_id))
     app.add_handler(CommandHandler("admin", admin_command))
 
+    # BUGFIX: legacy inline buttons (profile / settings / lang / achievements /
+    # xp / gifts / new_goal / prices) had no handler at all and did nothing.
+    app.add_handler(CallbackQueryHandler(
+        legacy_compat_callback,
+        pattern=r"^(noop|profile|settings|lang|achievements|new_goal|xp:info|xp:history|gifts:list|prices:menu)$"))
     app.add_handler(CallbackQueryHandler(subscription_check_callback, pattern=r"^subcheck$"))
     app.add_handler(CallbackQueryHandler(forced_sub_check_callback, pattern=r"^forcedsub:check$") )
     app.add_handler(CallbackQueryHandler(forced_sub_callback, pattern=r"^forcedsub:(?!check$)"))
@@ -17430,6 +16806,69 @@ async def text_router(update, context):
         except Exception:
             logger.exception("Failed to send isolated flow recovery for uid=%s", uid)
         return True
+
+# === LEGACY BUTTON COMPATIBILITY 2026-09-09 ===
+# Some older keyboards still emit short callback_data values that were never
+# registered. They are mapped here onto the current compact-menu routes so the
+# buttons work instead of silently doing nothing.
+_LEGACY_CB_MAP = {
+    "profile": "cm:profile",
+    "settings": "cm:settings",
+    "achievements": "cm:achievements",
+    "new_goal": "cm:custom_goal",
+    "prices:menu": "cm:prices",
+    "xp:info": "cm:xp",
+    "xp:history": "cm:xp",
+    "gifts:list": "cm:vip",
+}
+
+
+async def legacy_compat_callback(update, context):
+    q = update.callback_query
+    data = str(q.data or "")
+    uid = q.from_user.id
+    if data == "noop":
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+    if data == "lang":
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        await q.message.edit_text(
+            "زبان را انتخاب کن / Choose language:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🇮🇷 فارسی", callback_data="setlang:fa"),
+                 InlineKeyboardButton("🇬🇧 English", callback_data="setlang:en")],
+                [InlineKeyboardButton("↩️ تنظیمات", callback_data="settings:back")],
+            ]),
+        )
+        return
+    target = _LEGACY_CB_MAP.get(data)
+    if not target:
+        try:
+            await q.answer()
+        except Exception:
+            pass
+        return
+    try:
+        q.data = target
+    except Exception:
+        # Telegram objects are immutable in newer PTB versions.
+        try:
+            object.__setattr__(q, "data", target)
+        except Exception:
+            logger.warning("Could not remap legacy callback %s for uid=%s", data, uid)
+            try:
+                await q.answer("لطفاً از منوی اصلی استفاده کن.", show_alert=True)
+            except Exception:
+                pass
+            return
+    return await compact_menu_callback(update, context)
+
 
 if __name__ == "__main__":
     main()
