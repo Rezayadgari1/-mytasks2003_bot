@@ -1,0 +1,81 @@
+name: One-time bot repair
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.actor == 'Rezayadgari1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair bot.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('bot.py')
+          s = p.read_text(encoding='utf-8')
+
+          # Fix feature aliases that made visible goal buttons appear but do nothing.
+          old = '"goals": "goals",\n    "reminders": "reminders"'
+          new = '"goals": "goals", "edit": "goals",\n    "reminders": "reminders"'
+          if old in s and '"edit": "goals"' not in s:
+              s = s.replace(old, new, 1)
+
+          # Replace the global time parser with a strict, Persian-digit-safe parser.
+          marker = 'def parse_time(s):\n'
+          start = s.find(marker)
+          if start >= 0:
+              end = s.find('\ndef ', start + len(marker))
+              if end < 0:
+                  raise SystemExit('parse_time end marker not found')
+              replacement = '''def parse_time(s):\n    """Parse goal/reminder time in Persian or Latin digits.\n    Accepts H:MM, HH:MM, H.MM, HH.MM, 3/4 digit compact forms.\n    Returns normalized HH:MM or None.\n    """\n    if s is None:\n        return None\n    s = normalize_digits(str(s).strip()).replace("：", ":").replace(".", ":")\n    s = re.sub(r"\\s+", "", s)\n    if not s:\n        return None\n    if s.isdigit():\n        if len(s) == 1 or len(s) == 2:\n            h, m = int(s), 0\n        elif len(s) == 3:\n            h, m = int(s[0]), int(s[1:])\n        elif len(s) == 4:\n            h, m = int(s[:2]), int(s[2:])\n        else:\n            return None\n    else:\n        mobj = re.fullmatch(r"(\\d{1,2}):(\\d{1,2})", s)\n        if not mobj:\n            return None\n        h, m = int(mobj.group(1)), int(mobj.group(2))\n    if not (0 <= h <= 23 and 0 <= m <= 59):\n        return None\n    return f"{h:02d}:{m:02d}"\n'''
+              s = s[:start] + replacement + s[end:]
+
+          # Add a final compatibility layer before main(). It consumes manual goal time
+          # before any older text-router revision and fixes the two common feature aliases.
+          guard = '# === ONE-TIME BUTTON/TIME REPAIR 2026-09-08 ==='
+          if guard not in s:
+              pos = s.rfind('if __name__ == "__main__":')
+              if pos < 0:
+                  raise SystemExit('main guard not found')
+              patch = '''# === ONE-TIME BUTTON/TIME REPAIR 2026-09-08 ===\n# Keep all fixes inside bot.py. No external runtime patch file is required.\n_FINAL_REPAIR_FEATURE_ALIASES = {"edit": "goals", "calendar": "calendar_hub"}\n_FINAL_REPAIR_OLD_FEATURE_ALLOWED = user_feature_allowed\ndef user_feature_allowed(uid, key):\n    key = _FINAL_REPAIR_FEATURE_ALIASES.get(str(key or ""), str(key or ""))\n    return _FINAL_REPAIR_OLD_FEATURE_ALLOWED(uid, key)\n\n_FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE = custom_time_save\nasync def custom_time_save(update, context):\n    # The active manual-time state always wins over generic text handling.\n    if not context.user_data.get("awaiting_custom_time"):\n        return await _FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE(update, context)\n    text = (getattr(update.message, "text", "") or "").strip()\n    tm = parse_time(text)\n    if tm is None:\n        uid = update.effective_user.id\n        await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")\n        return True\n    # Store the normalized value in the active goal flow and reuse the existing save path.\n    context.user_data["_final_manual_goal_time"] = tm\n    # The existing implementation already inserts the goal and clears the flow.\n    return await _FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE(update, context)\n\n# Ensure manual time is consumed before the generic text router.\n_FINAL_REPAIR_OLD_TEXT_ROUTER = text_router\nasync def text_router(update, context):\n    if update.message and getattr(update.message, "text", None) and context.user_data.get("awaiting_custom_time"):\n        try:\n            if await custom_time_save(update, context):\n                return\n        except Exception:\n            logger.exception("Final manual goal time repair failed")\n            await update.message.reply_text("❌ ثبت ساعت انجام نشد. مثال: 18:30")\n            return\n    return await _FINAL_REPAIR_OLD_TEXT_ROUTER(update, context)\n\n'''
+              s = s[:pos] + patch + s[pos:]
+
+          # Syntax/structural checks before committing.
+          compile(s, 'bot.py', 'exec')
+          if '"edit": "goals"' not in s:
+              raise SystemExit('edit feature alias was not applied')
+          if 'awaiting_custom_time' not in s:
+              raise SystemExit('manual goal time state missing')
+          p.write_text(s, encoding='utf-8')
+          print('bot.py repaired:', len(s.splitlines()), 'lines')
+          PY
+      - name: Test parser and compile
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          s = Path('bot.py').read_text(encoding='utf-8')
+          ast.parse(s)
+          ns = {}
+          exec(compile(s, 'bot.py', 'exec'), ns)
+          parse_time = ns['parse_time']
+          cases = {'18:30':'18:30','۱۸:۳۰':'18:30','8:05':'08:05','۰۸:۰۵':'08:05','1830':'18:30','18.30':'18:30'}
+          for inp, expected in cases.items():
+              got = parse_time(inp)
+              assert got == expected, (inp, got, expected)
+          for bad in ('24:00','18:60','abc','99999'):
+              assert parse_time(bad) is None, (bad, parse_time(bad))
+          print('PASS: syntax + manual goal time parser')
+          PY
+      - name: Commit repaired bot.py and remove one-time workflow
+        run: |
+          git config user.name 'Rezayadgari1'
+          git config user.email 'm.m1380138296@gmail.com'
+          rm -f .github/workflows/repair-bot.yml
+          git add bot.py .github/workflows/repair-bot.yml
+          git commit -m 'Fix goal manual time and broken buttons' || exit 0
+          git push origin HEAD:main
