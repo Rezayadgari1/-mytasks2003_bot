@@ -4251,7 +4251,7 @@ def jalali_date_str(value):
     except Exception: return str(value)
 
 def fa_digits(value):
-    return str(value).translate(str.maketrans("0123456789", "Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹"))
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 JALALI_MONTHS_FA = [
     "ÙØ±ÙØ±Ø¯ÛÙ","Ø§Ø±Ø¯ÛØ¨ÙØ´Øª","Ø®Ø±Ø¯Ø§Ø¯","ØªÛØ±","ÙØ±Ø¯Ø§Ø¯","Ø´ÙØ±ÛÙØ±",
@@ -14374,7 +14374,7 @@ def bd_congrats_text(name):
 
 _BD_JY_MIN, _BD_JY_MAX = 1300, 1450
 _BD_YEARS_PER_PAGE = 12
-_BD_FA_DG = str.maketrans("0123456789", "Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹")
+_BD_FA_DG = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 _BD_MONTHS_FA = ("ÙØ±ÙØ±Ø¯ÛÙ", "Ø§Ø±Ø¯ÛØ¨ÙØ´Øª", "Ø®Ø±Ø¯Ø§Ø¯", "ØªÛØ±", "ÙØ±Ø¯Ø§Ø¯", "Ø´ÙØ±ÛÙØ±",
                  "ÙÙØ±", "Ø¢Ø¨Ø§Ù", "Ø¢Ø°Ø±", "Ø¯Û", "Ø¨ÙÙÙ", "Ø§Ø³ÙÙØ¯")
 _BD_MONTHS_EN = ("Farvardin", "Ordibehesht", "Khordad", "Tir", "Mordad", "Shahrivar",
