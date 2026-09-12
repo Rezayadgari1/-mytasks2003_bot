@@ -58,9 +58,8 @@ except ImportError:
 # ── Module imports (extracted from this file) ──────────────
 from config import (
     BOT_TOKEN, _SCRIPT_DIR, DB_PATH, DB_SCHEMA_VERSION, DB_BACKUP_PATH, TZ,
-    REQUIRED_CHANNEL_URL, 
-    MYTASKS_BUILD_ID, 
-    
+    REQUIRED_CHANNEL_URL,
+    MYTASKS_BUILD_ID,
     ADMIN_IDS, _parse_admin_ids,
     GOALS_FA, GOALS_EN, T, TIME_BUTTONS, FEATURE_MENU_MAP,
 )
@@ -79,6 +78,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _PROCESS_START = [time.time()]
+logger.info("MyTasks build %s | AI gateway: OmniRoute -> OpenAI -> n8n", MYTASKS_BUILD_ID)
 
 def subscription_required(func):
     @wraps(func)
@@ -2527,11 +2527,11 @@ def generate_unique_auto_post(channel_id, category, topic):
     recent=recent_auto_posts(channel_id,8)
     avoid="\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
     for attempt in range(1,9):
-        content=topic_specific_fallback(topic,attempt)
         duplicate,score=post_is_duplicate(channel_id,topic,content)
         if not duplicate and _is_topic_relevant(content,topic):
             return content
         logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
+        avoid += f"\n- نسخه ردشده: {str(content)[:220]}"
     for attempt in range(1,9):
         candidate=topic_specific_fallback(topic,attempt)
         duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.90)
@@ -3375,7 +3375,6 @@ async def channel_schedule_callback(update,context):
         cfg=get_channel_config()
         if not cfg or not cfg["channel_id"]: await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
         try:
-            post_text=_clean_ai_post(context.user_data["channel_content"])
             footer=await channel_post_footer(context.bot, cfg["channel_id"])
             post_text=add_channel_username_footer(post_text, footer, 4096)
             await context.bot.send_message(chat_id=cfg["channel_id"],text=post_text)
@@ -6973,9 +6972,10 @@ async def run_health_checks(bot,admin_id=0):
                    if scheduler_ok else
                    "صف زمان‌بندی داخلی کتابخانه در دسترس نیست؛ fallback داخلی ربات استفاده می‌شود."))
 
+
     price_enabled=feature_enabled("price_data")
     checks.append(("Price Sources","OK" if price_enabled else "OFF",
-                   "قیمت از منابع بازار دریافت می‌شود؛ AI منبع عدد قیمت نیست."
+                   "قیمت از منابع بازار دریافت می‌شود."
                    if price_enabled else
                    "قیمت آنلاین توسط مدیر غیرفعال شده است."))
 
@@ -7000,6 +7000,7 @@ async def run_health_checks(bot,admin_id=0):
                        f"{isolation_bad} رابطه ناسازگار پیدا شد؛ نیازمند بررسی مدیر است."))
     except Exception:
         checks.append(("Data Isolation","WARN","ممیزی مالکیت در این نوبت کامل نشد."))
+
     try:
         c=db()
         feature_count=c.execute("SELECT COUNT(*) n FROM feature_access").fetchone()["n"]
@@ -7084,6 +7085,8 @@ def health_text():
         "Customer/Booking":"👥 مشتری و رزرو",
         "Channel":"📢 کانال",
         "Scheduler":"⏰ زمان‌بندی",
+        "n8n":"🔗 n8n",
+        "OmniRoute":"🔀 OmniRoute",
         "Price Sources":"💹 منابع قیمت",
         "Data Isolation":"🔐 جداسازی داده",
         "Feature Access":"🧩 دسترسی قابلیت‌ها",
@@ -8278,7 +8281,6 @@ async def text_router(update,context):
         await v25_installments_menu(update,context); return
     if txt in ('👤 اطلاعات من','👤 My Profile'):
         await v25_profile_menu(update,context); return
-        context.user_data['v25_voice_mode']=True; await update.message.reply_text('🎙️ ویست رو بفرست.'); return
     mode=context.user_data.get('v25_mode')
     if mode=='rem_title': context.user_data['v25_rem_title']=txt; context.user_data['v25_mode']='rem_time'; await update.message.reply_text('📅 تاریخ و ساعت را بفرست. نمونه: ۱۴۰۵/۰۶/۰۳ ۱۲:۰۰'); return
     if mode in ('rem_time','inst_bank','inst_title','inst_principal','inst_rate_custom','inst_months','inst_first_date','profile_edit:name','profile_edit:phone','profile_edit:email','service_name','service_duration','service_price','card_number','card_name','gateway_link','survey_question','bizname_v25'):
@@ -8288,6 +8290,7 @@ async def text_router(update,context):
     # Fall through to original router.
     await _LEGACY_TEXT_ROUTER(update,context)
 
+# Add optional Voice handler and V25 menus before the generic text handler in main.
 
 # Wrap appointment completion to deliver the customer survey.
 _LEGACY_APPOINTMENT_STATUS=appointment_status
@@ -8459,7 +8462,6 @@ async def v25_admin_menu(update, context):
         ('v25:adminvip','💎 پرداخت VIP','💎 VIP Payment'),
         ('v25:adminsms','📱 تنظیمات پیامک','📱 SMS Settings'),
         ('v25:adminsurvey','⭐ تنظیمات نظرسنجی','⭐ Survey Settings'),
-        ('v25:adminvoice','🎙️ تنظیمات Voice','🎙️ Voice Settings'),
         ('v25:adminmorning','☀️ صبح/شب و جمعه','☀️ Morning/Night & Friday'),
         ('v25:adminprices','📈 قیمت بازار','📈 Market Prices'),
     ]
@@ -8783,6 +8785,8 @@ async def v25_installment_text_save(update,context):
 
 
 # Voice execution: simple, confirm-first admin commands + goal/reminder creation.
+
+
 async def v25_customer_message_menu(update,context):
     uid=update.effective_user.id; rows=customer_list_rows(uid); selected=set(context.user_data.get('customer_message_selected',[])); lines=['📩 <b>ارسال پیام به مشتریان</b>','']
     lines.append(f'انتخاب‌شده: {len(selected)}')
@@ -8996,7 +9000,6 @@ async def text_router(update,context):
         clear_flow(context); await update.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
     if txt in ('🏠 منوی اصلی','🏠 Main Menu'):
         clear_flow(context); await update.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid)); return
-        context.user_data['v25_voice_mode']=True; await update.message.reply_text('🎙️ ویست رو بفرست. / Send a voice message.'); return
     if txt in ('🧠 مرکز من','🧠 My Center'):
         await v25_hub(update,context); return
     mode=context.user_data.get('v25_mode')
@@ -9973,6 +9976,131 @@ async def text_router(update, context):
             parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
         )
         return
+    if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            return
+        clear_flow(context)
+        await _show_admin_management(update, context)
+        return
+    # Birthday & Events buttons
+    if txt in ("🎂 تولد من", "🎂 My Birthday"):
+        if not birthday_enabled():
+            await update.message.reply_text("🎂 این قابلیت در حال حاضر غیرفعال است.", reply_markup=compact_keyboard(uid))
+            return
+        await birthday_show_callback(update, context)
+        return
+    if txt in ("🎂 تولد و مناسبت‌ها", "🎂 Birthday & Events"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = "🎂 <b>تولد و مناسبت‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎂 مدیریت تولد", callback_data="adm:birthdays:list"),
+             InlineKeyboardButton("⚙️ تنظیمات تولد", callback_data="adm:birthdays:settings")],
+            [InlineKeyboardButton("📅 مناسبت‌ها", callback_data="adm:events:list")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("🎁 هدیه مدیریتی", "🎁 Admin Gifts"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = (
+            "🎁 <b>هدیه مدیریتی</b>\n\n"
+            "برای ارسال هدیه به کاربر:\n"
+            "1️⃣ شناسه کاربر رو بفرست\n"
+            "2️⃣ نوع هدیه رو انتخاب کن\n"
+            "3️⃣ مقدار و مدت رو تعیین کن"
+        )
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        context.user_data["admin_gift_mode"] = "user_id"
+        return
+    # New admin menu items (restructured)
+    if txt in ("👥 کاربران و پاداش‌ها", "👥 Users & Rewards"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = "👥 <b>کاربران و پاداش‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("👥 لیست کاربران", callback_data="adm:users"),
+             InlineKeyboardButton("🔎 جستجو", callback_data="adm:search")],
+            [InlineKeyboardButton("⭐ XP / VIP", callback_data="adm:xpvip"),
+             InlineKeyboardButton("🎁 هدیه مدیریتی", callback_data="adm:gifts")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("💎 اشتراک و دسترسی‌ها", "💎 Subscriptions & Access"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = "💎 <b>اشتراک و دسترسی‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💎 مدیریت VIP", callback_data="adm:xpvip"),
+             InlineKeyboardButton("🔐 ماتریس دسترسی", callback_data="adm:access")],
+            [InlineKeyboardButton("🧩 قابلیت‌ها", callback_data="adm:features"),
+             InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        await update.message.reply_text("📡 <b>مدیریت کانال</b>", parse_mode="HTML", reply_markup=channel_keyboard())
+        return
+    if txt in ("🎯 اهداف و یادآوری", "🎯 Goals & Reminders"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        c = db()
+        goals = c.execute("SELECT COUNT(*) n FROM goals").fetchone()["n"]
+        active = c.execute("SELECT COUNT(*) n FROM goals WHERE enabled=1").fetchone()["n"]
+        c.close()
+        text = f"🎯 <b>اهداف و یادآوری</b>\n\n🎯 کل اهداف: {goals}\n✅ فعال: {active}"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("📈 قیمت و بازار", "📈 Prices & Market"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        text = "📈 <b>قیمت و بازار</b>\n\nاز بخش ابزارهای هوشمند برای کاربران قابل دسترسی است."
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("💳 پرداخت‌ها", "💳 Payments"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        c = db()
+        payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"]
+        revenue = c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()["n"]
+        c.close()
+        text = f"💳 <b>پرداخت‌ها</b>\n\n💳 تراکنش‌ها: {payments}\n💵 مبلغ: {revenue:,}"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
+            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+        ])
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        return
+    if txt in ("👥 مشتری و رزرو", "👥 Customers & Bookings"):
+        if not admin_guard(uid):
+            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            return
+        await _show_admin_section(update, context, "users")
+        return
+
     if txt in ("🎫 پشتیبانی و تیکت", "🎫 Support & Tickets"):
         if not admin_guard(uid):
             await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
@@ -10216,10 +10344,6 @@ async def text_router(update, context):
         await v25_routes[text](update, context)
         return
 
-        clear_flow(context)
-        context.user_data["v25_voice_mode"] = True
-        await update.message.reply_text("🎙️ ویس را بفرست. / Send a voice message.")
-        return
 
     if text in ("🎟️ توکن‌های من", "🎟️ My Tokens"):
         clear_flow(context)
@@ -10643,7 +10767,6 @@ async def general_guide(update, context):
         "📚 <b>راهنمای ربات</b>\n\n"
         "🎯 برنامه و اهداف: ساخت و پیگیری هدف‌ها\n"
         "📊 گزارش و پیشرفت: مشاهده آمار و گزارش‌ها\n"
-        "📈 ابزارها: قیمت‌های آنلاین و ابزارهای کاربردی\n"
         "🧠 مرکز من: یادآوری، تقویم، سرمایه‌ها، اقساط و پروفایل\n"
         "👥 مدیریت مشتری و نوبت‌دهی: برای حساب‌های مجاز\n\n"
         "برای برگشت از دکمه «⬅️ بازگشت» استفاده کن."
@@ -10747,6 +10870,7 @@ async def compact_menu_callback(update, context):
         "cm:support": support_start,
         "cm:guide": general_guide,
     }
+
     if data == "cm:tokens":
         tokens_from_xp(uid)
         await q.message.edit_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
@@ -10804,7 +10928,7 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"),
-             InlineKeyboardButton("🛠️ ابزارها", callback_data="menu:tools")],
+             InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
@@ -10813,7 +10937,7 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 Reports", callback_data="menu:reports"),
-             InlineKeyboardButton("🛠️ Tools", callback_data="menu:tools")],
+             InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
@@ -10925,8 +11049,7 @@ async def text_router(update, context):
     if txt in ("🧩 قابلیت‌ها", "🧩 Features"):
         await admin_command(update, context)
         return
-        await admin_command(update, context)
-        return
+
     if txt in ("👥 کاربران", "👥 Users"):
         await admin_command(update, context)
         return
@@ -11420,6 +11543,7 @@ def _master_settings_keyboard(uid):
             callback_data="settings:managers"
         )],
         [InlineKeyboardButton(
+            "🤖 تنظیمات AI  ›" if fa else "🤖 AI Settings  ›",
             callback_data="settings:ai"
         )],
         [InlineKeyboardButton(
@@ -11452,6 +11576,7 @@ def _manager_settings_text(uid):
             "🛡️ <b>تنظیمات مدیریتی</b>\n\n"
             "از این بخش می‌توانی تنظیمات مدیریت را دسته‌بندی‌شده کنترل کنی.\n\n"
             "🧑‍💼 مدیریت مدیران › افزودن، مشاهده و کنترل نقش مدیران\n"
+            "🤖 تنظیمات AI › وضعیت سرویس‌های هوشمند\n"
             "📢 تنظیمات کانال › اتصال و انتشار\n"
             "🔔 اعلان‌ها › تنظیمات اعلان‌های حساب"
         )
@@ -11876,6 +12001,7 @@ async def text_router(update, context):
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return
 
+        if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
             clear_flow(context)
             await _show_admin_management(update, context)
             return
@@ -11891,6 +12017,7 @@ async def text_router(update, context):
                 reply_markup=master_back_keyboard(uid)
             )
             return
+
 
         if txt in ("🧑‍💼 مدیریت مدیران", "🧑‍💼 Manager Management"):
             if not master_has_permission(uid, "manage_roles"):
@@ -12403,7 +12530,8 @@ async def text_router(update,context):
                     '🛡 مدیریت ربات','🛡 Bot Management',
                     '⚙️ تنظیمات سیستم','⚙️ System Settings',
                     '📊 داشبورد و گزارش','📊 Dashboard & Reports',
-                    '👤 استفاده از ربات','👤 Use Bot')
+                    '👤 استفاده از ربات','👤 Use Bot',
+                    )
     if context.user_data.get('targeted_add_manager') and txt in _nav_labels:
         context.user_data.pop('targeted_add_manager', None)
     if context.user_data.get('master_add_manager') and txt in _nav_labels:
@@ -15266,14 +15394,14 @@ def _compact_root_inline(uid):
     if fa:
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🛠️ ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
         ]
     else:
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🛠️ Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
         ]
@@ -15353,8 +15481,7 @@ async def text_router(update, context):
 
 _FINAL_DIRECT_FEATURE_ALIASES = {
     "weekly_table": "weekly", "referral": "referrals", "price": "price_data",
-    "price_data": "price_data", "customer": "customers", "customers": "customers",
-    "vip": "vip",
+    "price_data": "price_data", "customer": "customers", "customers": "customers", "vip": "vip",
     "support": "support", "settings": "settings", "goals": "goals", "edit": "goals",
     "reminders": "reminders", "calendar": "calendar_hub", "profile": "profile",
     "achievements": "achievements", "xp": "xp", "stats": "stats",
@@ -15414,7 +15541,6 @@ def _direct_cb_feature(data):
         return "goals"
     if data.startswith("cust:") or data.startswith("booking:") or data.startswith("adm:customers"):
         return "customers"
-    if data.startswith("voice:"): return "voice"
     if data.startswith("portfolio:"): return "portfolio"
     if data.startswith("installments:"): return "installments"
     return None
@@ -15498,6 +15624,8 @@ async def price_callback(update, context):
     if not _direct_feature_allowed(uid,"price_data"):
         await update.callback_query.answer("🔒 قیمت آنلاین غیرفعال است.",show_alert=True); return
     return await _DIRECT_OLD_PRICE_CALLBACK(update, context)
+
+
 # ---------------- Multi-channel permanent forced subscription ----------------
 def _direct_fsub_init():
     c=db()
