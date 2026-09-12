@@ -10903,8 +10903,7 @@ def _compact_root_inline(uid):
     if fa:
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
@@ -10912,8 +10911,7 @@ def _compact_root_inline(uid):
     else:
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 Reports", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
@@ -10932,11 +10930,9 @@ def _compact_user_keyboard(uid):
     """User main menu - 8 categories as per Master List."""
     fa = lang(uid) == "fa"
     rows = [
-        ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
         ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
         ["🎁 پاداش‌های من" if fa else "🎁 My Rewards", "📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
-        ["🛠️ ابزارها" if fa else "🛠️ Tools", "🎫 پشتیبانی" if fa else "🎫 Support"],
         ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -15301,7 +15297,6 @@ _FINAL_OLD_COMPACT_MENU_CALLBACK_UI = compact_menu_callback
 def _compact_user_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
-        ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
         ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
         ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
