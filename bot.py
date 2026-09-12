@@ -8122,7 +8122,6 @@ async def v25_callback(update,context):
         )
 
 # Patch the legacy navigation with a unified menu while retaining every old button.
-_LEGACY_KEYBOARD = keyboard
 
 def keyboard(uid):
     try:
