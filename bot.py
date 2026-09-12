@@ -55,7 +55,7 @@ except ImportError:
 
 
 
-# ── Module imports (extracted from this file) ──────────────
+# ââ Module imports (extracted from this file) ââââââââââââââ
 from config import (
     BOT_TOKEN, _SCRIPT_DIR, DB_PATH, DB_SCHEMA_VERSION, DB_BACKUP_PATH, TZ,
     REQUIRED_CHANNEL_URL,
@@ -78,7 +78,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _PROCESS_START = [time.time()]
-logger.info("MyTasks build %s | AI gateway: OmniRoute -> OpenAI -> n8n", MYTASKS_BUILD_ID)
+logger.info("MyTasks build %s", MYTASKS_BUILD_ID)
 
 def subscription_required(func):
     @wraps(func)
@@ -96,7 +96,7 @@ def subscription_required(func):
             except Exception:
                 paused = False
         if (paused or feature_enabled("maintenance")) and uid not in ADMIN_IDS and func.__name__ not in maintenance_exempt:
-            msg = "⏸ ربات موقتاً متوقف است. لطفاً کمی بعد دوباره تلاش کن." if paused else "🛠 ربات در حال بروزرسانی است. لطفاً بعداً دوباره تلاش کن."
+            msg = "â¸ Ø±Ø¨Ø§Øª ÙÙÙØªØ§Ù ÙØªÙÙÙ Ø§Ø³Øª. ÙØ·ÙØ§Ù Ú©ÙÛ Ø¨Ø¹Ø¯ Ø¯ÙØ¨Ø§Ø±Ù ØªÙØ§Ø´ Ú©Ù." if paused else "ð  Ø±Ø¨Ø§Øª Ø¯Ø± Ø­Ø§Ù Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ Ø§Ø³Øª. ÙØ·ÙØ§Ù Ø¨Ø¹Ø¯Ø§Ù Ø¯ÙØ¨Ø§Ø±Ù ØªÙØ§Ø´ Ú©Ù."
             if update.callback_query:
                 await update.callback_query.answer(msg, show_alert=True)
             elif update.message:
@@ -496,7 +496,7 @@ def init_db():
         "ref_daily_limit": "0", "ref_weekly_limit": "0",
         "ref_monthly_limit": "800", "ref_auto_approve": "1",
         "ref_leaderboard_enabled": "1", "ref_campaign_active": "0",
-        "ref_custom_invite_text": "👋 من از ربات MyTasks استفاده می‌کنم. تو هم امتحان کن!",
+        "ref_custom_invite_text": "ð ÙÙ Ø§Ø² Ø±Ø¨Ø§Øª MyTasks Ø§Ø³ØªÙØ§Ø¯Ù ÙÛâÚ©ÙÙ. ØªÙ ÙÙ Ø§ÙØªØ­Ø§Ù Ú©Ù!",
     }
     for _k, _v in _ref_defaults.items():
         _exists = c.execute("SELECT 1 FROM referral_settings WHERE key=?", (_k,)).fetchone()
@@ -616,7 +616,7 @@ def init_db():
         enabled INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT NOT NULL
     )""")
-    # ── Birthday module ──────────────────────────────────────────────
+    # ââ Birthday module ââââââââââââââââââââââââââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS birthdays(
         user_id INTEGER PRIMARY KEY,
         birth_date TEXT NOT NULL,
@@ -627,7 +627,7 @@ def init_db():
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""")
-    # ── Events / Occasions ───────────────────────────────────────────
+    # ââ Events / Occasions âââââââââââââââââââââââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS events(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -649,7 +649,7 @@ def init_db():
         delivered_at TEXT NOT NULL,
         UNIQUE(event_id, user_id)
     )""")
-    # ── Gift definitions & tracking ──────────────────────────────────
+    # ââ Gift definitions & tracking ââââââââââââââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS gift_definitions(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -680,7 +680,7 @@ def init_db():
         claimed INTEGER NOT NULL DEFAULT 0,
         UNIQUE(user_id, gift_def_id, source)
     )""")
-    # ── Subscriptions v2 (precise expiry) ────────────────────────────
+    # ââ Subscriptions v2 (precise expiry) ââââââââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS subscriptions_v2(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -694,7 +694,7 @@ def init_db():
         active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL
     )""")
-    # ── Access grants (central access control) ───────────────────────
+    # ââ Access grants (central access control) âââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS access_grants(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -706,7 +706,7 @@ def init_db():
         created_at TEXT NOT NULL,
         UNIQUE(user_id, feature_key, source)
     )""")
-    # ── Birthday & event settings ────────────────────────────────────
+    # ââ Birthday & event settings ââââââââââââââââââââââââââââââââââââ
     c.execute("""CREATE TABLE IF NOT EXISTS birthday_settings(
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -716,15 +716,15 @@ def init_db():
     # feature_access controls who may use a feature (free/VIP/off), while service_costs
     # records whether the underlying provider is free, optional-paid, or variable-cost.
     service_cost_defaults = {
-        "telegram_bot_api": ("🤖 هسته Telegram Bot API", "free", "Telegram", "استفاده عادی از Bot API رایگان است؛ محدودیت نرخ ارسال دارد."),
-        "hosting": ("🖥️ هاست / اجرای ربات", "variable", "Railway یا سرور دیگر", "هزینه به سرویس میزبانی و مصرف CPU/RAM/Storage/Network بستگی دارد."),
-        "database": ("🗄️ دیتابیس SQLite", "free", "خود ربات", "برای نسخه فعلی داخل همان سرویس است؛ هزینه API جداگانه ندارد."),
-        "price_sources": ("📈 منابع قیمت آنلاین", "free_or_variable", "منابع عمومی/API", "بعضی منابع رایگان‌اند؛ APIهای تجاری ممکن است هزینه یا محدودیت داشته باشند."),
-        "sms": ("📱 پیامک SMS", "optional_paid", "پنل SMS انتخابی", "خود قابلیت رایگان است؛ ارسال SMS معمولاً هزینه هر پیام/بسته دارد."),
-        "payment_gateway": ("💳 درگاه پرداخت ایرانی", "variable", "پرداخت‌یار/PSP انتخابی", "اتصال فنی می‌تواند رایگان باشد؛ کارمزد و شرایط را ارائه‌دهنده تعیین می‌کند."),
-        "telegram_stars": ("⭐ پرداخت VIP با Telegram Stars", "transactional", "Telegram", "پرداخت داخل Telegram انجام می‌شود؛ شرایط/کارمزد طبق سازوکار Telegram است."),
-        "channel_media": ("🖼️ رسانه و انتشار کانال", "free", "Telegram", "برای خود Bot API هزینه جداگانه ندارد؛ محدودیت‌های Telegram برقرار است."),
-        "voice_transcription": ("🎙️ تبدیل Voice به متن", "optional_paid", "AI/STT provider", "بدون سرویس خارجی می‌توان قابلیت را خاموش نگه داشت؛ سرویس STT ممکن است هزینه داشته باشد."),
+        "telegram_bot_api": ("ð¤ ÙØ³ØªÙ Telegram Bot API", "free", "Telegram", "Ø§Ø³ØªÙØ§Ø¯Ù Ø¹Ø§Ø¯Û Ø§Ø² Bot API Ø±Ø§ÛÚ¯Ø§Ù Ø§Ø³ØªØ ÙØ­Ø¯ÙØ¯ÛØª ÙØ±Ø® Ø§Ø±Ø³Ø§Ù Ø¯Ø§Ø±Ø¯."),
+        "hosting": ("ð¥ï¸ ÙØ§Ø³Øª / Ø§Ø¬Ø±Ø§Û Ø±Ø¨Ø§Øª", "variable", "Railway ÛØ§ Ø³Ø±ÙØ± Ø¯ÛÚ¯Ø±", "ÙØ²ÛÙÙ Ø¨Ù Ø³Ø±ÙÛØ³ ÙÛØ²Ø¨Ø§ÙÛ Ù ÙØµØ±Ù CPU/RAM/Storage/Network Ø¨Ø³ØªÚ¯Û Ø¯Ø§Ø±Ø¯."),
+        "database": ("ðï¸ Ø¯ÛØªØ§Ø¨ÛØ³ SQLite", "free", "Ø®ÙØ¯ Ø±Ø¨Ø§Øª", "Ø¨Ø±Ø§Û ÙØ³Ø®Ù ÙØ¹ÙÛ Ø¯Ø§Ø®Ù ÙÙØ§Ù Ø³Ø±ÙÛØ³ Ø§Ø³ØªØ ÙØ²ÛÙÙ API Ø¬Ø¯Ø§Ú¯Ø§ÙÙ ÙØ¯Ø§Ø±Ø¯."),
+        "price_sources": ("ð ÙÙØ§Ø¨Ø¹ ÙÛÙØª Ø¢ÙÙØ§ÛÙ", "free_or_variable", "ÙÙØ§Ø¨Ø¹ Ø¹ÙÙÙÛ/API", "Ø¨Ø¹Ø¶Û ÙÙØ§Ø¨Ø¹ Ø±Ø§ÛÚ¯Ø§ÙâØ§ÙØ¯Ø APIÙØ§Û ØªØ¬Ø§Ø±Û ÙÙÚ©Ù Ø§Ø³Øª ÙØ²ÛÙÙ ÛØ§ ÙØ­Ø¯ÙØ¯ÛØª Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´ÙØ¯."),
+        "sms": ("ð± Ù¾ÛØ§ÙÚ© SMS", "optional_paid", "Ù¾ÙÙ SMS Ø§ÙØªØ®Ø§Ø¨Û", "Ø®ÙØ¯ ÙØ§Ø¨ÙÛØª Ø±Ø§ÛÚ¯Ø§Ù Ø§Ø³ØªØ Ø§Ø±Ø³Ø§Ù SMS ÙØ¹ÙÙÙØ§Ù ÙØ²ÛÙÙ ÙØ± Ù¾ÛØ§Ù/Ø¨Ø³ØªÙ Ø¯Ø§Ø±Ø¯."),
+        "payment_gateway": ("ð³ Ø¯Ø±Ú¯Ø§Ù Ù¾Ø±Ø¯Ø§Ø®Øª Ø§ÛØ±Ø§ÙÛ", "variable", "Ù¾Ø±Ø¯Ø§Ø®ØªâÛØ§Ø±/PSP Ø§ÙØªØ®Ø§Ø¨Û", "Ø§ØªØµØ§Ù ÙÙÛ ÙÛâØªÙØ§ÙØ¯ Ø±Ø§ÛÚ¯Ø§Ù Ø¨Ø§Ø´Ø¯Ø Ú©Ø§Ø±ÙØ²Ø¯ Ù Ø´Ø±Ø§ÛØ· Ø±Ø§ Ø§Ø±Ø§Ø¦ÙâØ¯ÙÙØ¯Ù ØªØ¹ÛÛÙ ÙÛâÚ©ÙØ¯."),
+        "telegram_stars": ("â­ Ù¾Ø±Ø¯Ø§Ø®Øª VIP Ø¨Ø§ Telegram Stars", "transactional", "Telegram", "Ù¾Ø±Ø¯Ø§Ø®Øª Ø¯Ø§Ø®Ù Telegram Ø§ÙØ¬Ø§Ù ÙÛâØ´ÙØ¯Ø Ø´Ø±Ø§ÛØ·/Ú©Ø§Ø±ÙØ²Ø¯ Ø·Ø¨Ù Ø³Ø§Ø²ÙÚ©Ø§Ø± Telegram Ø§Ø³Øª."),
+        "channel_media": ("ð¼ï¸ Ø±Ø³Ø§ÙÙ Ù Ø§ÙØªØ´Ø§Ø± Ú©Ø§ÙØ§Ù", "free", "Telegram", "Ø¨Ø±Ø§Û Ø®ÙØ¯ Bot API ÙØ²ÛÙÙ Ø¬Ø¯Ø§Ú¯Ø§ÙÙ ÙØ¯Ø§Ø±Ø¯Ø ÙØ­Ø¯ÙØ¯ÛØªâÙØ§Û Telegram Ø¨Ø±ÙØ±Ø§Ø± Ø§Ø³Øª."),
+        "voice_transcription": ("ðï¸ ØªØ¨Ø¯ÛÙ Voice Ø¨Ù ÙØªÙ", "optional_paid", "AI/STT provider", "Ø¨Ø¯ÙÙ Ø³Ø±ÙÛØ³ Ø®Ø§Ø±Ø¬Û ÙÛâØªÙØ§Ù ÙØ§Ø¨ÙÛØª Ø±Ø§ Ø®Ø§ÙÙØ´ ÙÚ¯Ù Ø¯Ø§Ø´ØªØ Ø³Ø±ÙÛØ³ STT ÙÙÚ©Ù Ø§Ø³Øª ÙØ²ÛÙÙ Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´Ø¯."),
     }
     for key,(label,status,provider,note) in service_cost_defaults.items():
         c.execute("INSERT OR IGNORE INTO service_costs(key,label,status,provider,note,enabled,updated_at) VALUES(?,?,?,?,?,?,?)",(key,label,status,provider,note,1,now_iso))
@@ -822,38 +822,29 @@ def user_info(uid):
 
 def display_name(uid):
     r = user_info(uid)
-    return (r["first_name"] if r and r["first_name"] else "دوست من")
+    return (r["first_name"] if r and r["first_name"] else "Ø¯ÙØ³Øª ÙÙ")
 
 
 
 def _ensure_user_feature_preferences(uid):
-    """Create default personal menu preferences without touching existing user data."""
-    now=datetime.now(TZ).isoformat()
-    c=db()
+    """Create default personal menu preferences without changing existing choices."""
+    now = datetime.now(TZ).isoformat()
+    c = db()
+    key = None
     try:
-        keys=set(FEATURE_MENU_MAP.values()) if "FEATURE_MENU_MAP" in globals() else set()
+        keys = set(FEATURE_MENU_MAP.values()) if "FEATURE_MENU_MAP" in globals() else set()
         for key in keys:
             c.execute(
                 "INSERT OR IGNORE INTO user_feature_preferences(user_id,feature_key,enabled,updated_at) VALUES(?,?,1,?)",
-                (int(uid),key,now)
+                (int(uid), key, now),
             )
         c.commit()
+        return True
+    except Exception:
+        logger.exception("User feature preference initialization failed: %s", key)
+        return True
     finally:
         c.close()
-
-def user_pref_enabled(uid,key):
-    try:
-        _ensure_user_feature_preferences(uid)
-        c=db()
-        row=c.execute(
-            "SELECT enabled FROM user_feature_preferences WHERE user_id=? AND feature_key=?",
-            (int(uid),key)
-        ).fetchone()
-        c.close()
-        return True if row is None else bool(row["enabled"])
-    except Exception:
-        logger.exception("User feature preference check failed: %s", key)
-        return True
 
 def set_user_pref(uid,key,enabled):
     c=db()
@@ -874,25 +865,13 @@ def filter_menu_rows(uid,rows):
         if r: out.append(r)
     return out
 
-def keyboard(uid):
-    _ensure_user_feature_preferences(uid)
-    rows=filter_menu_rows(uid,[list(row) for row in T[lang(uid)]["menu"]])
-    try:
-        if user_feature_allowed(uid,"customers"):
-            rows.append(["👥 مدیریت مشتری و نوبت‌دهی" if lang(uid)=="fa" else "👥 Customer & Appointments"])
-    except Exception: pass
-    rows.append(["📅 رزروهای من" if lang(uid)=="fa" else "📅 My Bookings"])
-    if admin_is_allowed(uid):
-        rows.append(["📢 مدیریت کانال","🛡 پنل مدیریت"] if lang(uid)=="fa" else ["📢 Channel Management","🛡 Admin Panel"])
-    return ReplyKeyboardMarkup(rows,resize_keyboard=True)
-
 
 def nav_keyboard(uid, include_back=True):
     """Temporary navigation keyboard for text-input modes. Back always exits the current mode safely."""
     fa = lang(uid) == "fa"
     rows = []
     if include_back:
-        rows.append(["⬅️ برگشت" if fa else "⬅️ Back", "🏠 منوی اصلی" if fa else "🏠 Main Menu"])
+        rows.append(["â¬ï¸ Ø¨Ø±Ú¯Ø´Øª" if fa else "â¬ï¸ Back", "ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
 
@@ -904,14 +883,14 @@ def clear_flow(context):
 
 
 def normalize_digits(s):
-    return s.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    return s.translate(str.maketrans("Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹Ù Ù¡Ù¢Ù£Ù¤Ù¥Ù¦Ù§Ù¨Ù©", "01234567890123456789"))
 
 
 def parse_time(s):
     """Parse goal/reminder time and return normalized HH:MM."""
     if s is None:
         return None
-    s = normalize_digits(str(s).strip()).replace("：", ":").replace(".", ":")
+    s = normalize_digits(str(s).strip()).replace("ï¼", ":").replace(".", ":")
     s = re.sub(r"\s+", "", s)
     if not s:
         return None
@@ -990,9 +969,9 @@ def get_status(uid, gid, date=None):
 
 def priority_keyboard(uid):
     if lang(uid) == "en":
-        labels = [("🔴 High", 1), ("🟡 Medium", 2), ("🟢 Low", 3)]
+        labels = [("ð´ High", 1), ("ð¡ Medium", 2), ("ð¢ Low", 3)]
     else:
-        labels = [("🔴 زیاد", 1), ("🟡 متوسط", 2), ("🟢 کم", 3)]
+        labels = [("ð´ Ø²ÛØ§Ø¯", 1), ("ð¡ ÙØªÙØ³Ø·", 2), ("ð¢ Ú©Ù", 3)]
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(label, callback_data=f"priority:{value}")]
         for label, value in labels
@@ -1075,13 +1054,13 @@ def achievement_check(uid):
 
     found = []
     if total_goals >= 1 and unlock_achievement(uid, "first_goal"):
-        found.append("🎯 اولین هدف")
+        found.append("ð¯ Ø§ÙÙÛÙ ÙØ¯Ù")
     if total_done >= 1 and unlock_achievement(uid, "first_done"):
-        found.append("🏅 اولین انجام")
+        found.append("ð Ø§ÙÙÛÙ Ø§ÙØ¬Ø§Ù")
     if total_done >= 10 and unlock_achievement(uid, "ten_done"):
-        found.append("🔥 ۱۰ انجام موفق")
+        found.append("ð¥ Û±Û° Ø§ÙØ¬Ø§Ù ÙÙÙÙ")
     if total_done >= 50 and unlock_achievement(uid, "fifty_done"):
-        found.append("🏆 ۵۰ انجام موفق")
+        found.append("ð ÛµÛ° Ø§ÙØ¬Ø§Ù ÙÙÙÙ")
     return found
 
 
@@ -1093,23 +1072,23 @@ def achievement_text(uid):
     ).fetchall()
     c.close()
     labels = {
-        "first_goal": "🎯 اولین هدف",
-        "first_done": "🏅 اولین انجام",
-        "ten_done": "🔥 ۱۰ انجام موفق",
-        "fifty_done": "🏆 ۵۰ انجام موفق",
+        "first_goal": "ð¯ Ø§ÙÙÛÙ ÙØ¯Ù",
+        "first_done": "ð Ø§ÙÙÛÙ Ø§ÙØ¬Ø§Ù",
+        "ten_done": "ð¥ Û±Û° Ø§ÙØ¬Ø§Ù ÙÙÙÙ",
+        "fifty_done": "ð ÛµÛ° Ø§ÙØ¬Ø§Ù ÙÙÙÙ",
     }
     if not rows:
-        return "🏆 هنوز دستاوردی نداری." if lang(uid) == "fa" else "🏆 No achievements yet."
-    return "\n".join(f"{labels.get(r['code'], r['code'])} — {r['unlocked_at'][:10]}" for r in rows)
+        return "ð ÙÙÙØ² Ø¯Ø³ØªØ§ÙØ±Ø¯Û ÙØ¯Ø§Ø±Û." if lang(uid) == "fa" else "ð No achievements yet."
+    return "\n".join(f"{labels.get(r['code'], r['code'])} â {r['unlocked_at'][:10]}" for r in rows)
 
 
 def goal_reminder_keyboard(uid,gid):
     fa=lang(uid)=="fa"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏰ فردا همین ساعت" if fa else "⏰ Tomorrow same time",callback_data=f"goalrem:{gid}:same")],
-        [InlineKeyboardButton("🕐 فردا ساعت دلخواه" if fa else "🕐 Tomorrow custom time",callback_data=f"goalrem:{gid}:custom")],
-        [InlineKeyboardButton("⏱ ۱۰ دقیقه بعد" if fa else "⏱ 10 min",callback_data=f"snooze:{gid}:10"),InlineKeyboardButton("⏱ ۳۰ دقیقه بعد" if fa else "⏱ 30 min",callback_data=f"snooze:{gid}:30")],
-        [InlineKeyboardButton("⬅️ برگشت" if fa else "⬅️ Back",callback_data=f"detail:{gid}")]
+        [InlineKeyboardButton("â° ÙØ±Ø¯Ø§ ÙÙÛÙ Ø³Ø§Ø¹Øª" if fa else "â° Tomorrow same time",callback_data=f"goalrem:{gid}:same")],
+        [InlineKeyboardButton("ð ÙØ±Ø¯Ø§ Ø³Ø§Ø¹Øª Ø¯ÙØ®ÙØ§Ù" if fa else "ð Tomorrow custom time",callback_data=f"goalrem:{gid}:custom")],
+        [InlineKeyboardButton("â± Û±Û° Ø¯ÙÛÙÙ Ø¨Ø¹Ø¯" if fa else "â± 10 min",callback_data=f"snooze:{gid}:10"),InlineKeyboardButton("â± Û³Û° Ø¯ÙÛÙÙ Ø¨Ø¹Ø¯" if fa else "â± 30 min",callback_data=f"snooze:{gid}:30")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª" if fa else "â¬ï¸ Back",callback_data=f"detail:{gid}")]
     ])
 
 async def goal_reminder_callback(update,context):
@@ -1117,19 +1096,19 @@ async def goal_reminder_callback(update,context):
     parts=_safe_cb_parts(q.data)
     if not parts: return
     _,gid_s,mode=parts; gid=int(gid_s); g=get_goal(uid,gid)
-    if not g: await q.answer("هدف پیدا نشد",show_alert=True); return
+    if not g: await q.answer("ÙØ¯Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯",show_alert=True); return
     if mode=="menu":
-        await q.message.edit_text("⏰ <b>یادآوری دوباره</b>\n\nبرای فردا همان ساعت، ساعت جدید یا بعداً را انتخاب کن.",parse_mode="HTML",reply_markup=goal_reminder_keyboard(uid,gid)); return
+        await q.message.edit_text("â° <b>ÛØ§Ø¯Ø¢ÙØ±Û Ø¯ÙØ¨Ø§Ø±Ù</b>\n\nØ¨Ø±Ø§Û ÙØ±Ø¯Ø§ ÙÙØ§Ù Ø³Ø§Ø¹ØªØ Ø³Ø§Ø¹Øª Ø¬Ø¯ÛØ¯ ÛØ§ Ø¨Ø¹Ø¯Ø§Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.",parse_mode="HTML",reply_markup=goal_reminder_keyboard(uid,gid)); return
     if mode=="same":
-        tm=g["reminder_time"] or datetime.now(TZ).strftime("%H:%M"); d=(datetime.now(TZ).date()+timedelta(days=1)).isoformat(); c=db(); c.execute("INSERT OR REPLACE INTO goal_reminder_overrides(user_id,goal_id,reminder_date,reminder_time,created_at) VALUES(?,?,?,?,?)",(uid,gid,d,tm,datetime.now(TZ).isoformat())); c.commit(); c.close(); await q.message.edit_text(f"✅ برای فردا ساعت {tm} یادآوری شد.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ هدف",callback_data=f"detail:{gid}")],[main_menu_button(uid)]])); return
+        tm=g["reminder_time"] or datetime.now(TZ).strftime("%H:%M"); d=(datetime.now(TZ).date()+timedelta(days=1)).isoformat(); c=db(); c.execute("INSERT OR REPLACE INTO goal_reminder_overrides(user_id,goal_id,reminder_date,reminder_time,created_at) VALUES(?,?,?,?,?)",(uid,gid,d,tm,datetime.now(TZ).isoformat())); c.commit(); c.close(); await q.message.edit_text(f"â Ø¨Ø±Ø§Û ÙØ±Ø¯Ø§ Ø³Ø§Ø¹Øª {tm} ÛØ§Ø¯Ø¢ÙØ±Û Ø´Ø¯.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ¯Ù",callback_data=f"detail:{gid}")],[main_menu_button(uid)]])); return
     if mode=="custom":
-        context.user_data["goal_reminder_custom"]=gid; context.user_data["_flow_started_at"]=datetime.now(TZ).isoformat(); await q.message.reply_text("🕐 ساعت فردا را بفرست. مثال: 20:30",reply_markup=nav_keyboard(uid)); return
+        context.user_data["goal_reminder_custom"]=gid; context.user_data["_flow_started_at"]=datetime.now(TZ).isoformat(); await q.message.reply_text("ð Ø³Ø§Ø¹Øª ÙØ±Ø¯Ø§ Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: 20:30",reply_markup=nav_keyboard(uid)); return
 
 def snooze_keyboard(uid, gid):
     if lang(uid) == "en":
-        labels = [("⏱ 10 min", 10), ("⏱ 30 min", 30), ("⏱ 60 min", 60)]
+        labels = [("â± 10 min", 10), ("â± 30 min", 30), ("â± 60 min", 60)]
     else:
-        labels = [("⏱ ۱۰ دقیقه", 10), ("⏱ ۳۰ دقیقه", 30), ("⏱ ۶۰ دقیقه", 60)]
+        labels = [("â± Û±Û° Ø¯ÙÛÙÙ", 10), ("â± Û³Û° Ø¯ÙÛÙÙ", 30), ("â± Û¶Û° Ø¯ÙÛÙÙ", 60)]
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(label, callback_data=f"snooze:{gid}:{minutes}")]
         for label, minutes in labels
@@ -1157,9 +1136,9 @@ async def snooze_callback(update, context):
     )
     log_activity(uid, "snooze")
     text = (
-        f"⏱ یادآوری «{g['name']}» برای {minutes} دقیقه دیگر تنظیم شد."
+        f"â± ÛØ§Ø¯Ø¢ÙØ±Û Â«{g['name']}Â» Ø¨Ø±Ø§Û {minutes} Ø¯ÙÛÙÙ Ø¯ÛÚ¯Ø± ØªÙØ¸ÛÙ Ø´Ø¯."
         if lang(uid) == "fa"
-        else f"⏱ Reminder for “{g['name']}” set for {minutes} minutes."
+        else f"â± Reminder for â{g['name']}â set for {minutes} minutes."
     )
     await q.message.reply_text(text)
 
@@ -1178,11 +1157,11 @@ async def snooze_send(context):
             ),
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    "✅ Done" if lang(uid) == "en" else "✅ انجام دادم",
+                    "â Done" if lang(uid) == "en" else "â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù",
                     callback_data=f"done:{gid}",
                 ),
                 InlineKeyboardButton(
-                    "⏱ Snooze" if lang(uid) == "en" else "⏱ یادآوری بعداً",
+                    "â± Snooze" if lang(uid) == "en" else "â± ÛØ§Ø¯Ø¢ÙØ±Û Ø¨Ø¹Ø¯Ø§Ù",
                     callback_data=f"snooze_menu:{gid}",
                 ),
             ]]),
@@ -1198,8 +1177,8 @@ async def snooze_menu(update, context):
     uid = q.from_user.id
     gid = int(q.data.split(":")[1])
     await q.message.reply_text(
-        "⏱ زمان یادآوری مجدد را انتخاب کن:" if lang(uid) == "fa"
-        else "⏱ Choose snooze duration:",
+        "â± Ø²ÙØ§Ù ÛØ§Ø¯Ø¢ÙØ±Û ÙØ¬Ø¯Ø¯ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid) == "fa"
+        else "â± Choose snooze duration:",
         reply_markup=snooze_keyboard(uid, gid),
     )
 
@@ -1213,16 +1192,16 @@ async def steps_menu(update, context):
     steps = get_steps(uid, gid)
     buttons = []
     for s in steps:
-        icon = "✅" if s["done"] else "⬜"
+        icon = "â" if s["done"] else "â¬"
         buttons.append([InlineKeyboardButton(
             f"{icon} {s['title']}", callback_data=f"step_toggle:{s['id']}:{gid}"
         )])
     buttons.append([InlineKeyboardButton(
-        "➕ Add step" if lang(uid) == "en" else "➕ افزودن مرحله",
+        "â Add step" if lang(uid) == "en" else "â Ø§ÙØ²ÙØ¯Ù ÙØ±Ø­ÙÙ",
         callback_data=f"step_add:{gid}"
     )])
     await q.message.reply_text(
-        "📋 مراحل هدف" if lang(uid) == "fa" else "📋 Goal steps",
+        "ð ÙØ±Ø§Ø­Ù ÙØ¯Ù" if lang(uid) == "fa" else "ð Goal steps",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
@@ -1236,7 +1215,7 @@ async def step_add_start(update, context):
     context.user_data["step_gid"] = gid
     context.user_data["awaiting_step"] = True
     await q.message.reply_text(
-        "✏️ نام مرحله را بفرست:" if lang(uid) == "fa" else "✏️ Send the step name:"
+        "âï¸ ÙØ§Ù ÙØ±Ø­ÙÙ Ø±Ø§ Ø¨ÙØ±Ø³Øª:" if lang(uid) == "fa" else "âï¸ Send the step name:"
     )
 
 
@@ -1252,7 +1231,7 @@ async def step_save(update, context):
     context.user_data.pop("step_gid", None)
     context.user_data.pop("awaiting_step", None)
     await update.message.reply_text(
-        "✅ مرحله اضافه شد." if lang(uid) == "fa" else "✅ Step added."
+        "â ÙØ±Ø­ÙÙ Ø§Ø¶Ø§ÙÙ Ø´Ø¯." if lang(uid) == "fa" else "â Step added."
     )
     return True
 
@@ -1403,8 +1382,8 @@ def subscription_keyboard():
     url = required_channel_url()
     rows = []
     if url:
-        rows.append([InlineKeyboardButton("📢 عضویت در کانال", url=url)])
-    rows.append([InlineKeyboardButton("✅ عضو شدم؛ بررسی کن", callback_data="subcheck")])
+        rows.append([InlineKeyboardButton("ð¢ Ø¹Ø¶ÙÛØª Ø¯Ø± Ú©Ø§ÙØ§Ù", url=url)])
+    rows.append([InlineKeyboardButton("â Ø¹Ø¶Ù Ø´Ø¯ÙØ Ø¨Ø±Ø±Ø³Û Ú©Ù", callback_data="subcheck")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1417,35 +1396,35 @@ async def subscription_check_callback(update, context):
     if _forced_sub_is_enabled():
         is_ok, result = await _forced_sub_enforce_async(uid, context.bot)
         if is_ok:
-            await q.answer("✅ عضویت تأیید شد.", show_alert=True)
+            await q.answer("â Ø¹Ø¶ÙÛØª ØªØ£ÛÛØ¯ Ø´Ø¯.", show_alert=True)
             await q.message.reply_text(
-                "✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانید از امکانات ربات استفاده کنید.",
+                "â <b>Ø¹Ø¶ÙÛØª Ø´ÙØ§ ØªØ£ÛÛØ¯ Ø´Ø¯.</b>\nØ­Ø§ÙØ§ ÙÛâØªÙØ§ÙÛØ¯ Ø§Ø² Ø§ÙÚ©Ø§ÙØ§Øª Ø±Ø¨Ø§Øª Ø§Ø³ØªÙØ§Ø¯Ù Ú©ÙÛØ¯.",
                 parse_mode="HTML",
                 reply_markup=keyboard(uid),
             )
         else:
             msg, kb = result
-            await q.answer("❌ هنوز عضو کانال نیستید.", show_alert=True)
+            await q.answer("â ÙÙÙØ² Ø¹Ø¶Ù Ú©Ø§ÙØ§Ù ÙÛØ³ØªÛØ¯.", show_alert=True)
             await q.message.reply_text(msg, parse_mode="HTML", reply_markup=kb)
         return
 
     if await is_channel_member(context.bot, uid):
-        await q.answer("✅ عضویت تأیید شد.", show_alert=True)
+        await q.answer("â Ø¹Ø¶ÙÛØª ØªØ£ÛÛØ¯ Ø´Ø¯.", show_alert=True)
         await q.message.reply_text(
-            "✅ عضویت شما تأیید شد. حالا می‌توانید از همه امکانات ربات استفاده کنید.",
+            "â Ø¹Ø¶ÙÛØª Ø´ÙØ§ ØªØ£ÛÛØ¯ Ø´Ø¯. Ø­Ø§ÙØ§ ÙÛâØªÙØ§ÙÛØ¯ Ø§Ø² ÙÙÙ Ø§ÙÚ©Ø§ÙØ§Øª Ø±Ø¨Ø§Øª Ø§Ø³ØªÙØ§Ø¯Ù Ú©ÙÛØ¯.",
             reply_markup=keyboard(uid),
         )
     else:
-        await q.answer("❌ هنوز عضو کانال نیستید.", show_alert=True)
+        await q.answer("â ÙÙÙØ² Ø¹Ø¶Ù Ú©Ø§ÙØ§Ù ÙÛØ³ØªÛØ¯.", show_alert=True)
         await q.message.reply_text(
-            "🔒 ابتدا عضو کانال شوید و بعد روی «بررسی مجدد» بزنید.",
+            "ð Ø§Ø¨ØªØ¯Ø§ Ø¹Ø¶Ù Ú©Ø§ÙØ§Ù Ø´ÙÛØ¯ Ù Ø¨Ø¹Ø¯ Ø±ÙÛ Â«Ø¨Ø±Ø±Ø³Û ÙØ¬Ø¯Ø¯Â» Ø¨Ø²ÙÛØ¯.",
             reply_markup=subscription_keyboard(),
         )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    name = update.effective_user.first_name or "دوست من"
+    name = update.effective_user.first_name or "Ø¯ÙØ³Øª ÙÙ"
     register_user(uid, name, getattr(update.effective_user, "username", None))
     if context.args:
         arg=context.args[0]
@@ -1471,9 +1450,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             stats = get_referral_stats(completed_inviter)
                             await context.bot.send_message(
                                 chat_id=completed_inviter,
-                                text=f"🎉 <b>خبر خوب!</b>\n\n"
-                                     f"دوستت با لینک دعوت تو به ربات پیوست ❤️\n"
-                                     f"📊 دعوت‌های موفق تو: <b>{stats['success']}</b> نفر",
+                                text=f"ð <b>Ø®Ø¨Ø± Ø®ÙØ¨!</b>\n\n"
+                                     f"Ø¯ÙØ³ØªØª Ø¨Ø§ ÙÛÙÚ© Ø¯Ø¹ÙØª ØªÙ Ø¨Ù Ø±Ø¨Ø§Øª Ù¾ÛÙØ³Øª â¤ï¸\n"
+                                     f"ð Ø¯Ø¹ÙØªâÙØ§Û ÙÙÙÙ ØªÙ: <b>{stats['success']}</b> ÙÙØ±",
                                 parse_mode="HTML"
                             )
                         except Exception:
@@ -1485,21 +1464,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if info["gender"] is None:
         kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🇮🇷 فارسی", callback_data="language:fa"),
-            InlineKeyboardButton("🇬🇧 English", callback_data="language:en"),
+            InlineKeyboardButton("ð®ð· ÙØ§Ø±Ø³Û", callback_data="language:fa"),
+            InlineKeyboardButton("ð¬ð§ English", callback_data="language:en"),
         ]])
         await update.message.reply_text(
-            f"🎯 سلام {name} عزیز! خوش اومدی 🌷\n\n"
-            "زبان ربات رو انتخاب کن:\n"
-            "🎯 Welcome! Select your language:",
+            f"ð¯ Ø³ÙØ§Ù {name} Ø¹Ø²ÛØ²! Ø®ÙØ´ Ø§ÙÙØ¯Û ð·\n\n"
+            "Ø²Ø¨Ø§Ù Ø±Ø¨Ø§Øª Ø±Ù Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:\n"
+            "ð¯ Welcome! Select your language:",
             reply_markup=kb,
         )
     else:
         await update.message.reply_text(
             T[lang(uid)]["welcome"].format(name=name).replace(
-                "زبان ربات رو انتخاب کن:", "منوی اصلی آماده‌ست 👇"
+                "Ø²Ø¨Ø§Ù Ø±Ø¨Ø§Øª Ø±Ù Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:", "ÙÙÙÛ Ø§ØµÙÛ Ø¢ÙØ§Ø¯ÙâØ³Øª ð"
             ).replace(
-                "Choose your language:", "Your menu is ready 👇"
+                "Choose your language:", "Your menu is ready ð"
             ),
             reply_markup=keyboard(uid),
         )
@@ -1524,29 +1503,29 @@ async def language_callback(update, context):
 def onboarding_business_keyboard(uid):
     types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN
     rows=[[InlineKeyboardButton(x,callback_data=f"onboardtype:{i}")] for i,x in enumerate(types)]
-    rows.append([InlineKeyboardButton("⏭️ رد کردن / بعداً انتخاب می‌کنم",callback_data="onboardtype:skip")])
+    rows.append([InlineKeyboardButton("â­ï¸ Ø±Ø¯ Ú©Ø±Ø¯Ù / Ø¨Ø¹Ø¯Ø§Ù Ø§ÙØªØ®Ø§Ø¨ ÙÛâÚ©ÙÙ",callback_data="onboardtype:skip")])
     return InlineKeyboardMarkup(rows)
 
 
 def onboarding_feature_keyboard(uid):
     fa=lang(uid)=="fa"
     choices=[
-        ("goals","🎯 اهداف","🎯 Goals"),
-        ("weekly","📅 جدول هفتگی","📅 Weekly"),
-        ("stats","📊 آمار من","📊 My Stats"),
-        ("price_data","📈 قیمت آنلاین","📈 Online Prices"),
-        ("ai","🤖 چت با AI","🤖 AI Chat"),
-        ("support","🎫 پشتیبانی","🎫 Support"),
-        ("customers","👥 مدیریت مشتری و نوبت‌دهی","👥 Customers & Appointments"),
+        ("goals","ð¯ Ø§ÙØ¯Ø§Ù","ð¯ Goals"),
+        ("weekly","ð Ø¬Ø¯ÙÙ ÙÙØªÚ¯Û","ð Weekly"),
+        ("stats","ð Ø¢ÙØ§Ø± ÙÙ","ð My Stats"),
+        ("price_data","ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ","ð Online Prices"),
+        ("ai","ð¤ ÚØª Ø¨Ø§ AI","ð¤ AI Chat"),
+        ("support","ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ","ð« Support"),
+        ("customers","ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ","ð¥ Customers & Appointments"),
     ]
     rows=[]
     for key,fa_label,en_label in choices:
         if not feature_enabled(key): continue
         label=fa_label if fa else en_label
-        mark="✅" if user_pref_enabled(uid,key) else "⬜"
+        mark="â" if user_pref_enabled(uid,key) else "â¬"
         rows.append([InlineKeyboardButton(f"{mark} {label}",callback_data=f"pref:{key}")])
-    rows.append([InlineKeyboardButton("⏭️ رد کردن / بعداً تنظیم می‌کنم" if fa else "⏭️ Skip / Configure later",callback_data="pref:skip")])
-    rows.append([InlineKeyboardButton("✅ ادامه" if fa else "✅ Continue",callback_data="pref:done")])
+    rows.append([InlineKeyboardButton("â­ï¸ Ø±Ø¯ Ú©Ø±Ø¯Ù / Ø¨Ø¹Ø¯Ø§Ù ØªÙØ¸ÛÙ ÙÛâÚ©ÙÙ" if fa else "â­ï¸ Skip / Configure later",callback_data="pref:skip")])
+    rows.append([InlineKeyboardButton("â Ø§Ø¯Ø§ÙÙ" if fa else "â Continue",callback_data="pref:done")])
     return InlineKeyboardMarkup(rows)
 
 async def onboarding_feature_callback(update,context):
@@ -1556,9 +1535,9 @@ async def onboarding_feature_callback(update,context):
     action=q.data.split(":",1)[1]
     if action in ("done","skip"):
         await q.message.edit_text(
-            "✅ تنظیمات اولیه ذخیره شد. هر زمان تمایل داشته باشید می‌توانید منوی شخصی خود را تغییر دهید."
+            "â ØªÙØ¸ÛÙØ§Øª Ø§ÙÙÛÙ Ø°Ø®ÛØ±Ù Ø´Ø¯. ÙØ± Ø²ÙØ§Ù ØªÙØ§ÛÙ Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´ÛØ¯ ÙÛâØªÙØ§ÙÛØ¯ ÙÙÙÛ Ø´Ø®ØµÛ Ø®ÙØ¯ Ø±Ø§ ØªØºÛÛØ± Ø¯ÙÛØ¯."
             if lang(uid)=="fa" else
-            "✅ Your initial preferences were saved. You can change your personal menu anytime.",
+            "â Your initial preferences were saved. You can change your personal menu anytime.",
             reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])
         )
         return
@@ -1575,9 +1554,9 @@ async def onboarding_business_callback(update,context):
         c=db(); c.execute("UPDATE business_profiles SET business_type=?,updated_at=? WHERE user_id=?",(types[idx],datetime.now(TZ).isoformat(),uid)); c.commit(); c.close()
     _ensure_user_feature_preferences(uid)
     await q.message.edit_text(
-        "⚙️ اگر تمایل داشته باشید، می‌توانید مشخص کنید کدام بخش‌ها در منوی شخصی شما نمایش داده شوند. این مرحله کاملاً اختیاری است."
+        "âï¸ Ø§Ú¯Ø± ØªÙØ§ÛÙ Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´ÛØ¯Ø ÙÛâØªÙØ§ÙÛØ¯ ÙØ´Ø®Øµ Ú©ÙÛØ¯ Ú©Ø¯Ø§Ù Ø¨Ø®Ø´âÙØ§ Ø¯Ø± ÙÙÙÛ Ø´Ø®ØµÛ Ø´ÙØ§ ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù Ø´ÙÙØ¯. Ø§ÛÙ ÙØ±Ø­ÙÙ Ú©Ø§ÙÙØ§Ù Ø§Ø®ØªÛØ§Ø±Û Ø§Ø³Øª."
         if lang(uid)=="fa" else
-        "⚙️ If you wish, choose which sections you would like to see in your personal menu. This step is completely optional.",
+        "âï¸ If you wish, choose which sections you would like to see in your personal menu. This step is completely optional.",
         reply_markup=onboarding_feature_keyboard(uid)
     )
 
@@ -1591,7 +1570,7 @@ async def gender_callback(update, context):
     set_gender(uid, value)
     log_activity(uid, "gender_selected")
     await q.message.reply_text(
-        T[lang(uid)]["gender_saved"].format(name=display_name(uid)) + "\n\n💼 اگر دوست داری، نوع فعالیت یا شغلت را هم انتخاب کن. این مرحله اجباری نیست:",
+        T[lang(uid)]["gender_saved"].format(name=display_name(uid)) + "\n\nð¼ Ø§Ú¯Ø± Ø¯ÙØ³Øª Ø¯Ø§Ø±ÛØ ÙÙØ¹ ÙØ¹Ø§ÙÛØª ÛØ§ Ø´ØºÙØª Ø±Ø§ ÙÙ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù. Ø§ÛÙ ÙØ±Ø­ÙÙ Ø§Ø¬Ø¨Ø§Ø±Û ÙÛØ³Øª:",
         reply_markup=onboarding_business_keyboard(uid),
     )
 
@@ -1599,14 +1578,14 @@ async def gender_callback(update, context):
 def settings_keyboard(uid):
     fa=lang(uid)=="fa"
     rows = [
-        [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language",callback_data="settings:language")],
-        [InlineKeyboardButton("🔔 اعلان‌ها" if fa else "🔔 Notifications",callback_data="settings:notifications")],
-        [InlineKeyboardButton("🎯 اهداف" if fa else "🎯 Goals",callback_data="settings:goals")],
-        [InlineKeyboardButton("💎 VIP و امکانات پولی" if fa else "💎 VIP & Paid Features",callback_data="settings:vip")],
+        [InlineKeyboardButton("ð Ø²Ø¨Ø§Ù" if fa else "ð Language",callback_data="settings:language")],
+        [InlineKeyboardButton("ð Ø§Ø¹ÙØ§ÙâÙØ§" if fa else "ð Notifications",callback_data="settings:notifications")],
+        [InlineKeyboardButton("ð¯ Ø§ÙØ¯Ø§Ù" if fa else "ð¯ Goals",callback_data="settings:goals")],
+        [InlineKeyboardButton("ð VIP Ù Ø§ÙÚ©Ø§ÙØ§Øª Ù¾ÙÙÛ" if fa else "ð VIP & Paid Features",callback_data="settings:vip")],
     ]
     if admin_is_allowed(uid):
-        rows.append([InlineKeyboardButton("📢 مدیریت کانال" if fa else "📢 Channel Management",callback_data="settings:channel")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="settings:main")])
+        rows.append([InlineKeyboardButton("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù" if fa else "ð¢ Channel Management",callback_data="settings:channel")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",callback_data="settings:main")])
     return InlineKeyboardMarkup(rows)
 
 async def settings(update, context):
@@ -1632,20 +1611,20 @@ async def settings_callback(update, context):
                 parse_mode="HTML", reply_markup=_compact_root_inline(uid)
             )
         except Exception:
-            try: await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+            try: await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ", reply_markup=keyboard(uid))
             except Exception: pass
         return
     if action=="language":
-        await q.message.edit_text("زبان را انتخاب کن / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🇮🇷 فارسی",callback_data="setlang:fa"),InlineKeyboardButton("🇬🇧 English",callback_data="setlang:en")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+        await q.message.edit_text("Ø²Ø¨Ø§Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù / Choose language:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð®ð· ÙØ§Ø±Ø³Û",callback_data="setlang:fa"),InlineKeyboardButton("ð¬ð§ English",callback_data="setlang:en")],[InlineKeyboardButton("â©ï¸ ØªÙØ¸ÛÙØ§Øª",callback_data="settings:back")]])); return
     if action=="channel":
         if not admin_is_allowed(uid):
-            await q.message.edit_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+            await q.message.edit_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.")
             return
         await q.message.edit_text(
-            "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
-            "از اینجا می‌توانی اتصال کانال، ساخت پست، لیست پست‌ها و انتشار خودکار را مدیریت کنی."
+            "ð¢ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>\n\n"
+            "Ø§Ø² Ø§ÛÙØ¬Ø§ ÙÛâØªÙØ§ÙÛ Ø§ØªØµØ§Ù Ú©Ø§ÙØ§ÙØ Ø³Ø§Ø®Øª Ù¾Ø³ØªØ ÙÛØ³Øª Ù¾Ø³ØªâÙØ§ Ù Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±Ø§ ÙØ¯ÛØ±ÛØª Ú©ÙÛ."
             if fa else
-            "📢 <b>Channel & Posting Management</b>\n\n"
+            "ð¢ <b>Channel & Posting Management</b>\n\n"
             "Manage channel connection, posts, post list and automatic publishing here.",
             parse_mode="HTML",
             reply_markup=channel_keyboard(),
@@ -1654,19 +1633,19 @@ async def settings_callback(update, context):
     if action=="notifications":
         c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); c.close()
         state=bool(r["reminders_enabled"])
-        await q.message.edit_text(("🔔 یادآوری‌ها: " + ("روشن" if state else "خاموش")) if fa else ("🔔 Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 تغییر وضعیت",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("↩️ تنظیمات",callback_data="settings:back")]])); return
+        await q.message.edit_text(("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§: " + ("Ø±ÙØ´Ù" if state else "Ø®Ø§ÙÙØ´")) if fa else ("ð Reminders: " + ("On" if state else "Off")),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð ØªØºÛÛØ± ÙØ¶Ø¹ÛØª",callback_data="settings:toggle_reminders")],[InlineKeyboardButton("â©ï¸ ØªÙØ¸ÛÙØ§Øª",callback_data="settings:back")]])); return
     if action=="toggle_reminders":
-        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.edit_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
+        c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.edit_text("â ØªÙØ¸ÛÙ Ø´Ø¯.",reply_markup=settings_keyboard(uid)); return
     if action=="goals":
-        await q.message.edit_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
+        await q.message.edit_text(("ð¯ ÙØ¯ÙâÙØ§ Ø¯Ø§Ø¦ÙÛ ÙØ³ØªÙØ¯ Ù ÙÙØ· Ø®ÙØ¯Øª ÙÛâØªÙØ§ÙÛ Ø­Ø°ÙØ´Ø§Ù Ú©ÙÛ. ÙÙÚ¯Ø§Ù Ø³Ø§Ø®Øª ÙØ¯Ù ÙÛâØªÙØ§ÙÛ ÙØ¯Øª Ø§ÙØ¬Ø§Ù Ø±Ø§ ÙÙ ØªØ¹ÛÛÙ Ú©ÙÛ." if fa else "ð¯ Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
     if action=="vip":
         xp,level,vip_until=xp_info(uid)
-        text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
+        text=(f"ð VIP\n\nÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if is_vip(uid) else 'âª Ø¹Ø§Ø¯Û'}\nâ­ Ø³Ø·Ø­: {level}\nð¥ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù Ù ÙØ¹Ø§ÙÛØªâÙØ§ ÙÛâØªÙØ§ÙÙØ¯ XP Ù Ù¾Ø§Ø¯Ø§Ø´ Ø¨Ú¯ÛØ±ÙØ¯.\n\nÙ¾Ø±Ø¯Ø§Ø®Øª ÙØ§ÙØ¹Û ÙØ¹ÙØ§Ù Ø§Ø² Ù¾ÙÙ ÙØ¯ÛØ± ÙØ§Ø¨Ù Ú©ÙØªØ±Ù Ø§Ø³Øª." if fa else f"ð VIP\n\nStatus: {'ð¢ Active' if is_vip(uid) else 'âª Free'}\nâ­ Level: {level}\nð¥ Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
         await q.message.edit_text(text,reply_markup=settings_keyboard(uid)); return
     if action in ("back","main"):
         if action=="main":
-            await q.message.edit_text("🏠 منوی اصلی")
-            await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+            await q.message.edit_text("ð  ÙÙÙÛ Ø§ØµÙÛ")
+            await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid))
         else: await q.message.edit_text(T[lang(uid)]["settings"],reply_markup=settings_keyboard(uid))
 
 
@@ -1677,11 +1656,11 @@ def edit_time_keyboard(uid):
     rows = [buttons[i:i + 4] for i in range(0, len(buttons), 4)]
     rows.append([
         InlineKeyboardButton(
-            "🔕 بدون یادآوری" if lang(uid) == "fa" else "🔕 No reminder",
+            "ð Ø¨Ø¯ÙÙ ÛØ§Ø¯Ø¢ÙØ±Û" if lang(uid) == "fa" else "ð No reminder",
             callback_data="edit_time:none",
         ),
         InlineKeyboardButton(
-            "🕐 ساعت دیگر" if lang(uid) == "fa" else "🕐 Custom time",
+            "ð Ø³Ø§Ø¹Øª Ø¯ÛÚ¯Ø±" if lang(uid) == "fa" else "ð Custom time",
             callback_data="edit_time:custom",
         ),
     ])
@@ -1693,9 +1672,9 @@ async def custom_goal_start(update, context):
     clear_flow(context)
     context.user_data["awaiting_custom_goal"] = True
     await update.message.reply_text(
-        "✏️ هدف خودت را بنویس:\nمثلاً: هر روز ۳۰ دقیقه زبان انگلیسی بخوانم"
+        "âï¸ ÙØ¯Ù Ø®ÙØ¯Øª Ø±Ø§ Ø¨ÙÙÛØ³:\nÙØ«ÙØ§Ù: ÙØ± Ø±ÙØ² Û³Û° Ø¯ÙÛÙÙ Ø²Ø¨Ø§Ù Ø§ÙÚ¯ÙÛØ³Û Ø¨Ø®ÙØ§ÙÙ"
         if lang(uid) == "fa" else
-        "✏️ Write your own goal:\nExample: Study English for 30 minutes every day",
+        "âï¸ Write your own goal:\nExample: Study English for 30 minutes every day",
         reply_markup=nav_keyboard(uid),
     )
 
@@ -1728,12 +1707,12 @@ async def new_back(update, context):
 
 def duration_keyboard(uid):
     fa = lang(uid) == "fa"
-    labels = [(5,"۵ دقیقه"),(10,"۱۰ دقیقه"),(20,"۲۰ دقیقه"),(30,"۳۰ دقیقه"),(60,"۱ ساعت"),(120,"۲ ساعت"),(0,"♾️ بدون محدودیت")]
+    labels = [(5,"Ûµ Ø¯ÙÛÙÙ"),(10,"Û±Û° Ø¯ÙÛÙÙ"),(20,"Û²Û° Ø¯ÙÛÙÙ"),(30,"Û³Û° Ø¯ÙÛÙÙ"),(60,"Û± Ø³Ø§Ø¹Øª"),(120,"Û² Ø³Ø§Ø¹Øª"),(0,"â¾ï¸ Ø¨Ø¯ÙÙ ÙØ­Ø¯ÙØ¯ÛØª")]
     rows=[]
     for i in range(0,len(labels),2):
         pair=labels[i:i+2]
-        rows.append([InlineKeyboardButton((label if fa else ({5:"5 min",10:"10 min",20:"20 min",30:"30 min",60:"1 hour",120:"2 hours",0:"♾️ No limit"}[m])),callback_data=f"duration:{m}") for m,label in pair])
-    rows.append([InlineKeyboardButton("✏️ زمان دلخواه" if fa else "✏️ Custom",callback_data="duration:custom")])
+        rows.append([InlineKeyboardButton((label if fa else ({5:"5 min",10:"10 min",20:"20 min",30:"30 min",60:"1 hour",120:"2 hours",0:"â¾ï¸ No limit"}[m])),callback_data=f"duration:{m}") for m,label in pair])
+    rows.append([InlineKeyboardButton("âï¸ Ø²ÙØ§Ù Ø¯ÙØ®ÙØ§Ù" if fa else "âï¸ Custom",callback_data="duration:custom")])
     rows.append([InlineKeyboardButton(T[lang(uid)]["back"],callback_data="newback")])
     return InlineKeyboardMarkup(rows)
 
@@ -1741,14 +1720,14 @@ def duration_keyboard(uid):
 def condition_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
-        [InlineKeyboardButton("🚫 بدون شرط" if fa else "🚫 No condition", callback_data="cond:none")],
-        [InlineKeyboardButton("☀️ اگر هوا خوب بود" if fa else "☀️ If weather is good", callback_data="cond:weather"),
-         InlineKeyboardButton("⏰ اگر وقت داشتم" if fa else "⏰ If I have time", callback_data="cond:time")],
-        [InlineKeyboardButton("🏠 اگر در خانه بودم" if fa else "🏠 If I'm home", callback_data="cond:home"),
-         InlineKeyboardButton("🏢 اگر سر کار بودم" if fa else "🏢 If I'm at work", callback_data="cond:work")],
-        [InlineKeyboardButton("💡 اگر انرژی داشتم" if fa else "💡 If I have energy", callback_data="cond:energy"),
-         InlineKeyboardButton("😊 اگر حالم خوب بود" if fa else "😊 If I feel good", callback_data="cond:mood")],
-        [InlineKeyboardButton("✏️ شرط دلخواه" if fa else "✏️ Custom condition", callback_data="cond:custom")],
+        [InlineKeyboardButton("ð« Ø¨Ø¯ÙÙ Ø´Ø±Ø·" if fa else "ð« No condition", callback_data="cond:none")],
+        [InlineKeyboardButton("âï¸ Ø§Ú¯Ø± ÙÙØ§ Ø®ÙØ¨ Ø¨ÙØ¯" if fa else "âï¸ If weather is good", callback_data="cond:weather"),
+         InlineKeyboardButton("â° Ø§Ú¯Ø± ÙÙØª Ø¯Ø§Ø´ØªÙ" if fa else "â° If I have time", callback_data="cond:time")],
+        [InlineKeyboardButton("ð  Ø§Ú¯Ø± Ø¯Ø± Ø®Ø§ÙÙ Ø¨ÙØ¯Ù" if fa else "ð  If I'm home", callback_data="cond:home"),
+         InlineKeyboardButton("ð¢ Ø§Ú¯Ø± Ø³Ø± Ú©Ø§Ø± Ø¨ÙØ¯Ù" if fa else "ð¢ If I'm at work", callback_data="cond:work")],
+        [InlineKeyboardButton("ð¡ Ø§Ú¯Ø± Ø§ÙØ±ÚÛ Ø¯Ø§Ø´ØªÙ" if fa else "ð¡ If I have energy", callback_data="cond:energy"),
+         InlineKeyboardButton("ð Ø§Ú¯Ø± Ø­Ø§ÙÙ Ø®ÙØ¨ Ø¨ÙØ¯" if fa else "ð If I feel good", callback_data="cond:mood")],
+        [InlineKeyboardButton("âï¸ Ø´Ø±Ø· Ø¯ÙØ®ÙØ§Ù" if fa else "âï¸ Custom condition", callback_data="cond:custom")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -1760,7 +1739,7 @@ async def priority_callback(update, context):
     uid = q.from_user.id
     context.user_data["priority"] = int(q.data.split(":")[1])
     await q.message.edit_text(
-        "⏱ مدت انجام هدف را انتخاب کن:" if lang(uid)=="fa" else "⏱ How long should this goal take?",
+        "â± ÙØ¯Øª Ø§ÙØ¬Ø§Ù ÙØ¯Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid)=="fa" else "â± How long should this goal take?",
         reply_markup=duration_keyboard(uid),
     )
 
@@ -1771,11 +1750,11 @@ async def duration_callback(update, context):
     value=q.data.split(":",1)[1]
     if value=="custom":
         context.user_data["awaiting_custom_duration"]=True
-        await q.message.edit_text("✏️ مدت را به دقیقه وارد کن (مثلاً 45)." if lang(uid)=="fa" else "✏️ Enter duration in minutes (e.g. 45).")
+        await q.message.edit_text("âï¸ ÙØ¯Øª Ø±Ø§ Ø¨Ù Ø¯ÙÛÙÙ ÙØ§Ø±Ø¯ Ú©Ù (ÙØ«ÙØ§Ù 45)." if lang(uid)=="fa" else "âï¸ Enter duration in minutes (e.g. 45).")
         return
     context.user_data["duration_minutes"] = None if value=="0" else int(value)
     await q.message.edit_text(
-        "⚙️ این هدف شرط اجرا داره؟" if lang(uid)=="fa" else "⚙️ Does this goal have an execution condition?",
+        "âï¸ Ø§ÛÙ ÙØ¯Ù Ø´Ø±Ø· Ø§Ø¬Ø±Ø§ Ø¯Ø§Ø±ÙØ" if lang(uid)=="fa" else "âï¸ Does this goal have an execution condition?",
         reply_markup=condition_keyboard(uid),
     )
 
@@ -1786,10 +1765,10 @@ async def condition_callback(update, context):
     await q.answer()
     uid = q.from_user.id
     value = q.data.split(":", 1)[1]
-    cond_map = {"none":None,"weather":"☀️ اگر هوا خوب بود","time":"⏰ اگر وقت داشتم","home":"🏠 اگر در خانه بودم","work":"🏢 اگر سر کار بودم","energy":"💡 اگر انرژی داشتم","mood":"😊 اگر حالم خوب بود"}
+    cond_map = {"none":None,"weather":"âï¸ Ø§Ú¯Ø± ÙÙØ§ Ø®ÙØ¨ Ø¨ÙØ¯","time":"â° Ø§Ú¯Ø± ÙÙØª Ø¯Ø§Ø´ØªÙ","home":"ð  Ø§Ú¯Ø± Ø¯Ø± Ø®Ø§ÙÙ Ø¨ÙØ¯Ù","work":"ð¢ Ø§Ú¯Ø± Ø³Ø± Ú©Ø§Ø± Ø¨ÙØ¯Ù","energy":"ð¡ Ø§Ú¯Ø± Ø§ÙØ±ÚÛ Ø¯Ø§Ø´ØªÙ","mood":"ð Ø§Ú¯Ø± Ø­Ø§ÙÙ Ø®ÙØ¨ Ø¨ÙØ¯"}
     if value == "custom":
         context.user_data["awaiting_custom_condition"] = True
-        await q.message.edit_text("✏️ شرط دلخواه را بنویس (مثلاً: اگر باران نبارد)." if lang(uid)=="fa" else "✏️ Write your custom condition (e.g.: if it doesn't rain).")
+        await q.message.edit_text("âï¸ Ø´Ø±Ø· Ø¯ÙØ®ÙØ§Ù Ø±Ø§ Ø¨ÙÙÛØ³ (ÙØ«ÙØ§Ù: Ø§Ú¯Ø± Ø¨Ø§Ø±Ø§Ù ÙØ¨Ø§Ø±Ø¯)." if lang(uid)=="fa" else "âï¸ Write your custom condition (e.g.: if it doesn't rain).")
         return
     context.user_data["condition"] = cond_map.get(value)
     await q.message.edit_text(T[lang(uid)]["choose_time"], reply_markup=time_keyboard(uid))
@@ -1804,12 +1783,12 @@ async def custom_duration_save(update, context):
         minutes=int(normalize_digits(update.message.text.strip()))
         if minutes<1 or minutes>1440: raise ValueError
     except ValueError:
-        await update.message.reply_text("❌ عدد نامعتبر است؛ بین ۱ تا ۱۴۴۰ دقیقه." if lang(uid)=="fa" else "❌ Enter a number from 1 to 1440 minutes.")
+        await update.message.reply_text("â Ø¹Ø¯Ø¯ ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³ØªØ Ø¨ÛÙ Û± ØªØ§ Û±Û´Û´Û° Ø¯ÙÛÙÙ." if lang(uid)=="fa" else "â Enter a number from 1 to 1440 minutes.")
         return True
     context.user_data["duration_minutes"]=minutes
     context.user_data.pop("awaiting_custom_duration",None)
     await update.message.reply_text(
-        "⚙️ این هدف شرط اجرا داره؟" if lang(uid)=="fa" else "⚙️ Does this goal have an execution condition?",
+        "âï¸ Ø§ÛÙ ÙØ¯Ù Ø´Ø±Ø· Ø§Ø¬Ø±Ø§ Ø¯Ø§Ø±ÙØ" if lang(uid)=="fa" else "âï¸ Does this goal have an execution condition?",
         reply_markup=condition_keyboard(uid),
     )
     return True
@@ -1838,9 +1817,9 @@ async def custom_goal_save(update, context):
     if not name:
         return True
     context.user_data["name"]=name
-    context.user_data["category"]="🎯 هدف دلخواه" if lang(uid)=="fa" else "🎯 Custom"
+    context.user_data["category"]="ð¯ ÙØ¯Ù Ø¯ÙØ®ÙØ§Ù" if lang(uid)=="fa" else "ð¯ Custom"
     context.user_data.pop("awaiting_custom_goal",None)
-    await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=="fa" else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
+    await update.message.reply_text("â­ Ø§ÙÙÙÛØª ÙØ¯Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid)=="fa" else "â­ Choose goal priority:",reply_markup=priority_keyboard(uid))
     return True
 
 
@@ -1862,22 +1841,22 @@ async def detail(update, context):
     if not g:
         return
     await q.message.edit_text(
-        f"🎯 {g['name']}\n📁 {g['category']}\n⭐ اولویت: {g['priority']}\n⏰ {g['reminder_time'] or 'Off'}\n{'⚙️ شرط: ' + g['condition'] if g['condition'] else ''}",
+        f"ð¯ {g['name']}\nð {g['category']}\nâ­ Ø§ÙÙÙÛØª: {g['priority']}\nâ° {g['reminder_time'] or 'Off'}\n{'âï¸ Ø´Ø±Ø·: ' + g['condition'] if g['condition'] else ''}",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton(
-                "✅ Done" if lang(uid) == "en" else "✅ انجام دادم",
+                "â Done" if lang(uid) == "en" else "â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù",
                 callback_data=f"done:{gid}",
             ),
             InlineKeyboardButton(
-                "❌ Not done" if lang(uid) == "en" else "❌ انجام ندادم",
+                "â Not done" if lang(uid) == "en" else "â Ø§ÙØ¬Ø§Ù ÙØ¯Ø§Ø¯Ù",
                 callback_data=f"miss:{gid}",
             ),
         ], [
             InlineKeyboardButton(
-                "📋 Steps" if lang(uid) == "en" else "📋 مراحل",
+                "ð Steps" if lang(uid) == "en" else "ð ÙØ±Ø§Ø­Ù",
                 callback_data=f"steps:{gid}",
             ),
-        ], [InlineKeyboardButton("↩️ اهداف امروز" if lang(uid)=="fa" else "↩️ Today's Goals",callback_data="goals:main")]]),
+        ], [InlineKeyboardButton("â©ï¸ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²" if lang(uid)=="fa" else "â©ï¸ Today's Goals",callback_data="goals:main")]]),
     )
 
 
@@ -1895,9 +1874,9 @@ async def mark(update, context):
         new_achievements = achievement_check(uid)
         if new_achievements:
             await q.message.edit_text(
-                ("🏆 دستاورد جدید!\n" + "\n".join(new_achievements))
+                ("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ Ø¬Ø¯ÛØ¯!\n" + "\n".join(new_achievements))
                 if lang(uid) == "fa"
-                else ("🏆 New achievement!\n" + "\n".join(new_achievements))
+                else ("ð New achievement!\n" + "\n".join(new_achievements))
             )
     result_text = (
         T[lang(uid)]["done"].format(name=display_name(uid))
@@ -1905,7 +1884,7 @@ async def mark(update, context):
         else T[lang(uid)]["missed"].format(name=display_name(uid))
     )
     await q.message.edit_text(result_text)
-    await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+    await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ", reply_markup=keyboard(uid))
 
 
 
@@ -1921,21 +1900,21 @@ async def edit_goal(update, context):
         return
     buttons = [
         [InlineKeyboardButton(
-            "✏️ Change name" if lang(uid) == "en" else "✏️ تغییر نام",
+            "âï¸ Change name" if lang(uid) == "en" else "âï¸ ØªØºÛÛØ± ÙØ§Ù",
             callback_data=f"rename:{gid}",
         )],
         [InlineKeyboardButton(
-            "⏰ Change reminder" if lang(uid) == "en" else "⏰ تغییر یادآوری",
+            "â° Change reminder" if lang(uid) == "en" else "â° ØªØºÛÛØ± ÛØ§Ø¯Ø¢ÙØ±Û",
             callback_data=f"changereminder:{gid}",
         )],
         [InlineKeyboardButton(
-            "🗑 Delete" if lang(uid) == "en" else "🗑 حذف",
+            "ð Delete" if lang(uid) == "en" else "ð Ø­Ø°Ù",
             callback_data=f"delete:{gid}",
         )],
-        [InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")],
+        [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if lang(uid)=="fa" else "ð  Main Menu",callback_data="goals:main")],
     ]
     await q.message.edit_text(
-        f"🎯 {g['name']}\n⏰ {g['reminder_time'] or 'Off'}\n{'⚙️ شرط: '+g['condition'] if g['condition'] else ''}",
+        f"ð¯ {g['name']}\nâ° {g['reminder_time'] or 'Off'}\n{'âï¸ Ø´Ø±Ø·: '+g['condition'] if g['condition'] else ''}",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
@@ -2012,8 +1991,8 @@ async def edit_time_callback(update, context):
     c.close()
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
-    await q.message.edit_text("✅ زمان یادآوری تغییر کرد." if lang(uid) == "fa" else "✅ Reminder time updated.")
-    await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+    await q.message.edit_text("â Ø²ÙØ§Ù ÛØ§Ø¯Ø¢ÙØ±Û ØªØºÛÛØ± Ú©Ø±Ø¯." if lang(uid) == "fa" else "â Reminder time updated.")
+    await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ", reply_markup=keyboard(uid))
 
 
 @subscription_required
@@ -2042,7 +2021,7 @@ async def time_change_callback(update, context):
     context.user_data.pop("edit_reminder_id", None)
     log_activity(uid, "reminder_changed")
     await q.message.edit_text(T[lang(uid)]["changed"])
-    await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+    await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ", reply_markup=keyboard(uid))
 
 
 async def custom_edit_time_save(update, context):
@@ -2077,9 +2056,9 @@ async def delete_start(update, context):
     g = get_goal(uid, gid)
     if not g:
         return
-    text = "Delete this goal?" if lang(uid) == "en" else "این هدف حذف شود؟"
-    yes = "Yes, delete" if lang(uid) == "en" else "بله، حذف کن"
-    no = "Cancel" if lang(uid) == "en" else "لغو"
+    text = "Delete this goal?" if lang(uid) == "en" else "Ø§ÛÙ ÙØ¯Ù Ø­Ø°Ù Ø´ÙØ¯Ø"
+    yes = "Yes, delete" if lang(uid) == "en" else "Ø¨ÙÙØ Ø­Ø°Ù Ú©Ù"
+    no = "Cancel" if lang(uid) == "en" else "ÙØºÙ"
     await q.message.edit_text(
         text,
         reply_markup=InlineKeyboardMarkup([
@@ -2102,24 +2081,24 @@ async def delete_confirm(update, context):
     c.close()
     log_activity(uid, "goal_deleted")
     await q.message.edit_text(T[lang(uid)]["deleted"])
-    await q.message.reply_text("🏠 منوی اصلی", reply_markup=keyboard(uid))
+    await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ", reply_markup=keyboard(uid))
 
 
 @subscription_required
 async def delete_no(update, context):
     q = update.callback_query
     await q.answer()
-    await q.message.edit_text("❌ Cancelled" if lang(q.from_user.id) == "en" else "❌ لغو شد.")
-    await q.message.reply_text("🏠 منوی اصلی" if lang(q.from_user.id) == "fa" else "🏠 Main Menu", reply_markup=keyboard(q.from_user.id))
+    await q.message.edit_text("â Cancelled" if lang(q.from_user.id) == "en" else "â ÙØºÙ Ø´Ø¯.")
+    await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ" if lang(q.from_user.id) == "fa" else "ð  Main Menu", reply_markup=keyboard(q.from_user.id))
 
 
 
 async def achievements(update, context):
     uid = update.effective_user.id
     await update.message.reply_text(
-        "🏆 دستاوردهای تو\n\n" + achievement_text(uid)
+        "ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§Û ØªÙ\n\n" + achievement_text(uid)
         if lang(uid) == "fa"
-        else "🏆 Your achievements\n\n" + achievement_text(uid)
+        else "ð Your achievements\n\n" + achievement_text(uid)
     )
     log_activity(uid, "achievements")
 
@@ -2160,7 +2139,7 @@ async def weekly(update, context):
     goals = get_goals(uid)
     lines = []
     today_date = datetime.now(TZ).date()
-    names = ["شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه"]
+    names = ["Ø´ÙØ¨Ù", "ÛÚ©Ø´ÙØ¨Ù", "Ø¯ÙØ´ÙØ¨Ù", "Ø³ÙâØ´ÙØ¨Ù", "ÚÙØ§Ø±Ø´ÙØ¨Ù", "Ù¾ÙØ¬Ø´ÙØ¨Ù", "Ø¬ÙØ¹Ù"]
     if lang(uid) == "en":
         names = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
 
@@ -2176,7 +2155,7 @@ async def weekly(update, context):
         total = len(goals)
         c.close()
         weekday = names[(d.weekday() + 1) % 7] if lang(uid) == "fa" else names[d.weekday()]
-        lines.append(f"📅 {weekday} {ds}: {done}/{total} ✅")
+        lines.append(f"ð {weekday} {ds}: {done}/{total} â")
     await update.message.reply_text(
         T[lang(uid)]["weekly"].format(name=display_name(uid), rows="\n".join(lines))
     )
@@ -2188,8 +2167,8 @@ async def stats(update, context):
     goals = get_goals(uid)
     # Calculate the user's current streak here.  The previous V22 version
     # referenced `streak` without defining it, which caused the whole
-    # "📊 آمار من" handler to fail and the global error handler to show
-    # "بقیه امکانات همچنان در دسترس‌اند".
+    # "ð Ø¢ÙØ§Ø± ÙÙ" handler to fail and the global error handler to show
+    # "Ø¨ÙÛÙ Ø§ÙÚ©Ø§ÙØ§Øª ÙÙÚÙØ§Ù Ø¯Ø± Ø¯Ø³ØªØ±Ø³âØ§ÙØ¯".
     streak = max((calculate_streak(uid, g["id"]) for g in goals), default=0)
     d = datetime.now(TZ).date().isoformat()
     c = db()
@@ -2215,9 +2194,9 @@ async def stats(update, context):
             total_done=total_done,
         )
         + (
-            f"\n🔥 رکورد زنجیره فعلی: {streak} روز"
+            f"\nð¥ Ø±Ú©ÙØ±Ø¯ Ø²ÙØ¬ÛØ±Ù ÙØ¹ÙÛ: {streak} Ø±ÙØ²"
             if lang(uid) == "fa"
-            else f"\n🔥 Current streak: {streak} days"
+            else f"\nð¥ Current streak: {streak} days"
         )
     )
     log_activity(uid, "stats")
@@ -2298,9 +2277,9 @@ async def bot_can_manage_channel(bot, channel):
     me = await bot.get_me()
     member = await bot.get_chat_member(chat_id=channel, user_id=me.id)
     if member.status not in {"administrator", "creator"}:
-        return False, "❌ ربات در کانال ادمین نیست. ابتدا ربات را ادمین کانال کن."
+        return False, "â Ø±Ø¨Ø§Øª Ø¯Ø± Ú©Ø§ÙØ§Ù Ø§Ø¯ÙÛÙ ÙÛØ³Øª. Ø§Ø¨ØªØ¯Ø§ Ø±Ø¨Ø§Øª Ø±Ø§ Ø§Ø¯ÙÛÙ Ú©Ø§ÙØ§Ù Ú©Ù."
     if member.status == "administrator" and not bool(getattr(member, "can_post_messages", False)):
-        return False, "❌ ربات ادمین است، ولی اجازه ارسال پست ندارد. دسترسی ارسال پیام را فعال کن."
+        return False, "â Ø±Ø¨Ø§Øª Ø§Ø¯ÙÛÙ Ø§Ø³ØªØ ÙÙÛ Ø§Ø¬Ø§Ø²Ù Ø§Ø±Ø³Ø§Ù Ù¾Ø³Øª ÙØ¯Ø§Ø±Ø¯. Ø¯Ø³ØªØ±Ø³Û Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù Ø±Ø§ ÙØ¹Ø§Ù Ú©Ù."
     return True, "OK"
 
 
@@ -2309,107 +2288,107 @@ def add_channel_post(content, typ, schedule_time=None, weekday=None, run_at=None
 
 
 AUTO_TOPIC_TREE_FA = {
-    "🎯 هدف‌گذاری": [
-        "تعیین هدف‌های کوچک و قابل اندازه‌گیری",
-        "اولویت‌بندی هدف‌ها",
-        "برنامه‌ریزی هفتگی",
-        "شکستن هدف بزرگ به قدم‌های کوچک",
-        "پیگیری پیشرفت هدف"
+    "ð¯ ÙØ¯ÙâÚ¯Ø°Ø§Ø±Û": [
+        "ØªØ¹ÛÛÙ ÙØ¯ÙâÙØ§Û Ú©ÙÚÚ© Ù ÙØ§Ø¨Ù Ø§ÙØ¯Ø§Ø²ÙâÚ¯ÛØ±Û",
+        "Ø§ÙÙÙÛØªâØ¨ÙØ¯Û ÙØ¯ÙâÙØ§",
+        "Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û ÙÙØªÚ¯Û",
+        "Ø´Ú©Ø³ØªÙ ÙØ¯Ù Ø¨Ø²Ø±Ú¯ Ø¨Ù ÙØ¯ÙâÙØ§Û Ú©ÙÚÚ©",
+        "Ù¾ÛÚ¯ÛØ±Û Ù¾ÛØ´Ø±ÙØª ÙØ¯Ù"
     ],
-    "📈 رشد فردی": [
-        "ساخت عادت‌های خوب",
-        "انضباط شخصی",
-        "اعتمادبه‌نفس",
-        "مدیریت اهمال‌کاری",
-        "خودشناسی و ارزیابی پیشرفت"
+    "ð Ø±Ø´Ø¯ ÙØ±Ø¯Û": [
+        "Ø³Ø§Ø®Øª Ø¹Ø§Ø¯ØªâÙØ§Û Ø®ÙØ¨",
+        "Ø§ÙØ¶Ø¨Ø§Ø· Ø´Ø®ØµÛ",
+        "Ø§Ø¹ØªÙØ§Ø¯Ø¨ÙâÙÙØ³",
+        "ÙØ¯ÛØ±ÛØª Ø§ÙÙØ§ÙâÚ©Ø§Ø±Û",
+        "Ø®ÙØ¯Ø´ÙØ§Ø³Û Ù Ø§Ø±Ø²ÛØ§Ø¨Û Ù¾ÛØ´Ø±ÙØª"
     ],
-    "⏱ مدیریت زمان": [
-        "برنامه‌ریزی روزانه",
-        "تمرکز عمیق",
-        "مقابله با حواس‌پرتی",
-        "اولویت‌بندی کارها",
-        "استراحت و زمان‌بندی درست"
+    "â± ÙØ¯ÛØ±ÛØª Ø²ÙØ§Ù": [
+        "Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û Ø±ÙØ²Ø§ÙÙ",
+        "ØªÙØ±Ú©Ø² Ø¹ÙÛÙ",
+        "ÙÙØ§Ø¨ÙÙ Ø¨Ø§ Ø­ÙØ§Ø³âÙ¾Ø±ØªÛ",
+        "Ø§ÙÙÙÛØªâØ¨ÙØ¯Û Ú©Ø§Ø±ÙØ§",
+        "Ø§Ø³ØªØ±Ø§Ø­Øª Ù Ø²ÙØ§ÙâØ¨ÙØ¯Û Ø¯Ø±Ø³Øª"
     ],
-    "💰 سرمایه‌گذاری و مالی": [
-        "سواد مالی",
-        "بودجه‌بندی شخصی",
-        "پس‌انداز",
-        "مدیریت ریسک",
-        "مفاهیم پایه سرمایه‌گذاری",
-        "ارز و دلار",
-        "طلا و سکه",
-        "کریپتو و بازار رمزارز",
-        "بورس و شاخص‌ها"
+    "ð° Ø³Ø±ÙØ§ÛÙâÚ¯Ø°Ø§Ø±Û Ù ÙØ§ÙÛ": [
+        "Ø³ÙØ§Ø¯ ÙØ§ÙÛ",
+        "Ø¨ÙØ¯Ø¬ÙâØ¨ÙØ¯Û Ø´Ø®ØµÛ",
+        "Ù¾Ø³âØ§ÙØ¯Ø§Ø²",
+        "ÙØ¯ÛØ±ÛØª Ø±ÛØ³Ú©",
+        "ÙÙØ§ÙÛÙ Ù¾Ø§ÛÙ Ø³Ø±ÙØ§ÛÙâÚ¯Ø°Ø§Ø±Û",
+        "Ø§Ø±Ø² Ù Ø¯ÙØ§Ø±",
+        "Ø·ÙØ§ Ù Ø³Ú©Ù",
+        "Ú©Ø±ÛÙ¾ØªÙ Ù Ø¨Ø§Ø²Ø§Ø± Ø±ÙØ²Ø§Ø±Ø²",
+        "Ø¨ÙØ±Ø³ Ù Ø´Ø§Ø®ØµâÙØ§"
     ],
-    "🏃 ورزش و برنامه کوتاه": [
-        "ورزش ۱۰ دقیقه‌ای در خانه",
-        "حرکات کششی بعد از کار",
-        "ورزش سبک برای روزهای خستگی",
-        "تمرین کل بدن بدون وسیله",
-        "گرم‌کردن و سردکردن"
+    "ð ÙØ±Ø²Ø´ Ù Ø¨Ø±ÙØ§ÙÙ Ú©ÙØªØ§Ù": [
+        "ÙØ±Ø²Ø´ Û±Û° Ø¯ÙÛÙÙâØ§Û Ø¯Ø± Ø®Ø§ÙÙ",
+        "Ø­Ø±Ú©Ø§Øª Ú©Ø´Ø´Û Ø¨Ø¹Ø¯ Ø§Ø² Ú©Ø§Ø±",
+        "ÙØ±Ø²Ø´ Ø³Ø¨Ú© Ø¨Ø±Ø§Û Ø±ÙØ²ÙØ§Û Ø®Ø³ØªÚ¯Û",
+        "ØªÙØ±ÛÙ Ú©Ù Ø¨Ø¯Ù Ø¨Ø¯ÙÙ ÙØ³ÛÙÙ",
+        "Ú¯Ø±ÙâÚ©Ø±Ø¯Ù Ù Ø³Ø±Ø¯Ú©Ø±Ø¯Ù"
     ],
-    "🍎 تغذیه و خواص خوراکی‌ها": [
-        "خواص سیب",
-        "خواص لیمو",
-        "خواص موز",
-        "آب و هیدراته ماندن",
-        "میان‌وعده سالم"
+    "ð ØªØºØ°ÛÙ Ù Ø®ÙØ§Øµ Ø®ÙØ±Ø§Ú©ÛâÙØ§": [
+        "Ø®ÙØ§Øµ Ø³ÛØ¨",
+        "Ø®ÙØ§Øµ ÙÛÙÙ",
+        "Ø®ÙØ§Øµ ÙÙØ²",
+        "Ø¢Ø¨ Ù ÙÛØ¯Ø±Ø§ØªÙ ÙØ§ÙØ¯Ù",
+        "ÙÛØ§ÙâÙØ¹Ø¯Ù Ø³Ø§ÙÙ"
     ],
-    "🧠 سخنان بزرگان و دانشمندان": [
-        "سخنان دانشمندان ایرانی",
-        "سخنان دانشمندان جهان",
-        "بزرگان و اندیشمندان قدیمی",
-        "دانشمندان و استادان معاصر",
-        "جملات کوتاه برای شروع روز"
+    "ð§  Ø³Ø®ÙØ§Ù Ø¨Ø²Ø±Ú¯Ø§Ù Ù Ø¯Ø§ÙØ´ÙÙØ¯Ø§Ù": [
+        "Ø³Ø®ÙØ§Ù Ø¯Ø§ÙØ´ÙÙØ¯Ø§Ù Ø§ÛØ±Ø§ÙÛ",
+        "Ø³Ø®ÙØ§Ù Ø¯Ø§ÙØ´ÙÙØ¯Ø§Ù Ø¬ÙØ§Ù",
+        "Ø¨Ø²Ø±Ú¯Ø§Ù Ù Ø§ÙØ¯ÛØ´ÙÙØ¯Ø§Ù ÙØ¯ÛÙÛ",
+        "Ø¯Ø§ÙØ´ÙÙØ¯Ø§Ù Ù Ø§Ø³ØªØ§Ø¯Ø§Ù ÙØ¹Ø§ØµØ±",
+        "Ø¬ÙÙØ§Øª Ú©ÙØªØ§Ù Ø¨Ø±Ø§Û Ø´Ø±ÙØ¹ Ø±ÙØ²"
     ],
-    "🌅 صبح و 🌙 شب": [
-        "پیام شروع روز",
-        "هدف‌گذاری صبحگاهی",
-        "جمع‌بندی شبانه",
-        "ارزیابی روز",
-        "آرام‌سازی قبل از خواب"
+    "ð ØµØ¨Ø­ Ù ð Ø´Ø¨": [
+        "Ù¾ÛØ§Ù Ø´Ø±ÙØ¹ Ø±ÙØ²",
+        "ÙØ¯ÙâÚ¯Ø°Ø§Ø±Û ØµØ¨Ø­Ú¯Ø§ÙÛ",
+        "Ø¬ÙØ¹âØ¨ÙØ¯Û Ø´Ø¨Ø§ÙÙ",
+        "Ø§Ø±Ø²ÛØ§Ø¨Û Ø±ÙØ²",
+        "Ø¢Ø±Ø§ÙâØ³Ø§Ø²Û ÙØ¨Ù Ø§Ø² Ø®ÙØ§Ø¨"
     ],
-    "💼 کار و کسب‌وکار": [
-        "مهارت‌های شغلی",
-        "راه‌اندازی کسب‌وکار",
-        "برند شخصی",
-        "مدیریت پروژه",
-        "افزایش بهره‌وری"
+    "ð¼ Ú©Ø§Ø± Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø±": [
+        "ÙÙØ§Ø±ØªâÙØ§Û Ø´ØºÙÛ",
+        "Ø±Ø§ÙâØ§ÙØ¯Ø§Ø²Û Ú©Ø³Ø¨âÙÚ©Ø§Ø±",
+        "Ø¨Ø±ÙØ¯ Ø´Ø®ØµÛ",
+        "ÙØ¯ÛØ±ÛØª Ù¾Ø±ÙÚÙ",
+        "Ø§ÙØ²Ø§ÛØ´ Ø¨ÙØ±ÙâÙØ±Û"
     ],
-    "📚 یادگیری": [
-        "روش مطالعه بهتر",
-        "یادگیری مهارت جدید",
-        "مرور و یادسپاری",
-        "کتاب‌خوانی",
-        "یادگیری زبان"
+    "ð ÛØ§Ø¯Ú¯ÛØ±Û": [
+        "Ø±ÙØ´ ÙØ·Ø§ÙØ¹Ù Ø¨ÙØªØ±",
+        "ÛØ§Ø¯Ú¯ÛØ±Û ÙÙØ§Ø±Øª Ø¬Ø¯ÛØ¯",
+        "ÙØ±ÙØ± Ù ÛØ§Ø¯Ø³Ù¾Ø§Ø±Û",
+        "Ú©ØªØ§Ø¨âØ®ÙØ§ÙÛ",
+        "ÛØ§Ø¯Ú¯ÛØ±Û Ø²Ø¨Ø§Ù"
     ],
-    "🧠 ذهن و تمرکز": [
-        "تمرکز",
-        "مدیریت استرس",
-        "مدیریت افکار",
-        "مدیتیشن و آرام‌سازی",
-        "استراحت ذهنی"
+    "ð§  Ø°ÙÙ Ù ØªÙØ±Ú©Ø²": [
+        "ØªÙØ±Ú©Ø²",
+        "ÙØ¯ÛØ±ÛØª Ø§Ø³ØªØ±Ø³",
+        "ÙØ¯ÛØ±ÛØª Ø§ÙÚ©Ø§Ø±",
+        "ÙØ¯ÛØªÛØ´Ù Ù Ø¢Ø±Ø§ÙâØ³Ø§Ø²Û",
+        "Ø§Ø³ØªØ±Ø§Ø­Øª Ø°ÙÙÛ"
     ],
-    "🏃 سلامتی و سبک زندگی": [
-        "خواب بهتر",
-        "ورزش و حرکت",
-        "تغذیه متعادل",
-        "آب و انرژی روزانه",
-        "روتین صبح و شب"
+    "ð Ø³ÙØ§ÙØªÛ Ù Ø³Ø¨Ú© Ø²ÙØ¯Ú¯Û": [
+        "Ø®ÙØ§Ø¨ Ø¨ÙØªØ±",
+        "ÙØ±Ø²Ø´ Ù Ø­Ø±Ú©Øª",
+        "ØªØºØ°ÛÙ ÙØªØ¹Ø§Ø¯Ù",
+        "Ø¢Ø¨ Ù Ø§ÙØ±ÚÛ Ø±ÙØ²Ø§ÙÙ",
+        "Ø±ÙØªÛÙ ØµØ¨Ø­ Ù Ø´Ø¨"
     ],
-    "🤝 ارتباطات": [
-        "مهارت گفت‌وگو",
-        "گوش دادن فعال",
-        "مرزبندی سالم",
-        "حل تعارض",
-        "روابط حرفه‌ای"
+    "ð¤ Ø§Ø±ØªØ¨Ø§Ø·Ø§Øª": [
+        "ÙÙØ§Ø±Øª Ú¯ÙØªâÙÚ¯Ù",
+        "Ú¯ÙØ´ Ø¯Ø§Ø¯Ù ÙØ¹Ø§Ù",
+        "ÙØ±Ø²Ø¨ÙØ¯Û Ø³Ø§ÙÙ",
+        "Ø­Ù ØªØ¹Ø§Ø±Ø¶",
+        "Ø±ÙØ§Ø¨Ø· Ø­Ø±ÙÙâØ§Û"
     ],
-    "🚀 انگیزه و موفقیت": [
-        "شروع کردن",
-        "ادامه دادن",
-        "عبور از شکست",
-        "ساختن نظم",
-        "ثبت موفقیت‌های کوچک"
+    "ð Ø§ÙÚ¯ÛØ²Ù Ù ÙÙÙÙÛØª": [
+        "Ø´Ø±ÙØ¹ Ú©Ø±Ø¯Ù",
+        "Ø§Ø¯Ø§ÙÙ Ø¯Ø§Ø¯Ù",
+        "Ø¹Ø¨ÙØ± Ø§Ø² Ø´Ú©Ø³Øª",
+        "Ø³Ø§Ø®ØªÙ ÙØ¸Ù",
+        "Ø«Ø¨Øª ÙÙÙÙÛØªâÙØ§Û Ú©ÙÚÚ©"
     ],
 }
 
@@ -2421,30 +2400,30 @@ def _topic_focus(topic):
     """
     t = str(topic or "").strip()
     rules = {
-        "ورزش ۱۰ دقیقه‌ای": "روی اثر فعالیت ۱۰ دقیقه‌ای بر بدن، انرژی و حال‌وهوای روز، نمونه ساختار ۱۰ دقیقه‌ای و نکات اجرای ایمن تمرکز کن.",
-        "خواب بهتر": "روی کیفیت خواب، عادت‌های قبل خواب، نور و صفحه‌نمایش، زمان‌بندی و اثر خواب کافی بر انرژی و تمرکز تمرکز کن.",
-        "آب کافی": "روی نقش آب در بدن، نشانه‌های کم‌آبی، زمان‌های مناسب نوشیدن و یک روش عملی برای مصرف منظم آب تمرکز کن.",
-        "صبحانه سالم": "روی اجزای یک صبحانه متعادل، انرژی صبح، ترکیب پروتئین/فیبر و چند انتخاب عملی تمرکز کن.",
-        "مطالعه ۲۰ دقیقه‌ای": "روی مطالعه متمرکز ۲۰ دقیقه‌ای، انتخاب مطلب، حذف حواس‌پرتی و یک روش ساده برای شروع تمرکز کن.",
-        "۱۰ دقیقه تمرکز": "روی ایجاد یک بازه تمرکز ۱۰ دقیقه‌ای، حذف مزاحمت‌ها، شروع کار و استراحت کوتاه تمرکز کن.",
-        "۳۰ دقیقه کار بدون حواس‌پرتی": "روی یک بازه کاری ۳۰ دقیقه‌ای، حذف اعلان‌ها، تعیین یک خروجی مشخص و حفظ تمرکز تمرکز کن.",
-        "پس‌انداز روزانه": "روی کنار گذاشتن مبلغ کوچک روزانه، کنترل هزینه‌های غیرضروری و ساخت عادت پس‌انداز تمرکز کن.",
+        "ÙØ±Ø²Ø´ Û±Û° Ø¯ÙÛÙÙâØ§Û": "Ø±ÙÛ Ø§Ø«Ø± ÙØ¹Ø§ÙÛØª Û±Û° Ø¯ÙÛÙÙâØ§Û Ø¨Ø± Ø¨Ø¯ÙØ Ø§ÙØ±ÚÛ Ù Ø­Ø§ÙâÙÙÙØ§Û Ø±ÙØ²Ø ÙÙÙÙÙ Ø³Ø§Ø®ØªØ§Ø± Û±Û° Ø¯ÙÛÙÙâØ§Û Ù ÙÚ©Ø§Øª Ø§Ø¬Ø±Ø§Û Ø§ÛÙÙ ØªÙØ±Ú©Ø² Ú©Ù.",
+        "Ø®ÙØ§Ø¨ Ø¨ÙØªØ±": "Ø±ÙÛ Ú©ÛÙÛØª Ø®ÙØ§Ø¨Ø Ø¹Ø§Ø¯ØªâÙØ§Û ÙØ¨Ù Ø®ÙØ§Ø¨Ø ÙÙØ± Ù ØµÙØ­ÙâÙÙØ§ÛØ´Ø Ø²ÙØ§ÙâØ¨ÙØ¯Û Ù Ø§Ø«Ø± Ø®ÙØ§Ø¨ Ú©Ø§ÙÛ Ø¨Ø± Ø§ÙØ±ÚÛ Ù ØªÙØ±Ú©Ø² ØªÙØ±Ú©Ø² Ú©Ù.",
+        "Ø¢Ø¨ Ú©Ø§ÙÛ": "Ø±ÙÛ ÙÙØ´ Ø¢Ø¨ Ø¯Ø± Ø¨Ø¯ÙØ ÙØ´Ø§ÙÙâÙØ§Û Ú©ÙâØ¢Ø¨ÛØ Ø²ÙØ§ÙâÙØ§Û ÙÙØ§Ø³Ø¨ ÙÙØ´ÛØ¯Ù Ù ÛÚ© Ø±ÙØ´ Ø¹ÙÙÛ Ø¨Ø±Ø§Û ÙØµØ±Ù ÙÙØ¸Ù Ø¢Ø¨ ØªÙØ±Ú©Ø² Ú©Ù.",
+        "ØµØ¨Ø­Ø§ÙÙ Ø³Ø§ÙÙ": "Ø±ÙÛ Ø§Ø¬Ø²Ø§Û ÛÚ© ØµØ¨Ø­Ø§ÙÙ ÙØªØ¹Ø§Ø¯ÙØ Ø§ÙØ±ÚÛ ØµØ¨Ø­Ø ØªØ±Ú©ÛØ¨ Ù¾Ø±ÙØªØ¦ÛÙ/ÙÛØ¨Ø± Ù ÚÙØ¯ Ø§ÙØªØ®Ø§Ø¨ Ø¹ÙÙÛ ØªÙØ±Ú©Ø² Ú©Ù.",
+        "ÙØ·Ø§ÙØ¹Ù Û²Û° Ø¯ÙÛÙÙâØ§Û": "Ø±ÙÛ ÙØ·Ø§ÙØ¹Ù ÙØªÙØ±Ú©Ø² Û²Û° Ø¯ÙÛÙÙâØ§ÛØ Ø§ÙØªØ®Ø§Ø¨ ÙØ·ÙØ¨Ø Ø­Ø°Ù Ø­ÙØ§Ø³âÙ¾Ø±ØªÛ Ù ÛÚ© Ø±ÙØ´ Ø³Ø§Ø¯Ù Ø¨Ø±Ø§Û Ø´Ø±ÙØ¹ ØªÙØ±Ú©Ø² Ú©Ù.",
+        "Û±Û° Ø¯ÙÛÙÙ ØªÙØ±Ú©Ø²": "Ø±ÙÛ Ø§ÛØ¬Ø§Ø¯ ÛÚ© Ø¨Ø§Ø²Ù ØªÙØ±Ú©Ø² Û±Û° Ø¯ÙÛÙÙâØ§ÛØ Ø­Ø°Ù ÙØ²Ø§Ø­ÙØªâÙØ§Ø Ø´Ø±ÙØ¹ Ú©Ø§Ø± Ù Ø§Ø³ØªØ±Ø§Ø­Øª Ú©ÙØªØ§Ù ØªÙØ±Ú©Ø² Ú©Ù.",
+        "Û³Û° Ø¯ÙÛÙÙ Ú©Ø§Ø± Ø¨Ø¯ÙÙ Ø­ÙØ§Ø³âÙ¾Ø±ØªÛ": "Ø±ÙÛ ÛÚ© Ø¨Ø§Ø²Ù Ú©Ø§Ø±Û Û³Û° Ø¯ÙÛÙÙâØ§ÛØ Ø­Ø°Ù Ø§Ø¹ÙØ§ÙâÙØ§Ø ØªØ¹ÛÛÙ ÛÚ© Ø®Ø±ÙØ¬Û ÙØ´Ø®Øµ Ù Ø­ÙØ¸ ØªÙØ±Ú©Ø² ØªÙØ±Ú©Ø² Ú©Ù.",
+        "Ù¾Ø³âØ§ÙØ¯Ø§Ø² Ø±ÙØ²Ø§ÙÙ": "Ø±ÙÛ Ú©ÙØ§Ø± Ú¯Ø°Ø§Ø´ØªÙ ÙØ¨ÙØº Ú©ÙÚÚ© Ø±ÙØ²Ø§ÙÙØ Ú©ÙØªØ±Ù ÙØ²ÛÙÙâÙØ§Û ØºÛØ±Ø¶Ø±ÙØ±Û Ù Ø³Ø§Ø®Øª Ø¹Ø§Ø¯Øª Ù¾Ø³âØ§ÙØ¯Ø§Ø² ØªÙØ±Ú©Ø² Ú©Ù.",
     }
-    return rules.get(t, f"تمام محتوای پست باید مستقیماً درباره «{t}» باشد؛ تعریف موضوع، فایده یا کاربرد آن، یک روش عملی مرتبط و یک تمرین مشخص مرتبط با همان موضوع را توضیح بده.")
+    return rules.get(t, f"ØªÙØ§Ù ÙØ­ØªÙØ§Û Ù¾Ø³Øª Ø¨Ø§ÛØ¯ ÙØ³ØªÙÛÙØ§Ù Ø¯Ø±Ø¨Ø§Ø±Ù Â«{t}Â» Ø¨Ø§Ø´Ø¯Ø ØªØ¹Ø±ÛÙ ÙÙØ¶ÙØ¹Ø ÙØ§ÛØ¯Ù ÛØ§ Ú©Ø§Ø±Ø¨Ø±Ø¯ Ø¢ÙØ ÛÚ© Ø±ÙØ´ Ø¹ÙÙÛ ÙØ±ØªØ¨Ø· Ù ÛÚ© ØªÙØ±ÛÙ ÙØ´Ø®Øµ ÙØ±ØªØ¨Ø· Ø¨Ø§ ÙÙØ§Ù ÙÙØ¶ÙØ¹ Ø±Ø§ ØªÙØ¶ÛØ­ Ø¨Ø¯Ù.")
 
 
 def _topic_terms(topic):
     """Keywords used as a lightweight relevance gate after generation."""
     t = str(topic or "").strip().lower()
     aliases = {
-        "ورزش ۱۰ دقیقه‌ای": ["ورزش", "۱۰ دقیقه", "دقیقه", "بدن", "تمرین"],
-        "خواب بهتر": ["خواب", "شب", "استراحت", "خوابیدن"],
-        "آب کافی": ["آب", "نوشیدن", "کم‌آبی", "لیوان"],
-        "مطالعه ۲۰ دقیقه‌ای": ["مطالعه", "۲۰ دقیقه", "کتاب", "یادگیری"],
-        "۱۰ دقیقه تمرکز": ["تمرکز", "۱۰ دقیقه", "حواس", "کار"],
-        "پس‌انداز روزانه": ["پس‌انداز", "هزینه", "پول", "روزانه"],
+        "ÙØ±Ø²Ø´ Û±Û° Ø¯ÙÛÙÙâØ§Û": ["ÙØ±Ø²Ø´", "Û±Û° Ø¯ÙÛÙÙ", "Ø¯ÙÛÙÙ", "Ø¨Ø¯Ù", "ØªÙØ±ÛÙ"],
+        "Ø®ÙØ§Ø¨ Ø¨ÙØªØ±": ["Ø®ÙØ§Ø¨", "Ø´Ø¨", "Ø§Ø³ØªØ±Ø§Ø­Øª", "Ø®ÙØ§Ø¨ÛØ¯Ù"],
+        "Ø¢Ø¨ Ú©Ø§ÙÛ": ["Ø¢Ø¨", "ÙÙØ´ÛØ¯Ù", "Ú©ÙâØ¢Ø¨Û", "ÙÛÙØ§Ù"],
+        "ÙØ·Ø§ÙØ¹Ù Û²Û° Ø¯ÙÛÙÙâØ§Û": ["ÙØ·Ø§ÙØ¹Ù", "Û²Û° Ø¯ÙÛÙÙ", "Ú©ØªØ§Ø¨", "ÛØ§Ø¯Ú¯ÛØ±Û"],
+        "Û±Û° Ø¯ÙÛÙÙ ØªÙØ±Ú©Ø²": ["ØªÙØ±Ú©Ø²", "Û±Û° Ø¯ÙÛÙÙ", "Ø­ÙØ§Ø³", "Ú©Ø§Ø±"],
+        "Ù¾Ø³âØ§ÙØ¯Ø§Ø² Ø±ÙØ²Ø§ÙÙ": ["Ù¾Ø³âØ§ÙØ¯Ø§Ø²", "ÙØ²ÛÙÙ", "Ù¾ÙÙ", "Ø±ÙØ²Ø§ÙÙ"],
     }
-    return aliases.get(t, [x for x in re.findall(r"[؀-ۿA-Za-z0-9]+", t) if len(x) > 2])
+    return aliases.get(t, [x for x in re.findall(r"[Ø-Û¿A-Za-z0-9]+", t) if len(x) > 2])
 
 
 def _is_topic_relevant(text, topic):
@@ -2465,7 +2444,7 @@ def _is_topic_relevant(text, topic):
 def _normalize_post_text(value):
     value=str(value or "").lower()
     value=re.sub(r"https?://\S+", " ", value)
-    value=re.sub(r"[^\w؀-ۿ]+", " ", value, flags=re.UNICODE)
+    value=re.sub(r"[^\wØ-Û¿]+", " ", value, flags=re.UNICODE)
     return " ".join(value.split())
 
 def _post_similarity(a,b):
@@ -2517,9 +2496,9 @@ def save_auto_post_history(channel_id, topic, category, content):
 def topic_specific_fallback(topic, attempt=1):
     focus=_topic_focus(topic)
     variants=[
-        f"🎯 {topic}\\n\\n{focus}\\n\\n• امروز یک اقدام مشخص درباره همین موضوع انتخاب کن.\\n• نتیجه را کوتاه ثبت کن.\\n💡 تمرین: ۱۰ دقیقه فقط روی «{topic}» کار کن.",
-        f"📌 {topic}\\n\\n{focus}\\n\\n• یک مانع مرتبط با این موضوع را حذف کن.\\n• یک قدم کوچک و قابل اندازه‌گیری بردار.\\n💡 تمرین امروز: یک اقدام مستقیم درباره «{topic}» انجام بده.",
-        f"🧠 {topic}\\n\\n{focus}\\n\\n• موضوع را به یک کار کوچک تبدیل کن.\\n• زمان شروع را مشخص کن.\\n💡 اقدام امروز: یک قدم مرتبط با «{topic}» انجام بده.",
+        f"ð¯ {topic}\\n\\n{focus}\\n\\nâ¢ Ø§ÙØ±ÙØ² ÛÚ© Ø§ÙØ¯Ø§Ù ÙØ´Ø®Øµ Ø¯Ø±Ø¨Ø§Ø±Ù ÙÙÛÙ ÙÙØ¶ÙØ¹ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.\\nâ¢ ÙØªÛØ¬Ù Ø±Ø§ Ú©ÙØªØ§Ù Ø«Ø¨Øª Ú©Ù.\\nð¡ ØªÙØ±ÛÙ: Û±Û° Ø¯ÙÛÙÙ ÙÙØ· Ø±ÙÛ Â«{topic}Â» Ú©Ø§Ø± Ú©Ù.",
+        f"ð {topic}\\n\\n{focus}\\n\\nâ¢ ÛÚ© ÙØ§ÙØ¹ ÙØ±ØªØ¨Ø· Ø¨Ø§ Ø§ÛÙ ÙÙØ¶ÙØ¹ Ø±Ø§ Ø­Ø°Ù Ú©Ù.\\nâ¢ ÛÚ© ÙØ¯Ù Ú©ÙÚÚ© Ù ÙØ§Ø¨Ù Ø§ÙØ¯Ø§Ø²ÙâÚ¯ÛØ±Û Ø¨Ø±Ø¯Ø§Ø±.\\nð¡ ØªÙØ±ÛÙ Ø§ÙØ±ÙØ²: ÛÚ© Ø§ÙØ¯Ø§Ù ÙØ³ØªÙÛÙ Ø¯Ø±Ø¨Ø§Ø±Ù Â«{topic}Â» Ø§ÙØ¬Ø§Ù Ø¨Ø¯Ù.",
+        f"ð§  {topic}\\n\\n{focus}\\n\\nâ¢ ÙÙØ¶ÙØ¹ Ø±Ø§ Ø¨Ù ÛÚ© Ú©Ø§Ø± Ú©ÙÚÚ© ØªØ¨Ø¯ÛÙ Ú©Ù.\\nâ¢ Ø²ÙØ§Ù Ø´Ø±ÙØ¹ Ø±Ø§ ÙØ´Ø®Øµ Ú©Ù.\\nð¡ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²: ÛÚ© ÙØ¯Ù ÙØ±ØªØ¨Ø· Ø¨Ø§ Â«{topic}Â» Ø§ÙØ¬Ø§Ù Ø¨Ø¯Ù.",
     ]
     return variants[(attempt-1)%len(variants)]
 
@@ -2531,7 +2510,7 @@ def generate_unique_auto_post(channel_id, category, topic):
         if not duplicate and _is_topic_relevant(content,topic):
             return content
         logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
-        avoid += f"\n- نسخه ردشده: {str(content)[:220]}"
+        avoid += f"\n- ÙØ³Ø®Ù Ø±Ø¯Ø´Ø¯Ù: {str(content)[:220]}"
     for attempt in range(1,9):
         candidate=topic_specific_fallback(topic,attempt)
         duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.90)
@@ -2542,7 +2521,7 @@ def generate_unique_auto_post(channel_id, category, topic):
     # Last-resort fallback: add a deterministic per-attempt nonce and verify it
     # against the complete history before returning.
     for n in range(1,21):
-        candidate=topic_specific_fallback(topic,8)+f"\n\n🆕 نسخه {datetime.now(TZ).strftime('%Y%m%d')}-{n}"
+        candidate=topic_specific_fallback(topic,8)+f"\n\nð ÙØ³Ø®Ù {datetime.now(TZ).strftime('%Y%m%d')}-{n}"
         duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.995)
         if not duplicate:
             return candidate
@@ -2579,7 +2558,7 @@ def get_auto_topic():
 def compact_channel_footer(bot_username="", channel_username=""):
     # Every published channel post gets the configured channel username below it.
     if channel_username:
-        return f"\n\n📢 {channel_username}"
+        return f"\n\nð¢ {channel_username}"
     return ""
 
 
@@ -2590,7 +2569,7 @@ async def channel_post_footer(bot, channel):
         username = getattr(chat, "username", None)
         if username:
             username = str(username).lstrip("@")
-            return f"\n\n📢 @{username}"
+            return f"\n\nð¢ @{username}"
     except Exception as e:
         logger.warning("Could not resolve channel username for post footer: %s", e)
     return ""
@@ -2627,7 +2606,7 @@ async def generate_topic_image(topic):
         d.text((512,380),"MyTasks",font=font_big,anchor="mm",fill="white")
         topic_text=str(topic)[:70]
         d.multiline_text((512,510),topic_text,font=font,anchor="mm",align="center",fill=(229,231,235),spacing=10)
-        d.text((512,820),"یک قدم کوچک، هر روز",font=small,anchor="mm",fill=(203,213,225))
+        d.text((512,820),"ÛÚ© ÙØ¯Ù Ú©ÙÚÚ©Ø ÙØ± Ø±ÙØ²",font=small,anchor="mm",fill=(203,213,225))
         bio=io.BytesIO(); img.save(bio,format="PNG",optimize=True); bio.seek(0); bio.name="mytasks_post.png"; return bio
     except Exception as e:
         logger.error("Free image generation failed: %s",e); return None
@@ -2650,10 +2629,10 @@ async def get_identity_handles(bot, channel):
 
 def content_feedback_keyboard(topic):
     key=re.sub(r"\s+","_",str(topic))[:50]
-    return InlineKeyboardMarkup([[InlineKeyboardButton("👍 مفید بود",callback_data=f"feedback:up:{key}"),InlineKeyboardButton("👎 مناسب نبود",callback_data=f"feedback:down:{key}")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("ð ÙÙÛØ¯ Ø¨ÙØ¯",callback_data=f"feedback:up:{key}"),InlineKeyboardButton("ð ÙÙØ§Ø³Ø¨ ÙØ¨ÙØ¯",callback_data=f"feedback:down:{key}")]])
 
 async def feedback_callback(update,context):
-    q=update.callback_query; uid=q.from_user.id; await q.answer("ثبت شد")
+    q=update.callback_query; uid=q.from_user.id; await q.answer("Ø«Ø¨Øª Ø´Ø¯")
     parts = _safe_cb_parts(q.data, ":", 3)
     if not parts: return
     _,rating,topic=parts; score=1 if rating=="up" else -1; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO content_feedback(post_key,user_id,rating,reaction,created_at) VALUES(?,?,?,?,?)",(topic,uid,score,rating,now)); c.execute("INSERT INTO content_preferences(user_id,category,score) VALUES(?,?,?) ON CONFLICT(user_id,category) DO UPDATE SET score=score+excluded.score",(uid,topic,score)); c.commit(); c.close(); add_xp(uid,2,"content_feedback")
@@ -2671,9 +2650,9 @@ async def send_auto_channel_post(context, channel, topic, category=None):
     try:
         msg=await context.bot.send_message(chat_id=channel,text=content)
         save_auto_post_history(channel,topic,category,content)
-        if any(k in topic for k in ("ورزش","حرکات","تمرین")):
+        if any(k in topic for k in ("ÙØ±Ø²Ø´","Ø­Ø±Ú©Ø§Øª","ØªÙØ±ÛÙ")):
             try:
-                await context.bot.send_poll(chat_id=channel,question="🏃 تمرین امروز را انجام دادی؟",options=["✅ انجام دادم","⏳ هنوز نه","❌ انجام ندادم"],is_anonymous=False)
+                await context.bot.send_poll(chat_id=channel,question="ð ØªÙØ±ÛÙ Ø§ÙØ±ÙØ² Ø±Ø§ Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯ÛØ",options=["â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù","â³ ÙÙÙØ² ÙÙ","â Ø§ÙØ¬Ø§Ù ÙØ¯Ø§Ø¯Ù"],is_anonymous=False)
             except Exception as e:
                 logger.warning("Exercise poll failed: %s",e)
         return msg
@@ -2730,9 +2709,9 @@ async def auto_channel_job(context):
         if now>=preview_at and now<next_run and not pending:
             category,topic=get_auto_topic(); content=generate_unique_auto_post(channel,category,topic); footer=await channel_post_footer(context.bot, channel); content=add_channel_username_footer(content, footer, 4096)
             c=db(); cur=c.execute("INSERT INTO auto_pending(channel_id,topic,content,publish_at,created_at) VALUES(?,?,?,?,?)",(str(channel),topic,content,next_run.isoformat(),now.isoformat())); pid=cur.lastrowid; c.commit(); c.close()
-            kb=InlineKeyboardMarkup([[InlineKeyboardButton("✅ تأیید شده از طرف من → انتشار",callback_data=f"appr:{pid}"),InlineKeyboardButton("❌ رد",callback_data=f"apprrej:{pid}")]])
+            kb=InlineKeyboardMarkup([[InlineKeyboardButton("â ØªØ£ÛÛØ¯ Ø´Ø¯Ù Ø§Ø² Ø·Ø±Ù ÙÙ â Ø§ÙØªØ´Ø§Ø±",callback_data=f"appr:{pid}"),InlineKeyboardButton("â Ø±Ø¯",callback_data=f"apprrej:{pid}")]])
             for admin_id in ADMIN_IDS:
-                try: await context.bot.send_message(admin_id,f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {category}\n🕐 انتشار در: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
+                try: await context.bot.send_message(admin_id,f"ð <b>Ù¾ÛØ´âÙÙØ§ÛØ´ Ù¾Ø³Øª</b>\n\nð {category}\nð Ø§ÙØªØ´Ø§Ø± Ø¯Ø±: {next_run.strftime('%H:%M')}\n\n{content}",parse_mode="HTML",reply_markup=kb)
                 except Exception as e: logger.error("Approval preview failed: %s",e)
             return
         if now<next_run: return
@@ -2759,15 +2738,15 @@ async def auto_channel_job(context):
 
 async def approval_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); r=c.execute("SELECT * FROM auto_pending WHERE id=?",(pid,)).fetchone();
-    if not r: c.close(); await q.message.edit_text("❌ پیش‌نمایش پیدا نشد."); return
-    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.edit_text("✅ تأیید شد. پست در زمان تعیین‌شده منتشر می‌شود.")
+    if not r: c.close(); await q.message.edit_text("â Ù¾ÛØ´âÙÙØ§ÛØ´ Ù¾ÛØ¯Ø§ ÙØ´Ø¯."); return
+    c.execute("UPDATE auto_pending SET status='approved' WHERE id=?",(pid,)); c.commit(); c.close(); await q.message.edit_text("â ØªØ£ÛÛØ¯ Ø´Ø¯. Ù¾Ø³Øª Ø¯Ø± Ø²ÙØ§Ù ØªØ¹ÛÛÙâØ´Ø¯Ù ÙÙØªØ´Ø± ÙÛâØ´ÙØ¯.")
 
 async def approval_reject_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
-    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.edit_text("❌ پست رد شد و منتشر نمی‌شود.")
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
+    await q.answer(); pid=int(q.data.split(":",1)[1]); c=db(); c.execute("UPDATE auto_pending SET status='rejected' WHERE id=? AND status='pending'",(pid,)); c.commit(); c.close(); await q.message.edit_text("â Ù¾Ø³Øª Ø±Ø¯ Ø´Ø¯ Ù ÙÙØªØ´Ø± ÙÙÛâØ´ÙØ¯.")
 
 
 
@@ -2883,33 +2862,33 @@ def _channel_runtime_schema_ddl():
 
 def channel_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📡 تنظیم کانال", callback_data="ch:set"),
-         InlineKeyboardButton("🔌 تست اتصال", callback_data="ch:test")],
-        [InlineKeyboardButton("📝 ساخت پست", callback_data="ch:new"),
-         InlineKeyboardButton("🤖 ساخت پست هوشمند", callback_data="ch:smart")],
-        [InlineKeyboardButton("📋 پست‌ها", callback_data="ch:list"),
-         InlineKeyboardButton("🕘 تاریخچه انتشار", callback_data="ch:history")],
-        [InlineKeyboardButton("🧩 چند پست / زمان‌بندی", callback_data="ch:batch"),
-         InlineKeyboardButton("🤖 انتشار خودکار", callback_data="ch:auto")],
-        [InlineKeyboardButton("📢 کانال‌های متصل", callback_data="ch:channels"),
-         InlineKeyboardButton("🔒 عضویت اجباری", callback_data="forcedsub:home")],
-        [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+        [InlineKeyboardButton("ð¡ ØªÙØ¸ÛÙ Ú©Ø§ÙØ§Ù", callback_data="ch:set"),
+         InlineKeyboardButton("ð ØªØ³Øª Ø§ØªØµØ§Ù", callback_data="ch:test")],
+        [InlineKeyboardButton("ð Ø³Ø§Ø®Øª Ù¾Ø³Øª", callback_data="ch:new"),
+         InlineKeyboardButton("ð¤ Ø³Ø§Ø®Øª Ù¾Ø³Øª ÙÙØ´ÙÙØ¯", callback_data="ch:smart")],
+        [InlineKeyboardButton("ð Ù¾Ø³ØªâÙØ§", callback_data="ch:list"),
+         InlineKeyboardButton("ð ØªØ§Ø±ÛØ®ÚÙ Ø§ÙØªØ´Ø§Ø±", callback_data="ch:history")],
+        [InlineKeyboardButton("ð§© ÚÙØ¯ Ù¾Ø³Øª / Ø²ÙØ§ÙâØ¨ÙØ¯Û", callback_data="ch:batch"),
+         InlineKeyboardButton("ð¤ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±", callback_data="ch:auto")],
+        [InlineKeyboardButton("ð¢ Ú©Ø§ÙØ§ÙâÙØ§Û ÙØªØµÙ", callback_data="ch:channels"),
+         InlineKeyboardButton("ð Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û", callback_data="forcedsub:home")],
+        [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]
     ])
 
 def channel_schedule_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📤 ارسال فوری",callback_data="chs:now")],[InlineKeyboardButton("📅 یک‌بار",callback_data="chs:once"),InlineKeyboardButton("🔄 روزانه",callback_data="chs:daily")],[InlineKeyboardButton("📆 هفتگی",callback_data="chs:weekly")],[InlineKeyboardButton("❌ لغو",callback_data="chs:cancel")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("ð¤ Ø§Ø±Ø³Ø§Ù ÙÙØ±Û",callback_data="chs:now")],[InlineKeyboardButton("ð ÛÚ©âØ¨Ø§Ø±",callback_data="chs:once"),InlineKeyboardButton("ð Ø±ÙØ²Ø§ÙÙ",callback_data="chs:daily")],[InlineKeyboardButton("ð ÙÙØªÚ¯Û",callback_data="chs:weekly")],[InlineKeyboardButton("â ÙØºÙ",callback_data="chs:cancel")]])
 
 def channel_time_keyboard(prefix):
     rows=[[InlineKeyboardButton(x,callback_data=f"{prefix}:{x}") for x in TIME_BUTTONS[i:i+4]] for i in range(0,len(TIME_BUTTONS),4)]
     # BUGFIX: this helper previously returned None, so the daily/weekly channel
     # time picker was sent without any buttons.
-    rows.append([InlineKeyboardButton("❌ لغو", callback_data="chs:cancel")])
+    rows.append([InlineKeyboardButton("â ÙØºÙ", callback_data="chs:cancel")])
     return InlineKeyboardMarkup(rows)
 
 def channel_schedule_text(r):
-    if r["schedule_type"]=="daily": return f"🔄 روزانه {r['schedule_time']}"
-    if r["schedule_type"]=="weekly": return f"📆 هفتگی روز {r['weekday']} ساعت {r['schedule_time']}"
-    return f"📅 {r['run_at'].replace('T',' ') if r['run_at'] else 'فوری'}"
+    if r["schedule_type"]=="daily": return f"ð Ø±ÙØ²Ø§ÙÙ {r['schedule_time']}"
+    if r["schedule_type"]=="weekly": return f"ð ÙÙØªÚ¯Û Ø±ÙØ² {r['weekday']} Ø³Ø§Ø¹Øª {r['schedule_time']}"
+    return f"ð {r['run_at'].replace('T',' ') if r['run_at'] else 'ÙÙØ±Û'}"
 
 async def channel_scheduler_job(context):
     now=datetime.now(TZ); key=now.strftime("%Y-%m-%d %H:%M"); hhmm=now.strftime("%H:%M"); cfg=get_channel_config()
@@ -2934,35 +2913,35 @@ def auto_channel_keyboard():
     interval = int(get_auto_setting("interval_minutes", "60") or 60)
     category = get_auto_setting("category", "random")
     subcategory = get_auto_setting("subcategory", "random")
-    state = "🟢 خودکار روشن" if enabled else "⚪ خودکار خاموش"
-    topic_text = "🎲 تصادفی"
+    state = "ð¢ Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙØ´Ù" if enabled else "âª Ø®ÙØ¯Ú©Ø§Ø± Ø®Ø§ÙÙØ´"
+    topic_text = "ð² ØªØµØ§Ø¯ÙÛ"
     if category != "random":
         topic_text = category
         if subcategory != "random":
-            topic_text += f"\n↳ {subcategory}"
+            topic_text += f"\nâ³ {subcategory}"
 
     rows = [
         [InlineKeyboardButton(state, callback_data="auto:toggle")],
         [
-            InlineKeyboardButton(f"⏱ هر {interval} دقیقه", callback_data="auto:interval"),
-            InlineKeyboardButton("🧠 موضوع", callback_data="auto:category"),
+            InlineKeyboardButton(f"â± ÙØ± {interval} Ø¯ÙÛÙÙ", callback_data="auto:interval"),
+            InlineKeyboardButton("ð§  ÙÙØ¶ÙØ¹", callback_data="auto:category"),
         ],
         [InlineKeyboardButton(topic_text[:60], callback_data="auto:category")],
-        [InlineKeyboardButton("📋 وضعیت و زمان بعدی", callback_data="auto:info")],
-        [InlineKeyboardButton("🧪 تست ۷ روزه", callback_data="auto:test")],
-        [InlineKeyboardButton("📚 راهنمای استفاده", callback_data="auto:guide")],
-        [InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")],
+        [InlineKeyboardButton("ð ÙØ¶Ø¹ÛØª Ù Ø²ÙØ§Ù Ø¨Ø¹Ø¯Û", callback_data="auto:info")],
+        [InlineKeyboardButton("ð§ª ØªØ³Øª Û· Ø±ÙØ²Ù", callback_data="auto:test")],
+        [InlineKeyboardButton("ð Ø±Ø§ÙÙÙØ§Û Ø§Ø³ØªÙØ§Ø¯Ù", callback_data="auto:guide")],
+        [InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", callback_data="ch:main")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
 def auto_category_keyboard():
     rows = [
-        [InlineKeyboardButton("🎲 انتخاب تصادفی", callback_data="autocat:random")]
+        [InlineKeyboardButton("ð² Ø§ÙØªØ®Ø§Ø¨ ØªØµØ§Ø¯ÙÛ", callback_data="autocat:random")]
     ]
     for i, category in enumerate(AUTO_TOPIC_TREE_FA):
         rows.append([InlineKeyboardButton(category, callback_data=f"autocat:{i}")])
-    rows.append([InlineKeyboardButton("⬅️ انتشار خودکار", callback_data="auto:back")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±", callback_data="auto:back")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -2970,11 +2949,11 @@ def auto_subcategory_keyboard(category_index):
     categories = list(AUTO_TOPIC_TREE_FA.keys())
     category = categories[category_index]
     rows = [
-        [InlineKeyboardButton("🎲 همه شاخه‌های این دسته", callback_data=f"autosub:{category_index}:random")]
+        [InlineKeyboardButton("ð² ÙÙÙ Ø´Ø§Ø®ÙâÙØ§Û Ø§ÛÙ Ø¯Ø³ØªÙ", callback_data=f"autosub:{category_index}:random")]
     ]
     for i, sub in enumerate(AUTO_TOPIC_TREE_FA[category]):
         rows.append([InlineKeyboardButton(sub, callback_data=f"autosub:{category_index}:{i}")])
-    rows.append([InlineKeyboardButton("⬅️ دسته‌ها", callback_data="auto:category")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø¯Ø³ØªÙâÙØ§", callback_data="auto:category")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -2984,13 +2963,13 @@ def auto_interval_keyboard():
         pair = AUTO_INTERVALS_MIN[i:i + 2]
         rows.append([
             InlineKeyboardButton(
-                f"هر {m // 60} ساعت" if m >= 60 and m % 60 == 0 else f"هر {m} دقیقه",
+                f"ÙØ± {m // 60} Ø³Ø§Ø¹Øª" if m >= 60 and m % 60 == 0 else f"ÙØ± {m} Ø¯ÙÛÙÙ",
                 callback_data=f"autoint:{m}"
             )
             for m in pair
         ])
-    rows.append([InlineKeyboardButton("✏️ زمان دلخواه", callback_data="autoint:custom")])
-    rows.append([InlineKeyboardButton("⬅️ انتشار خودکار", callback_data="auto:back")])
+    rows.append([InlineKeyboardButton("âï¸ Ø²ÙØ§Ù Ø¯ÙØ®ÙØ§Ù", callback_data="autoint:custom")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±", callback_data="auto:back")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -2999,7 +2978,7 @@ async def auto_channel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     action = q.data.split(":", 1)[1]
@@ -3011,68 +2990,68 @@ async def auto_channel_callback(update, context):
             interval = int(get_auto_setting("interval_minutes", "60") or 60)
             set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=interval)).isoformat())
         await q.message.edit_text(
-            "🟢 انتشار خودکار روشن شد." if new_value == "1" else "⚪ انتشار خودکار خاموش شد.",
+            "ð¢ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙØ´Ù Ø´Ø¯." if new_value == "1" else "âª Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø®Ø§ÙÙØ´ Ø´Ø¯.",
             reply_markup=auto_channel_keyboard()
         )
 
     elif action == "interval":
         await q.message.edit_text(
-            "⏱ فاصله انتشار را انتخاب کن.\nاز ۵ دقیقه تا ۲۴ ساعت، یا زمان دلخواه:",
+            "â± ÙØ§ØµÙÙ Ø§ÙØªØ´Ø§Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.\nØ§Ø² Ûµ Ø¯ÙÛÙÙ ØªØ§ Û²Û´ Ø³Ø§Ø¹ØªØ ÛØ§ Ø²ÙØ§Ù Ø¯ÙØ®ÙØ§Ù:",
             reply_markup=auto_interval_keyboard()
         )
 
     elif action == "category":
         await q.message.edit_text(
-            "🧠 دسته‌بندی کامل را انتخاب کن:",
+            "ð§  Ø¯Ø³ØªÙâØ¨ÙØ¯Û Ú©Ø§ÙÙ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",
             reply_markup=auto_category_keyboard()
         )
 
     elif action == "guide":
         await q.message.edit_text(
-            "📚 <b>راهنمای انتشار خودکار MyTasks</b>\n\n"
-            "1️⃣ اول از بخش «🧠 موضوع» دسته موردنظر را انتخاب کن.\n"
-            "2️⃣ سپس زیرشاخه را انتخاب کن؛ مثلاً سرمایه‌گذاری ← ارز و دلار.\n"
-            "3️⃣ بعد از انتخاب موضوع، ربات از تو می‌پرسد هر چند دقیقه یک پست منتشر شود.\n"
-            "4️⃣ زمان را از ۵ دقیقه تا ۲۴ ساعت انتخاب کن یا زمان دلخواه وارد کن.\n"
-            "5️⃣ با انتخاب زمان، انتشار خودکار روشن می‌شود.\n\n"
-            "⏸ برای توقف، روی «خودکار روشن» بزن.\n"
-            "⚙️ برای تغییر موضوع یا فاصله انتشار، دوباره همان گزینه را انتخاب کن.\n"
-            "↩️ در همه بخش‌ها امکان برگشت وجود دارد.",
+            "ð <b>Ø±Ø§ÙÙÙØ§Û Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± MyTasks</b>\n\n"
+            "1ï¸â£ Ø§ÙÙ Ø§Ø² Ø¨Ø®Ø´ Â«ð§  ÙÙØ¶ÙØ¹Â» Ø¯Ø³ØªÙ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.\n"
+            "2ï¸â£ Ø³Ù¾Ø³ Ø²ÛØ±Ø´Ø§Ø®Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©ÙØ ÙØ«ÙØ§Ù Ø³Ø±ÙØ§ÛÙâÚ¯Ø°Ø§Ø±Û â Ø§Ø±Ø² Ù Ø¯ÙØ§Ø±.\n"
+            "3ï¸â£ Ø¨Ø¹Ø¯ Ø§Ø² Ø§ÙØªØ®Ø§Ø¨ ÙÙØ¶ÙØ¹Ø Ø±Ø¨Ø§Øª Ø§Ø² ØªÙ ÙÛâÙ¾Ø±Ø³Ø¯ ÙØ± ÚÙØ¯ Ø¯ÙÛÙÙ ÛÚ© Ù¾Ø³Øª ÙÙØªØ´Ø± Ø´ÙØ¯.\n"
+            "4ï¸â£ Ø²ÙØ§Ù Ø±Ø§ Ø§Ø² Ûµ Ø¯ÙÛÙÙ ØªØ§ Û²Û´ Ø³Ø§Ø¹Øª Ø§ÙØªØ®Ø§Ø¨ Ú©Ù ÛØ§ Ø²ÙØ§Ù Ø¯ÙØ®ÙØ§Ù ÙØ§Ø±Ø¯ Ú©Ù.\n"
+            "5ï¸â£ Ø¨Ø§ Ø§ÙØªØ®Ø§Ø¨ Ø²ÙØ§ÙØ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙØ´Ù ÙÛâØ´ÙØ¯.\n\n"
+            "â¸ Ø¨Ø±Ø§Û ØªÙÙÙØ Ø±ÙÛ Â«Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙØ´ÙÂ» Ø¨Ø²Ù.\n"
+            "âï¸ Ø¨Ø±Ø§Û ØªØºÛÛØ± ÙÙØ¶ÙØ¹ ÛØ§ ÙØ§ØµÙÙ Ø§ÙØªØ´Ø§Ø±Ø Ø¯ÙØ¨Ø§Ø±Ù ÙÙØ§Ù Ú¯Ø²ÛÙÙ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.\n"
+            "â©ï¸ Ø¯Ø± ÙÙÙ Ø¨Ø®Ø´âÙØ§ Ø§ÙÚ©Ø§Ù Ø¨Ø±Ú¯Ø´Øª ÙØ¬ÙØ¯ Ø¯Ø§Ø±Ø¯.",
             parse_mode="HTML",
             reply_markup=auto_channel_keyboard(),
         )
 
     elif action == "test":
         await q.message.edit_text(
-            "🧪 تست ۷ روزه\n\n"
-            f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 خاموش/پایان یافته'}\n"
-            f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
-            "در زمان تست، پست خودکار قبل از انتشار برای Admin پیش‌نمایش می‌شود."
+            "ð§ª ØªØ³Øª Û· Ø±ÙØ²Ù\n\n"
+            f"ÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if test_mode_active() else 'ð´ Ø®Ø§ÙÙØ´/Ù¾Ø§ÛØ§Ù ÛØ§ÙØªÙ'}\n"
+            f"Ø²ÙØ§Ù Ø¨Ø§ÙÛâÙØ§ÙØ¯Ù: {test_mode_remaining()}\n\n"
+            "Ø¯Ø± Ø²ÙØ§Ù ØªØ³ØªØ Ù¾Ø³Øª Ø®ÙØ¯Ú©Ø§Ø± ÙØ¨Ù Ø§Ø² Ø§ÙØªØ´Ø§Ø± Ø¨Ø±Ø§Û Admin Ù¾ÛØ´âÙÙØ§ÛØ´ ÙÛâØ´ÙØ¯."
         )
     elif action == "info":
         interval = get_auto_setting("interval_minutes", "60")
-        next_run = get_auto_setting("next_run", "تنظیم نشده").replace("T", " ")[:16]
+        next_run = get_auto_setting("next_run", "ØªÙØ¸ÛÙ ÙØ´Ø¯Ù").replace("T", " ")[:16]
         category = get_auto_setting("category", "random")
         sub = get_auto_setting("subcategory", "random")
         await q.message.edit_text(
-            f"🤖 وضعیت انتشار خودکار\n\n"
-            f"وضعیت: {'🟢 روشن' if get_auto_setting('enabled','0')=='1' else '⚪ خاموش'}\n"
-            f"⏱ فاصله: هر {interval} دقیقه\n"
-            f"🧠 دسته: {category}\n"
-            f"📌 شاخه: {sub}\n"
-            f"🕐 انتشار بعدی: {next_run}",
+            f"ð¤ ÙØ¶Ø¹ÛØª Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±\n\n"
+            f"ÙØ¶Ø¹ÛØª: {'ð¢ Ø±ÙØ´Ù' if get_auto_setting('enabled','0')=='1' else 'âª Ø®Ø§ÙÙØ´'}\n"
+            f"â± ÙØ§ØµÙÙ: ÙØ± {interval} Ø¯ÙÛÙÙ\n"
+            f"ð§  Ø¯Ø³ØªÙ: {category}\n"
+            f"ð Ø´Ø§Ø®Ù: {sub}\n"
+            f"ð Ø§ÙØªØ´Ø§Ø± Ø¨Ø¹Ø¯Û: {next_run}",
             reply_markup=auto_channel_keyboard()
         )
 
     elif action == "back":
-        await q.message.edit_text("🤖 انتشار خودکار", reply_markup=auto_channel_keyboard())
+        await q.message.edit_text("ð¤ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±", reply_markup=auto_channel_keyboard())
 
 
 @subscription_required
 async def auto_category_callback(update, context):
     q = update.callback_query
     if not admin_guard(q.from_user.id):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     value = q.data.split(":", 1)[1]
@@ -3080,14 +3059,14 @@ async def auto_category_callback(update, context):
         set_auto_setting("category", "random")
         set_auto_setting("subcategory", "random")
         await q.message.edit_text(
-            "🎲 موضوعات به‌صورت تصادفی انتخاب می‌شوند.\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
+            "ð² ÙÙØ¶ÙØ¹Ø§Øª Ø¨ÙâØµÙØ±Øª ØªØµØ§Ø¯ÙÛ Ø§ÙØªØ®Ø§Ø¨ ÙÛâØ´ÙÙØ¯.\n\nâ± Ø­Ø§ÙØ§ Ø¨Ú¯Ù ÙØ± ÚÙØ¯ Ø¯ÙÛÙÙ ÛÚ© Ù¾Ø³Øª ÙÙØªØ´Ø± Ø´ÙØ¯:",
             reply_markup=auto_interval_keyboard(),
         )
         return
     idx = int(value)
     category = list(AUTO_TOPIC_TREE_FA.keys())[idx]
     await q.message.edit_text(
-        f"📂 {category}\n\nحالا شاخه موردنظر را انتخاب کن:",
+        f"ð {category}\n\nØ­Ø§ÙØ§ Ø´Ø§Ø®Ù ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",
         reply_markup=auto_subcategory_keyboard(idx)
     )
 
@@ -3096,7 +3075,7 @@ async def auto_category_callback(update, context):
 async def auto_subcategory_callback(update, context):
     q = update.callback_query
     if not admin_guard(q.from_user.id):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     parts = _safe_cb_parts(q.data)
@@ -3111,7 +3090,7 @@ async def auto_subcategory_callback(update, context):
     set_auto_setting("category", category)
     set_auto_setting("subcategory", sub)
     await q.message.edit_text(
-        f"✅ موضوع انتخاب شد:\n{category}\n↳ {sub if sub != 'random' else 'همه شاخه‌ها'}\n\n⏱ حالا بگو هر چند دقیقه یک پست منتشر شود:",
+        f"â ÙÙØ¶ÙØ¹ Ø§ÙØªØ®Ø§Ø¨ Ø´Ø¯:\n{category}\nâ³ {sub if sub != 'random' else 'ÙÙÙ Ø´Ø§Ø®ÙâÙØ§'}\n\nâ± Ø­Ø§ÙØ§ Ø¨Ú¯Ù ÙØ± ÚÙØ¯ Ø¯ÙÛÙÙ ÛÚ© Ù¾Ø³Øª ÙÙØªØ´Ø± Ø´ÙØ¯:",
         reply_markup=auto_interval_keyboard()
     )
 
@@ -3120,14 +3099,14 @@ async def auto_subcategory_callback(update, context):
 async def auto_interval_callback(update, context):
     q = update.callback_query
     if not admin_guard(q.from_user.id):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     raw_minutes = q.data.split(":", 1)[1]
     if raw_minutes == "custom":
         context.user_data["auto_wait_interval"] = True
         await q.message.edit_text(
-            "✏️ فاصله دلخواه را به دقیقه وارد کن.\nمثال: 45\nحداقل ۵ و حداکثر ۱۴۴۰ دقیقه (۲۴ ساعت)."
+            "âï¸ ÙØ§ØµÙÙ Ø¯ÙØ®ÙØ§Ù Ø±Ø§ Ø¨Ù Ø¯ÙÛÙÙ ÙØ§Ø±Ø¯ Ú©Ù.\nÙØ«Ø§Ù: 45\nØ­Ø¯Ø§ÙÙ Ûµ Ù Ø­Ø¯Ø§Ú©Ø«Ø± Û±Û´Û´Û° Ø¯ÙÛÙÙ (Û²Û´ Ø³Ø§Ø¹Øª)."
         )
         return
     minutes = int(raw_minutes)
@@ -3135,32 +3114,32 @@ async def auto_interval_callback(update, context):
     set_auto_setting("enabled", "1")
     set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
     await q.message.edit_text(
-        f"✅ انتشار خودکار روی هر {minutes} دقیقه تنظیم شد و روشن است.",
+        f"â Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙÛ ÙØ± {minutes} Ø¯ÙÛÙÙ ØªÙØ¸ÛÙ Ø´Ø¯ Ù Ø±ÙØ´Ù Ø§Ø³Øª.",
         reply_markup=auto_channel_keyboard()
     )
 
 
 def smart_post_category_keyboard():
-    rows=[[InlineKeyboardButton("🎲 موضوع تصادفی",callback_data="chgen:random")]]
+    rows=[[InlineKeyboardButton("ð² ÙÙØ¶ÙØ¹ ØªØµØ§Ø¯ÙÛ",callback_data="chgen:random")]]
     for i,category in enumerate(AUTO_TOPIC_TREE_FA):
         rows.append([InlineKeyboardButton(category,callback_data=f"chgen:cat:{i}")])
-    rows.append([InlineKeyboardButton("⬅️ مدیریت کانال",callback_data="ch:main")])
+    rows.append([InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù",callback_data="ch:main")])
     return InlineKeyboardMarkup(rows)
 
 
 def smart_post_subcategory_keyboard(cat_idx):
     categories=list(AUTO_TOPIC_TREE_FA.keys()); category=categories[cat_idx]
-    rows=[[InlineKeyboardButton("🎲 شاخه تصادفی",callback_data=f"chgen:sub:{cat_idx}:random")]]
+    rows=[[InlineKeyboardButton("ð² Ø´Ø§Ø®Ù ØªØµØ§Ø¯ÙÛ",callback_data=f"chgen:sub:{cat_idx}:random")]]
     for i,sub in enumerate(AUTO_TOPIC_TREE_FA[category]):
         rows.append([InlineKeyboardButton(sub,callback_data=f"chgen:sub:{cat_idx}:{i}")])
-    rows.append([InlineKeyboardButton("⬅️ دسته‌ها",callback_data="ch:smart")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø¯Ø³ØªÙâÙØ§",callback_data="ch:smart")])
     return InlineKeyboardMarkup(rows)
 
 
 def smart_post_preview_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 انتشار فوری پست",callback_data="chgen:publish"),InlineKeyboardButton("🔄 ساخت دوباره",callback_data="chgen:regen")],
-        [InlineKeyboardButton("⬅️ انتخاب موضوع",callback_data="ch:smart"),InlineKeyboardButton("🏠 مدیریت کانال",callback_data="ch:main")]
+        [InlineKeyboardButton("ð¤ Ø§ÙØªØ´Ø§Ø± ÙÙØ±Û Ù¾Ø³Øª",callback_data="chgen:publish"),InlineKeyboardButton("ð Ø³Ø§Ø®Øª Ø¯ÙØ¨Ø§Ø±Ù",callback_data="chgen:regen")],
+        [InlineKeyboardButton("â¬ï¸ Ø§ÙØªØ®Ø§Ø¨ ÙÙØ¶ÙØ¹",callback_data="ch:smart"),InlineKeyboardButton("ð  ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù",callback_data="ch:main")]
     ])
 
 
@@ -3168,24 +3147,24 @@ async def smart_post_show_preview(update,context,category,topic):
     q=update.callback_query; uid=q.from_user.id
     channel=get_channel_config()
     if not channel or not channel["channel_id"]:
-        await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        await q.message.edit_text("â Ø§Ø¨ØªØ¯Ø§ Ú©Ø§ÙØ§Ù Ø±Ø§ ØªÙØ¸ÛÙ Ú©Ù.",reply_markup=channel_keyboard()); return
     content=generate_unique_auto_post(channel["channel_id"],category,topic)
     context.user_data["smart_post"]={"channel":str(channel["channel_id"]),"category":category,"topic":topic,"content":content}
     await q.message.edit_text(
-        f"👁 <b>پیش‌نمایش پست</b>\n\n📂 {html.escape(category)}\n🎯 {html.escape(topic)}\n\n{html.escape(content)}",
+        f"ð <b>Ù¾ÛØ´âÙÙØ§ÛØ´ Ù¾Ø³Øª</b>\n\nð {html.escape(category)}\nð¯ {html.escape(topic)}\n\n{html.escape(content)}",
         parse_mode="HTML",reply_markup=smart_post_preview_keyboard())
 
 
 async def smart_post_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
     await q.answer(); parts=q.data.split(":"); action=parts[1]
     if action=="smart":
         context.user_data.pop("smart_post",None)
-        await q.message.edit_text("🤖 <b>ساخت پست هوشمند</b>\n\nموضوع را انتخاب کن. پست قبل از انتشار کامل به تو نمایش داده می‌شود:",parse_mode="HTML",reply_markup=smart_post_category_keyboard()); return
+        await q.message.edit_text("ð¤ <b>Ø³Ø§Ø®Øª Ù¾Ø³Øª ÙÙØ´ÙÙØ¯</b>\n\nÙÙØ¶ÙØ¹ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù. Ù¾Ø³Øª ÙØ¨Ù Ø§Ø² Ø§ÙØªØ´Ø§Ø± Ú©Ø§ÙÙ Ø¨Ù ØªÙ ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯:",parse_mode="HTML",reply_markup=smart_post_category_keyboard()); return
     if action=="cat":
         idx=int(parts[2]); categories=list(AUTO_TOPIC_TREE_FA.keys()); category=categories[idx]
-        await q.message.edit_text(f"📂 <b>{html.escape(category)}</b>\n\nزیرموضوع را انتخاب کن:",parse_mode="HTML",reply_markup=smart_post_subcategory_keyboard(idx)); return
+        await q.message.edit_text(f"ð <b>{html.escape(category)}</b>\n\nØ²ÛØ±ÙÙØ¶ÙØ¹ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",parse_mode="HTML",reply_markup=smart_post_subcategory_keyboard(idx)); return
     if action=="random":
         category,topic=get_auto_topic(); await smart_post_show_preview(update,context,category,topic); return
     if action=="sub":
@@ -3194,13 +3173,13 @@ async def smart_post_callback(update,context):
         await smart_post_show_preview(update,context,category,topic); return
     if action=="regen":
         data=context.user_data.get("smart_post")
-        if not data: await q.message.edit_text("❌ پیش‌نمایش منقضی شده است.",reply_markup=channel_keyboard()); return
+        if not data: await q.message.edit_text("â Ù¾ÛØ´âÙÙØ§ÛØ´ ÙÙÙØ¶Û Ø´Ø¯Ù Ø§Ø³Øª.",reply_markup=channel_keyboard()); return
         content=generate_unique_auto_post(data["channel"],data["category"],data["topic"])
         data["content"]=content; context.user_data["smart_post"]=data
-        await q.message.edit_text(f"👁 <b>پیش‌نمایش جدید</b>\n\n📂 {html.escape(data['category'])}\n🎯 {html.escape(data['topic'])}\n\n{html.escape(content)}",parse_mode="HTML",reply_markup=smart_post_preview_keyboard()); return
+        await q.message.edit_text(f"ð <b>Ù¾ÛØ´âÙÙØ§ÛØ´ Ø¬Ø¯ÛØ¯</b>\n\nð {html.escape(data['category'])}\nð¯ {html.escape(data['topic'])}\n\n{html.escape(content)}",parse_mode="HTML",reply_markup=smart_post_preview_keyboard()); return
     if action=="publish":
         data=context.user_data.get("smart_post")
-        if not data: await q.message.edit_text("❌ پیش‌نمایش منقضی شده است.",reply_markup=channel_keyboard()); return
+        if not data: await q.message.edit_text("â Ù¾ÛØ´âÙÙØ§ÛØ´ ÙÙÙØ¶Û Ø´Ø¯Ù Ø§Ø³Øª.",reply_markup=channel_keyboard()); return
         try:
             image=await generate_topic_image(data["topic"])
             footer=await channel_post_footer(context.bot, data["channel"])
@@ -3209,10 +3188,10 @@ async def smart_post_callback(update,context):
             else: await context.bot.send_message(chat_id=data["channel"],text=content,reply_markup=content_feedback_keyboard(data["topic"]))
             save_auto_post_history(data["channel"],data["topic"],data["category"],content)
             context.user_data.pop("smart_post",None)
-            await q.message.edit_text("✅ <b>پست با موفقیت فوری منتشر شد.</b>",parse_mode="HTML",reply_markup=channel_keyboard())
+            await q.message.edit_text("â <b>Ù¾Ø³Øª Ø¨Ø§ ÙÙÙÙÛØª ÙÙØ±Û ÙÙØªØ´Ø± Ø´Ø¯.</b>",parse_mode="HTML",reply_markup=channel_keyboard())
         except Exception as e:
             logger.exception("Smart immediate post failed")
-            await q.message.edit_text("❌ انتشار ناموفق بود. دسترسی ربات به کانال را بررسی کن.",reply_markup=channel_keyboard())
+            await q.message.edit_text("â Ø§ÙØªØ´Ø§Ø± ÙØ§ÙÙÙÙ Ø¨ÙØ¯. Ø¯Ø³ØªØ±Ø³Û Ø±Ø¨Ø§Øª Ø¨Ù Ú©Ø§ÙØ§Ù Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.",reply_markup=channel_keyboard())
 
 
 @subscription_required
@@ -3220,7 +3199,7 @@ async def channel_panel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     try:
@@ -3230,26 +3209,26 @@ async def channel_panel_callback(update, context):
         logger.exception("channel_panel_callback error")
         release_leaked_connections(e)
         try:
-            await q.answer("❌ خطا رخ داد", show_alert=True)
+            await q.answer("â Ø®Ø·Ø§ Ø±Ø® Ø¯Ø§Ø¯", show_alert=True)
         except Exception:
             pass
         try:
             await q.message.edit_text(
-                "⚠️ <b>خطا در پنل مدیریت کانال</b>\n\n"
-                f"کد خطا: <code>{type(e).__name__}</code>\n"
-                "دوباره امتحان کن.",
+                "â ï¸ <b>Ø®Ø·Ø§ Ø¯Ø± Ù¾ÙÙ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù</b>\n\n"
+                f"Ú©Ø¯ Ø®Ø·Ø§: <code>{type(e).__name__}</code>\n"
+                "Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØªØ­Ø§Ù Ú©Ù.",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data="ch:main")],
-                    [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+                    [InlineKeyboardButton("ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù", callback_data="ch:main")],
+                    [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]
                 ])
             )
         except Exception:
             await q.message.reply_text(
-                "⚠️ خطا در پنل مدیریت کانال. دوباره امتحان کن.",
+                "â ï¸ Ø®Ø·Ø§ Ø¯Ø± Ù¾ÙÙ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù. Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØªØ­Ø§Ù Ú©Ù.",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 تلاش دوباره", callback_data="ch:main")],
-                    [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]
+                    [InlineKeyboardButton("ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù", callback_data="ch:main")],
+                    [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]
                 ])
             )
 
@@ -3266,73 +3245,73 @@ async def _channel_panel_inner(update, context):
         rows=c.execute("SELECT topic,category,content,created_at FROM auto_post_history WHERE channel_id=? ORDER BY id DESC LIMIT 30",(channel_id,)).fetchall() if channel_id else []
         c.close()
         if not rows:
-            text="🕘 <b>تاریخچه انتشار</b>\n\nهنوز پستی در تاریخچه ثبت نشده است."
+            text="ð <b>ØªØ§Ø±ÛØ®ÚÙ Ø§ÙØªØ´Ø§Ø±</b>\n\nÙÙÙØ² Ù¾Ø³ØªÛ Ø¯Ø± ØªØ§Ø±ÛØ®ÚÙ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª."
         else:
-            lines=["🕘 <b>تاریخچه انتشار</b>",""]
+            lines=["ð <b>ØªØ§Ø±ÛØ®ÚÙ Ø§ÙØªØ´Ø§Ø±</b>",""]
             for r in rows:
                 stamp=str(r["created_at"]).replace("T"," ")[:16]
                 preview=html.escape(str(r["content"]).replace("\n"," ")[:90])
-                lines.append(f"📅 <code>{stamp}</code>\n📝 {html.escape(str(r['topic']))}\n{preview}\n")
+                lines.append(f"ð <code>{stamp}</code>\nð {html.escape(str(r['topic']))}\n{preview}\n")
             text="\n".join(lines)
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=channel_keyboard())
         return
     if action=="batch":
         context.user_data["channel_state"]="batch"
         await q.message.edit_text(
-            "🧩 <b>چند پست / زمان‌بندی</b>\n\n"
-            "چند خط بفرست؛ هر خط یک پست باشد و زمان را با | جدا کن:\n"
-            "<code>14:00 | متن پست اول</code>\n"
-            "<code>16:00 | متن پست دوم</code>\n\n"
-            "اگر متن طولانی باشد، می‌توانی فقط متن را بفرستی؛ ربات آن را به چند بخش منطقی تقسیم می‌کند.",
+            "ð§© <b>ÚÙØ¯ Ù¾Ø³Øª / Ø²ÙØ§ÙâØ¨ÙØ¯Û</b>\n\n"
+            "ÚÙØ¯ Ø®Ø· Ø¨ÙØ±Ø³ØªØ ÙØ± Ø®Ø· ÛÚ© Ù¾Ø³Øª Ø¨Ø§Ø´Ø¯ Ù Ø²ÙØ§Ù Ø±Ø§ Ø¨Ø§ | Ø¬Ø¯Ø§ Ú©Ù:\n"
+            "<code>14:00 | ÙØªÙ Ù¾Ø³Øª Ø§ÙÙ</code>\n"
+            "<code>16:00 | ÙØªÙ Ù¾Ø³Øª Ø¯ÙÙ</code>\n\n"
+            "Ø§Ú¯Ø± ÙØªÙ Ø·ÙÙØ§ÙÛ Ø¨Ø§Ø´Ø¯Ø ÙÛâØªÙØ§ÙÛ ÙÙØ· ÙØªÙ Ø±Ø§ Ø¨ÙØ±Ø³ØªÛØ Ø±Ø¨Ø§Øª Ø¢Ù Ø±Ø§ Ø¨Ù ÚÙØ¯ Ø¨Ø®Ø´ ÙÙØ·ÙÛ ØªÙØ³ÛÙ ÙÛâÚ©ÙØ¯.",
             parse_mode="HTML")
         return
     if action=="channels":
         rows=list_managed_channels(); active=str(cfg["channel_id"]) if cfg and cfg["channel_id"] else ""
         kb=[]
         for r in rows:
-            mark="✅" if str(r["channel_id"])==active else "⚪"
-            kb.append([InlineKeyboardButton(f"{mark} {r['title'] or r['channel_id']}",callback_data=f"ch:select:{r['channel_id']}"),InlineKeyboardButton("🗑",callback_data=f"ch:remove:{r['channel_id']}")])
-        kb.append([InlineKeyboardButton("➕ افزودن کانال",callback_data="ch:set"),InlineKeyboardButton("⬅️ برگشت",callback_data="ch:main")])
-        await q.message.edit_text("📢 <b>کانال‌های متصل</b>\n\nکانال فعال با ✅ مشخص است. هر کانال تنظیمات و تاریخچه پست خودش را حفظ می‌کند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+            mark="â" if str(r["channel_id"])==active else "âª"
+            kb.append([InlineKeyboardButton(f"{mark} {r['title'] or r['channel_id']}",callback_data=f"ch:select:{r['channel_id']}"),InlineKeyboardButton("ð",callback_data=f"ch:remove:{r['channel_id']}")])
+        kb.append([InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù Ú©Ø§ÙØ§Ù",callback_data="ch:set"),InlineKeyboardButton("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª",callback_data="ch:main")])
+        await q.message.edit_text("ð¢ <b>Ú©Ø§ÙØ§ÙâÙØ§Û ÙØªØµÙ</b>\n\nÚ©Ø§ÙØ§Ù ÙØ¹Ø§Ù Ø¨Ø§ â ÙØ´Ø®Øµ Ø§Ø³Øª. ÙØ± Ú©Ø§ÙØ§Ù ØªÙØ¸ÛÙØ§Øª Ù ØªØ§Ø±ÛØ®ÚÙ Ù¾Ø³Øª Ø®ÙØ¯Ø´ Ø±Ø§ Ø­ÙØ¸ ÙÛâÚ©ÙØ¯.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
     if action=="select" and len(parts)>2:
-        set_active_channel(parts[2]); await q.message.edit_text("✅ کانال فعال تغییر کرد.",reply_markup=channel_keyboard()); return
+        set_active_channel(parts[2]); await q.message.edit_text("â Ú©Ø§ÙØ§Ù ÙØ¹Ø§Ù ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=channel_keyboard()); return
     if action=="remove" and len(parts)>2:
-        remove_managed_channel(parts[2]); await q.message.edit_text("🗑 کانال از فهرست مدیریت حذف شد؛ اطلاعات پست‌های قبلی پاک نشد.",reply_markup=channel_keyboard()); return
-    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "تنظیم نشده"
+        remove_managed_channel(parts[2]); await q.message.edit_text("ð Ú©Ø§ÙØ§Ù Ø§Ø² ÙÙØ±Ø³Øª ÙØ¯ÛØ±ÛØª Ø­Ø°Ù Ø´Ø¯Ø Ø§Ø·ÙØ§Ø¹Ø§Øª Ù¾Ø³ØªâÙØ§Û ÙØ¨ÙÛ Ù¾Ø§Ú© ÙØ´Ø¯.",reply_markup=channel_keyboard()); return
+    channel = cfg["channel_id"] if cfg and cfg["channel_id"] else "ØªÙØ¸ÛÙ ÙØ´Ø¯Ù"
 
     if action == "main":
         await q.message.edit_text(
-            f"📡 <b>مدیریت کانال</b>\n\n📢 کانال: <code>{channel}</code>",
+            f"ð¡ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù</b>\n\nð¢ Ú©Ø§ÙØ§Ù: <code>{channel}</code>",
             parse_mode="HTML",
             reply_markup=channel_keyboard(),
         )
     elif action == "set":
         context.user_data["channel_state"] = "set"
         await q.message.edit_text(
-            "📡 یوزرنیم کانال را بفرست.\n"
-            "مثال: <code>@MyTasks</code>\n"
-            "لینک t.me هم پذیرفته می‌شود.",
+            "ð¡ ÛÙØ²Ø±ÙÛÙ Ú©Ø§ÙØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª.\n"
+            "ÙØ«Ø§Ù: <code>@MyTasks</code>\n"
+            "ÙÛÙÚ© t.me ÙÙ Ù¾Ø°ÛØ±ÙØªÙ ÙÛâØ´ÙØ¯.",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", callback_data="ch:main")]]),
         )
     elif action == "smart":
         context.user_data.pop("smart_post",None)
-        await q.message.edit_text("🤖 <b>ساخت پست هوشمند</b>\n\nموضوع را انتخاب کن. بعد از انتخاب، پیش‌نمایش کامل پست نمایش داده می‌شود و خودت انتشار فوری را تأیید می‌کنی.",parse_mode="HTML",reply_markup=smart_post_category_keyboard())
+        await q.message.edit_text("ð¤ <b>Ø³Ø§Ø®Øª Ù¾Ø³Øª ÙÙØ´ÙÙØ¯</b>\n\nÙÙØ¶ÙØ¹ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù. Ø¨Ø¹Ø¯ Ø§Ø² Ø§ÙØªØ®Ø§Ø¨Ø Ù¾ÛØ´âÙÙØ§ÛØ´ Ú©Ø§ÙÙ Ù¾Ø³Øª ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯ Ù Ø®ÙØ¯Øª Ø§ÙØªØ´Ø§Ø± ÙÙØ±Û Ø±Ø§ ØªØ£ÛÛØ¯ ÙÛâÚ©ÙÛ.",parse_mode="HTML",reply_markup=smart_post_category_keyboard())
     elif action == "auto":
         await q.message.edit_text(
-            "🤖 <b>انتشار خودکار</b>\n\n"
-            "پست متنی تمیز + دسته‌بندی و زمان‌بندی قابل تنظیم.\nتصویر خودکار برای انتشار کانال خاموش است.",
+            "ð¤ <b>Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±</b>\n\n"
+            "Ù¾Ø³Øª ÙØªÙÛ ØªÙÛØ² + Ø¯Ø³ØªÙâØ¨ÙØ¯Û Ù Ø²ÙØ§ÙâØ¨ÙØ¯Û ÙØ§Ø¨Ù ØªÙØ¸ÛÙ.\nØªØµÙÛØ± Ø®ÙØ¯Ú©Ø§Ø± Ø¨Ø±Ø§Û Ø§ÙØªØ´Ø§Ø± Ú©Ø§ÙØ§Ù Ø®Ø§ÙÙØ´ Ø§Ø³Øª.",
             parse_mode="HTML",
             reply_markup=auto_channel_keyboard(),
         )
     elif action == "test":
-        if channel == "تنظیم نشده":
-            await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.", reply_markup=channel_keyboard())
+        if channel == "ØªÙØ¸ÛÙ ÙØ´Ø¯Ù":
+            await q.message.edit_text("â Ø§Ø¨ØªØ¯Ø§ Ú©Ø§ÙØ§Ù Ø±Ø§ ØªÙØ¸ÛÙ Ú©Ù.", reply_markup=channel_keyboard())
             return
         try:
             chat = await context.bot.get_chat(channel)
             await q.message.edit_text(
-                f"✅ اتصال فعال است.\n📢 {chat.title or channel}\n🆔 <code>{chat.id}</code>",
+                f"â Ø§ØªØµØ§Ù ÙØ¹Ø§Ù Ø§Ø³Øª.\nð¢ {chat.title or channel}\nð <code>{chat.id}</code>",
                 parse_mode="HTML",
                 reply_markup=channel_keyboard(),
             )
@@ -3340,26 +3319,26 @@ async def _channel_panel_inner(update, context):
         except Exception as e:
             logger.error("Channel test: %s", e)
             await q.message.edit_text(
-                "❌ اتصال ناموفق.\nربات باید Administrator کانال باشد و اجازه ارسال پیام داشته باشد.",
+                "â Ø§ØªØµØ§Ù ÙØ§ÙÙÙÙ.\nØ±Ø¨Ø§Øª Ø¨Ø§ÛØ¯ Administrator Ú©Ø§ÙØ§Ù Ø¨Ø§Ø´Ø¯ Ù Ø§Ø¬Ø§Ø²Ù Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´Ø¯.",
                 reply_markup=channel_keyboard(),
             )
     elif action == "new":
         context.user_data["channel_state"] = "content"
-        await q.message.edit_text("📝 متن پست را بفرست:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت کانال", callback_data="ch:main")]]))
+        await q.message.edit_text("ð ÙØªÙ Ù¾Ø³Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", callback_data="ch:main")]]))
     elif action == "list":
         c = db()
         rows = c.execute(
             "SELECT * FROM channel_posts WHERE enabled=1 ORDER BY id DESC LIMIT 20"
         ).fetchall()
         c.close()
-        text_out = "📋 <b>پست‌های فعال</b>\n\n"
+        text_out = "ð <b>Ù¾Ø³ØªâÙØ§Û ÙØ¹Ø§Ù</b>\n\n"
         if rows:
             text_out += "\n".join(
-                f"#{r['id']} — {channel_schedule_text(r)}\n📝 {r['content'][:60]}"
+                f"#{r['id']} â {channel_schedule_text(r)}\nð {r['content'][:60]}"
                 for r in rows
             )
         else:
-            text_out += "موردی نیست."
+            text_out += "ÙÙØ±Ø¯Û ÙÛØ³Øª."
         await q.message.edit_text(
             text_out, parse_mode="HTML", reply_markup=channel_keyboard()
         )
@@ -3368,48 +3347,48 @@ async def _channel_panel_inner(update, context):
 @subscription_required
 async def channel_schedule_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]
-    if a=="cancel": context.user_data.clear(); await q.message.edit_text("❌ لغو شد.",reply_markup=channel_keyboard()); return
+    if a=="cancel": context.user_data.clear(); await q.message.edit_text("â ÙØºÙ Ø´Ø¯.",reply_markup=channel_keyboard()); return
     if a=="now":
         cfg=get_channel_config()
-        if not cfg or not cfg["channel_id"]: await q.message.edit_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
+        if not cfg or not cfg["channel_id"]: await q.message.edit_text("â Ø§Ø¨ØªØ¯Ø§ Ú©Ø§ÙØ§Ù Ø±Ø§ ØªÙØ¸ÛÙ Ú©Ù.",reply_markup=channel_keyboard()); return
         try:
             footer=await channel_post_footer(context.bot, cfg["channel_id"])
             post_text=add_channel_username_footer(post_text, footer, 4096)
             await context.bot.send_message(chat_id=cfg["channel_id"],text=post_text)
-            context.user_data.clear(); await q.message.edit_text("✅ پست منتشر شد.",reply_markup=channel_keyboard())
-        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.edit_text("❌ انتشار ناموفق. دسترسی کانال را بررسی کن.",reply_markup=channel_keyboard())
-    elif a=="once": context.user_data["channel_state"]="once"; await q.message.edit_text("📅 تاریخ و ساعت را بفرست: ۱۴۰۵/۰۵/۲۹ ۱۸:۳۰")
-    elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.edit_text("⏰ ساعت روزانه:",reply_markup=channel_time_keyboard("chd"))
-    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.edit_text("📆 روز هفته:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("شنبه",callback_data="chw:5"),InlineKeyboardButton("یکشنبه",callback_data="chw:6")],[InlineKeyboardButton("دوشنبه",callback_data="chw:0"),InlineKeyboardButton("سه‌شنبه",callback_data="chw:1")],[InlineKeyboardButton("چهارشنبه",callback_data="chw:2"),InlineKeyboardButton("پنجشنبه",callback_data="chw:3")],[InlineKeyboardButton("جمعه",callback_data="chw:4")]]))
+            context.user_data.clear(); await q.message.edit_text("â Ù¾Ø³Øª ÙÙØªØ´Ø± Ø´Ø¯.",reply_markup=channel_keyboard())
+        except Exception as e: logger.error("Immediate channel post: %s",e); await q.message.edit_text("â Ø§ÙØªØ´Ø§Ø± ÙØ§ÙÙÙÙ. Ø¯Ø³ØªØ±Ø³Û Ú©Ø§ÙØ§Ù Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.",reply_markup=channel_keyboard())
+    elif a=="once": context.user_data["channel_state"]="once"; await q.message.edit_text("ð ØªØ§Ø±ÛØ® Ù Ø³Ø§Ø¹Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª: Û±Û´Û°Ûµ/Û°Ûµ/Û²Û¹ Û±Û¸:Û³Û°")
+    elif a=="daily": context.user_data["channel_state"]="daily"; await q.message.edit_text("â° Ø³Ø§Ø¹Øª Ø±ÙØ²Ø§ÙÙ:",reply_markup=channel_time_keyboard("chd"))
+    elif a=="weekly": context.user_data["channel_state"]="wday"; await q.message.edit_text("ð Ø±ÙØ² ÙÙØªÙ:",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ø´ÙØ¨Ù",callback_data="chw:5"),InlineKeyboardButton("ÛÚ©Ø´ÙØ¨Ù",callback_data="chw:6")],[InlineKeyboardButton("Ø¯ÙØ´ÙØ¨Ù",callback_data="chw:0"),InlineKeyboardButton("Ø³ÙâØ´ÙØ¨Ù",callback_data="chw:1")],[InlineKeyboardButton("ÚÙØ§Ø±Ø´ÙØ¨Ù",callback_data="chw:2"),InlineKeyboardButton("Ù¾ÙØ¬Ø´ÙØ¨Ù",callback_data="chw:3")],[InlineKeyboardButton("Ø¬ÙØ¹Ù",callback_data="chw:4")]]))
 
 @subscription_required
 async def channel_daily_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
     await q.answer(); v=q.data.split(":",1)[1]
-    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.edit_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    if v=="custom": context.user_data["channel_state"]="daily_custom"; await q.message.edit_text("ð Ø³Ø§Ø¹Øª Ø±Ø§ Ø¨ÙØ±Ø³ØªØ ÙØ«Ø§Ù 18:30"); return
     await save_channel_post(context,uid,"daily",v,None,None,q.message)
 
 @subscription_required
 async def channel_weekday_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
-    await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.edit_text("⏰ ساعت هفتگی:",reply_markup=channel_time_keyboard("chwtime"))
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
+    await q.answer(); context.user_data["channel_weekday"]=int(q.data.split(":",1)[1]); context.user_data["channel_state"]="wtime"; await q.message.edit_text("â° Ø³Ø§Ø¹Øª ÙÙØªÚ¯Û:",reply_markup=channel_time_keyboard("chwtime"))
 
 @subscription_required
 async def channel_weektime_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
     await q.answer(); v=q.data.split(":",1)[1]
-    if v=="custom": context.user_data["channel_state"]="wtime_custom"; await q.message.edit_text("🕐 ساعت را بفرست، مثال 18:30"); return
+    if v=="custom": context.user_data["channel_state"]="wtime_custom"; await q.message.edit_text("ð Ø³Ø§Ø¹Øª Ø±Ø§ Ø¨ÙØ±Ø³ØªØ ÙØ«Ø§Ù 18:30"); return
     await save_channel_post(context,uid,"weekly",v,context.user_data["channel_weekday"],None,q.message)
 
 async def save_channel_post(context,uid,typ,tm,weekday,run_at,message):
     cfg=get_channel_config()
-    if not cfg or not cfg["channel_id"]: await message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return
-    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"✅ زمان‌بندی شد. #{pid}",reply_markup=channel_keyboard())
+    if not cfg or not cfg["channel_id"]: await message.reply_text("â Ø§Ø¨ØªØ¯Ø§ Ú©Ø§ÙØ§Ù Ø±Ø§ ØªÙØ¸ÛÙ Ú©Ù.",reply_markup=channel_keyboard()); return
+    pid=add_channel_post(context.user_data["channel_content"],typ,tm,weekday,run_at,uid); context.user_data.clear(); await message.reply_text(f"â Ø²ÙØ§ÙâØ¨ÙØ¯Û Ø´Ø¯. #{pid}",reply_markup=channel_keyboard())
 
 async def channel_text_save(update,context):
     uid=update.effective_user.id
@@ -3426,22 +3405,22 @@ async def channel_text_save(update,context):
                 return True
             set_channel_config(normalized, chat.title or normalized)
             context.user_data.pop("channel_state",None)
-            await update.message.reply_text(f"✅ کانال وصل شد: {chat.title or normalized}",reply_markup=channel_keyboard())
+            await update.message.reply_text(f"â Ú©Ø§ÙØ§Ù ÙØµÙ Ø´Ø¯: {chat.title or normalized}",reply_markup=channel_keyboard())
         except Exception as e:
             logger.error("Set channel: %s", e)
             context.user_data.pop("channel_state", None)
             context.user_data.pop("channel_content", None)
             context.user_data.pop("channel_weekday", None)
             await update.message.reply_text(
-                "❌ کانال پیدا نشد یا ربات دسترسی ندارد.\n\n"
-                "حالت تنظیم کانال بسته شد. دوباره «تنظیم کانال» را بزن.",
+                "â Ú©Ø§ÙØ§Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯ ÛØ§ Ø±Ø¨Ø§Øª Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±Ø¯.\n\n"
+                "Ø­Ø§ÙØª ØªÙØ¸ÛÙ Ú©Ø§ÙØ§Ù Ø¨Ø³ØªÙ Ø´Ø¯. Ø¯ÙØ¨Ø§Ø±Ù Â«ØªÙØ¸ÛÙ Ú©Ø§ÙØ§ÙÂ» Ø±Ø§ Ø¨Ø²Ù.",
                 reply_markup=channel_keyboard(),
             )
         return True
     if s=="batch":
         cfg=get_channel_config()
         if not cfg or not cfg["channel_id"]:
-            await update.message.reply_text("❌ ابتدا کانال را تنظیم کن.",reply_markup=channel_keyboard()); return True
+            await update.message.reply_text("â Ø§Ø¨ØªØ¯Ø§ Ú©Ø§ÙØ§Ù Ø±Ø§ ØªÙØ¸ÛÙ Ú©Ù.",reply_markup=channel_keyboard()); return True
         lines=[x.strip() for x in text.splitlines() if x.strip()]
         scheduled=0; immediate=[]
         for line in lines:
@@ -3461,19 +3440,19 @@ async def channel_text_save(update,context):
                 add_channel_post(chunk,"once",None,None,(datetime.now(TZ)+timedelta(minutes=5*(i+1))).isoformat(),uid)
                 scheduled+=1
         context.user_data.pop("channel_state",None)
-        await update.message.reply_text(f"✅ {scheduled} پست برای انتشار زمان‌بندی شد.",reply_markup=channel_keyboard())
+        await update.message.reply_text(f"â {scheduled} Ù¾Ø³Øª Ø¨Ø±Ø§Û Ø§ÙØªØ´Ø§Ø± Ø²ÙØ§ÙâØ¨ÙØ¯Û Ø´Ø¯.",reply_markup=channel_keyboard())
         return True
-    if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("📅 زمان انتشار را انتخاب کن:",reply_markup=channel_schedule_keyboard()); return True
+    if s=="content": context.user_data["channel_content"]=text; context.user_data["channel_state"]="choose"; await update.message.reply_text("ð Ø²ÙØ§Ù Ø§ÙØªØ´Ø§Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",reply_markup=channel_schedule_keyboard()); return True
     if s=="once":
         try:
             dt=parse_user_datetime(text)
             if dt<=datetime.now(TZ): raise ValueError
             await save_channel_post(context,uid,"once",None,None,dt.isoformat(),update.message)
-        except ValueError: await update.message.reply_text("❌ فرمت اشتباه است. نمونه: ۱۴۰۵/۰۶/۰۲ ۱۸:۳۰")
+        except ValueError: await update.message.reply_text("â ÙØ±ÙØª Ø§Ø´ØªØ¨Ø§Ù Ø§Ø³Øª. ÙÙÙÙÙ: Û±Û´Û°Ûµ/Û°Û¶/Û°Û² Û±Û¸:Û³Û°")
         return True
     if s in ("daily_custom","wtime_custom"):
         v=parse_time(text)
-        if not v: await update.message.reply_text("❌ ساعت اشتباه است. مثال 18:30"); return True
+        if not v: await update.message.reply_text("â Ø³Ø§Ø¹Øª Ø§Ø´ØªØ¨Ø§Ù Ø§Ø³Øª. ÙØ«Ø§Ù 18:30"); return True
         await save_channel_post(context,uid,"daily" if s=="daily_custom" else "weekly",v,None if s=="daily_custom" else context.user_data.get("channel_weekday"),None,update.message); return True
     return False
 
@@ -3538,25 +3517,25 @@ def admin_stats():
 def admin_keyboard():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 آمار کلی", callback_data="adm:stats"),
-            InlineKeyboardButton("👥 کاربران", callback_data="adm:users"),
+            InlineKeyboardButton("ð Ø¢ÙØ§Ø± Ú©ÙÛ", callback_data="adm:stats"),
+            InlineKeyboardButton("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù", callback_data="adm:users"),
         ],
         [
-            InlineKeyboardButton("🎯 اهداف", callback_data="adm:goals"),
-            InlineKeyboardButton("📈 فعالیت‌ها", callback_data="adm:activity"),
+            InlineKeyboardButton("ð¯ Ø§ÙØ¯Ø§Ù", callback_data="adm:goals"),
+            InlineKeyboardButton("ð ÙØ¹Ø§ÙÛØªâÙØ§", callback_data="adm:activity"),
         ],
         [
-            InlineKeyboardButton("⏰ یادآوری‌ها", callback_data="adm:reminders"),
-            InlineKeyboardButton("🏆 دستاوردها", callback_data="adm:achievements"),
+            InlineKeyboardButton("â° ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§", callback_data="adm:reminders"),
+            InlineKeyboardButton("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", callback_data="adm:achievements"),
         ],
         [
-            InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast"),
+            InlineKeyboardButton("ð¢ Ù¾ÛØ§Ù ÙÙÚ¯Ø§ÙÛ", callback_data="adm:broadcast"),
         ],
-        [InlineKeyboardButton("📢 مدیریت کانال و پست‌گذاری", callback_data="adm:channel")],
-        [InlineKeyboardButton("🩺 سلامت ربات", callback_data="adm:health"), InlineKeyboardButton("📋 گزارش روزانه", callback_data="adm:report")],
-        [InlineKeyboardButton("📣 دعوت و رفرال", callback_data="adm:referral")],
-        [InlineKeyboardButton("⚙️ کنترل قابلیت‌ها", callback_data="adm:features")],
-        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="adm:main")],
+        [InlineKeyboardButton("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û", callback_data="adm:channel")],
+        [InlineKeyboardButton("ð©º Ø³ÙØ§ÙØª Ø±Ø¨Ø§Øª", callback_data="adm:health"), InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ Ø±ÙØ²Ø§ÙÙ", callback_data="adm:report")],
+        [InlineKeyboardButton("ð£ Ø¯Ø¹ÙØª Ù Ø±ÙØ±Ø§Ù", callback_data="adm:referral")],
+        [InlineKeyboardButton("âï¸ Ú©ÙØªØ±Ù ÙØ§Ø¨ÙÛØªâÙØ§", callback_data="adm:features")],
+        [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ", callback_data="adm:main")],
     ])
 
 
@@ -3566,7 +3545,7 @@ async def admin_referral_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True); return
+        await q.answer("â", show_alert=True); return
     await q.answer()
     action = q.data.split(":", 2)[2] if q.data.count(":") >= 2 else "dashboard"
     fa = lang(uid) == "fa"
@@ -3574,24 +3553,24 @@ async def admin_referral_callback(update, context):
     if action == "dashboard":
         stats = get_admin_referral_stats()
         lines = [
-            "📣 <b>داشبورد دعوت و رفرال</b>", "",
-            f"👥 کل دعوت‌ها: <b>{stats['total']}</b>",
-            f"✅ موفق: <b>{stats['success']}</b>",
-            f"⏳ در انتظار: <b>{stats['pending']}</b>",
-            f"🎁 پاداش صادر شده: <b>{stats['rewarded']}</b>",
-            f"💰 مجموع توکن پاداش: <b>{stats['total_tokens']}</b>",
+            "ð£ <b>Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ø¯Ø¹ÙØª Ù Ø±ÙØ±Ø§Ù</b>", "",
+            f"ð¥ Ú©Ù Ø¯Ø¹ÙØªâÙØ§: <b>{stats['total']}</b>",
+            f"â ÙÙÙÙ: <b>{stats['success']}</b>",
+            f"â³ Ø¯Ø± Ø§ÙØªØ¸Ø§Ø±: <b>{stats['pending']}</b>",
+            f"ð Ù¾Ø§Ø¯Ø§Ø´ ØµØ§Ø¯Ø± Ø´Ø¯Ù: <b>{stats['rewarded']}</b>",
+            f"ð° ÙØ¬ÙÙØ¹ ØªÙÚ©Ù Ù¾Ø§Ø¯Ø§Ø´: <b>{stats['total_tokens']}</b>",
         ]
         if stats["top_referrers"]:
-            lines.append("\n🏆 <b>برترین دعوت‌کنندگان:</b>")
+            lines.append("\nð <b>Ø¨Ø±ØªØ±ÛÙ Ø¯Ø¹ÙØªâÚ©ÙÙØ¯Ú¯Ø§Ù:</b>")
             for i, r in enumerate(stats["top_referrers"][:5], 1):
-                lines.append(f"  {i}. {html.escape(r['first_name'] or 'کاربر')}: <b>{r['n']}</b> دعوت موفق")
+                lines.append(f"  {i}. {html.escape(r['first_name'] or 'Ú©Ø§Ø±Ø¨Ø±')}: <b>{r['n']}</b> Ø¯Ø¹ÙØª ÙÙÙÙ")
         text = "\n".join(lines)
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👥 کاربران دعوت‌شده", callback_data="adm:referral:list")],
-            [InlineKeyboardButton("⚙️ تنظیمات پاداش", callback_data="adm:referral:settings")],
-            [InlineKeyboardButton("📝 متن‌های آماده", callback_data="adm:referral:templates")],
-            [InlineKeyboardButton("🔄 بروزرسانی", callback_data="adm:referral:dashboard")],
-            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¯Ø¹ÙØªâØ´Ø¯Ù", callback_data="adm:referral:list")],
+            [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª Ù¾Ø§Ø¯Ø§Ø´", callback_data="adm:referral:settings")],
+            [InlineKeyboardButton("ð ÙØªÙâÙØ§Û Ø¢ÙØ§Ø¯Ù", callback_data="adm:referral:templates")],
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ", callback_data="adm:referral:dashboard")],
+            [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="adm:stats")],
         ])
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -3604,16 +3583,16 @@ async def admin_referral_callback(update, context):
             ORDER BY r.created_at DESC LIMIT 30""").fetchall()
         c.close()
         if not rows:
-            text = "👥 <b>هنوز دعوتی ثبت نشده.</b>"
+            text = "ð¥ <b>ÙÙÙØ² Ø¯Ø¹ÙØªÛ Ø«Ø¨Øª ÙØ´Ø¯Ù.</b>"
         else:
-            lines = [f"👥 <b>آخرین دعوت‌ها ({len(rows)}):</b>", ""]
-            status_map = {"registered": "⏳", "success": "✅", "rewarded": "🎁"}
+            lines = [f"ð¥ <b>Ø¢Ø®Ø±ÛÙ Ø¯Ø¹ÙØªâÙØ§ ({len(rows)}):</b>", ""]
+            status_map = {"registered": "â³", "success": "â", "rewarded": "ð"}
             for r in rows:
-                st = status_map.get(r.get("status", ""), "❓")
-                lines.append(f"{st} {html.escape(r['inviter_name'] or '?')} → {html.escape(r['invited_name'] or '?')} | {r['created_at'][:10]}")
+                st = status_map.get(r.get("status", ""), "â")
+                lines.append(f"{st} {html.escape(r['inviter_name'] or '?')} â {html.escape(r['invited_name'] or '?')} | {r['created_at'][:10]}")
             text = "\n".join(lines)
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+            [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="adm:referral:dashboard")],
         ])
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -3629,20 +3608,20 @@ async def admin_referral_callback(update, context):
             "ref_success_condition": ref_get("ref_success_condition", "first_goal"),
             "ref_daily_limit": ref_get("ref_daily_limit", "50"),
         }
-        cond_map = {"first_goal": "ثبت اولین هدف", "first_activity": "اولین فعالیت", "any": "فقط ورود"}
+        cond_map = {"first_goal": "Ø«Ø¨Øª Ø§ÙÙÛÙ ÙØ¯Ù", "first_activity": "Ø§ÙÙÛÙ ÙØ¹Ø§ÙÛØª", "any": "ÙÙØ· ÙØ±ÙØ¯"}
         text = (
-            f"⚙️ <b>تنظیمات پاداش دعوت</b>\n\n"
-            f"🎁 پاداش فعال: {'🟢' if settings['ref_reward_enabled']=='1' else '🔴'}\n"
-            f"🤝 پاداش دوطرفه: {'🟢' if settings['ref_bilateral_reward']=='1' else '🔴'}\n"
-            f"💰 توکن دعوت‌کننده: <b>{settings['ref_tokens_per_success']}</b>\n"
-            f"🎁 توکن دعوت‌شده: <b>{settings['ref_invitee_tokens']}</b>\n"
-            f"💎 هر <b>{settings['ref_vip_milestone']}</b> دعوت = <b>{settings['ref_vip_days']}</b> روز VIP\n"
-            f"🎯 شرط موفقیت: <b>{cond_map.get(settings['ref_success_condition'], settings['ref_success_condition'])}</b>\n"
-            "📅 سقف روزانه: <b>بدون محدودیت</b>"
+            f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø¹ÙØª</b>\n\n"
+            f"ð Ù¾Ø§Ø¯Ø§Ø´ ÙØ¹Ø§Ù: {'ð¢' if settings['ref_reward_enabled']=='1' else 'ð´'}\n"
+            f"ð¤ Ù¾Ø§Ø¯Ø§Ø´ Ø¯ÙØ·Ø±ÙÙ: {'ð¢' if settings['ref_bilateral_reward']=='1' else 'ð´'}\n"
+            f"ð° ØªÙÚ©Ù Ø¯Ø¹ÙØªâÚ©ÙÙØ¯Ù: <b>{settings['ref_tokens_per_success']}</b>\n"
+            f"ð ØªÙÚ©Ù Ø¯Ø¹ÙØªâØ´Ø¯Ù: <b>{settings['ref_invitee_tokens']}</b>\n"
+            f"ð ÙØ± <b>{settings['ref_vip_milestone']}</b> Ø¯Ø¹ÙØª = <b>{settings['ref_vip_days']}</b> Ø±ÙØ² VIP\n"
+            f"ð¯ Ø´Ø±Ø· ÙÙÙÙÛØª: <b>{cond_map.get(settings['ref_success_condition'], settings['ref_success_condition'])}</b>\n"
+            "ð Ø³ÙÙ Ø±ÙØ²Ø§ÙÙ: <b>Ø¨Ø¯ÙÙ ÙØ­Ø¯ÙØ¯ÛØª</b>"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 تغییر شرط موفقیت", callback_data="adm:referral:toggle_cond")],
-            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+            [InlineKeyboardButton("ð ØªØºÛÛØ± Ø´Ø±Ø· ÙÙÙÙÛØª", callback_data="adm:referral:toggle_cond")],
+            [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="adm:referral:dashboard")],
         ])
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -3659,14 +3638,14 @@ async def admin_referral_callback(update, context):
         c = db()
         rows = c.execute("SELECT * FROM referral_templates ORDER BY sort_order").fetchall()
         c.close()
-        lines = ["📝 <b>متن‌های آماده دعوت:</b>", ""]
+        lines = ["ð <b>ÙØªÙâÙØ§Û Ø¢ÙØ§Ø¯Ù Ø¯Ø¹ÙØª:</b>", ""]
         for r in rows:
-            status = "🟢" if r["enabled"] else "🔴"
+            status = "ð¢" if r["enabled"] else "ð´"
             preview = r["text"][:50] + ("..." if len(r["text"]) > 50 else "")
             lines.append(f"{status} #{r['id']}: {preview}")
-        text = "\n".join(lines) if len(rows) > 0 else "📝 <b>هنوز متنی اضافه نشده.</b>"
+        text = "\n".join(lines) if len(rows) > 0 else "ð <b>ÙÙÙØ² ÙØªÙÛ Ø§Ø¶Ø§ÙÙ ÙØ´Ø¯Ù.</b>"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:referral:dashboard")],
+            [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="adm:referral:dashboard")],
         ])
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -3675,7 +3654,7 @@ async def admin_panel_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     await q.answer()
     action = q.data.split(":", 1)[1]
@@ -3683,15 +3662,15 @@ async def admin_panel_callback(update, context):
 
     if action == "stats":
         text = (
-            "📊 <b>داشبورد مدیریت</b>\n\n"
-            f"👥 کاربران: <b>{s['users']}</b>\n"
-            f"🆕 کاربران جدید امروز: <b>{s['new_today']}</b>\n"
-            f"🟢 فعال امروز: <b>{s['active_today']}</b>\n"
-            f"🎯 اهداف: <b>{s['goals']}</b>\n"
-            f"✅ انجام‌شده امروز: <b>{s['done_today']}</b>\n"
-            f"⏰ یادآوری فعال: <b>{s['reminders']}</b>\n"
-            f"👀 کل فعالیت‌ها: <b>{s['activities']}</b>\n"
-            f"🏆 دستاوردها: <b>{s['achievements']}</b>"
+            "ð <b>Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ ÙØ¯ÛØ±ÛØª</b>\n\n"
+            f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: <b>{s['users']}</b>\n"
+            f"ð Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¬Ø¯ÛØ¯ Ø§ÙØ±ÙØ²: <b>{s['new_today']}</b>\n"
+            f"ð¢ ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: <b>{s['active_today']}</b>\n"
+            f"ð¯ Ø§ÙØ¯Ø§Ù: <b>{s['goals']}</b>\n"
+            f"â Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø§ÙØ±ÙØ²: <b>{s['done_today']}</b>\n"
+            f"â° ÛØ§Ø¯Ø¢ÙØ±Û ÙØ¹Ø§Ù: <b>{s['reminders']}</b>\n"
+            f"ð Ú©Ù ÙØ¹Ø§ÙÛØªâÙØ§: <b>{s['activities']}</b>\n"
+            f"ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§: <b>{s['achievements']}</b>"
         )
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
@@ -3704,12 +3683,12 @@ async def admin_panel_callback(update, context):
         ).fetchall()
         c.close()
         if not rows:
-            text = "👥 کاربری ثبت نشده."
+            text = "ð¥ Ú©Ø§Ø±Ø¨Ø±Û Ø«Ø¨Øª ÙØ´Ø¯Ù."
         else:
-            text = "👥 <b>آخرین کاربران</b>\n\n"
+            text = "ð¥ <b>Ø¢Ø®Ø±ÛÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>\n\n"
             for r in rows:
-                name = r["first_name"] or "بدون نام"
-                text += f"👤 {name} | ID: <code>{r['user_id']}</code> | 🎯 {r['goals']}\n"
+                name = r["first_name"] or "Ø¨Ø¯ÙÙ ÙØ§Ù"
+                text += f"ð¤ {name} | ID: <code>{r['user_id']}</code> | ð¯ {r['goals']}\n"
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "goals":
@@ -3719,8 +3698,8 @@ async def admin_panel_callback(update, context):
                FROM goals GROUP BY category ORDER BY n DESC"""
         ).fetchall()
         c.close()
-        text = "🎯 <b>اهداف بر اساس دسته</b>\n\n"
-        text += "\n".join(f"• {r['category']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        text = "ð¯ <b>Ø§ÙØ¯Ø§Ù Ø¨Ø± Ø§Ø³Ø§Ø³ Ø¯Ø³ØªÙ</b>\n\n"
+        text += "\n".join(f"â¢ {r['category']}: <b>{r['n']}</b>" for r in rows) or "ÙÙØ±Ø¯Û ÙÛØ³Øª."
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "activity":
@@ -3730,8 +3709,8 @@ async def admin_panel_callback(update, context):
                FROM activity_log GROUP BY activity ORDER BY n DESC LIMIT 15"""
         ).fetchall()
         c.close()
-        text = "📈 <b>فعالیت‌ها</b>\n\n"
-        text += "\n".join(f"• {r['activity']}: <b>{r['n']}</b>" for r in rows) or "موردی نیست."
+        text = "ð <b>ÙØ¹Ø§ÙÛØªâÙØ§</b>\n\n"
+        text += "\n".join(f"â¢ {r['activity']}: <b>{r['n']}</b>" for r in rows) or "ÙÙØ±Ø¯Û ÙÛØ³Øª."
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "reminders":
@@ -3743,8 +3722,8 @@ async def admin_panel_callback(update, context):
                GROUP BY reminder_time ORDER BY reminder_time"""
         ).fetchall()
         c.close()
-        text = "⏰ <b>یادآوری‌ها</b>\n\n"
-        text += "\n".join(f"🕐 {r['reminder_time']}: <b>{r['n']}</b>" for r in rows) or "یادآوری فعالی نیست."
+        text = "â° <b>ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§</b>\n\n"
+        text += "\n".join(f"ð {r['reminder_time']}: <b>{r['n']}</b>" for r in rows) or "ÛØ§Ø¯Ø¢ÙØ±Û ÙØ¹Ø§ÙÛ ÙÛØ³Øª."
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "achievements":
@@ -3754,14 +3733,14 @@ async def admin_panel_callback(update, context):
                FROM achievements GROUP BY code ORDER BY n DESC"""
         ).fetchall()
         c.close()
-        text = "🏆 <b>دستاوردها</b>\n\n"
-        text += "\n".join(f"• {r['code']}: <b>{r['n']}</b>" for r in rows) or "دستاوردی ثبت نشده."
+        text = "ð <b>Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§</b>\n\n"
+        text += "\n".join(f"â¢ {r['code']}: <b>{r['n']}</b>" for r in rows) or "Ø¯Ø³ØªØ§ÙØ±Ø¯Û Ø«Ø¨Øª ÙØ´Ø¯Ù."
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=admin_keyboard())
 
     elif action == "channel":
         await q.message.edit_text(
-            "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\n"
-            "اتصال کانال، تست اتصال، ساخت پست، مشاهده پست‌ها و انتشار خودکار.",
+            "ð¢ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>\n\n"
+            "Ø§ØªØµØ§Ù Ú©Ø§ÙØ§ÙØ ØªØ³Øª Ø§ØªØµØ§ÙØ Ø³Ø§Ø®Øª Ù¾Ø³ØªØ ÙØ´Ø§ÙØ¯Ù Ù¾Ø³ØªâÙØ§ Ù Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±.",
             parse_mode="HTML",
             reply_markup=channel_keyboard(),
         )
@@ -3769,8 +3748,8 @@ async def admin_panel_callback(update, context):
     elif action == "broadcast":
         context.user_data["admin_broadcast"] = True
         await q.message.edit_text(
-            "📢 متن پیام همگانی را ارسال کن.\n\n"
-            "⚠️ بعد از ارسال، قبل از فرستادن برای همه تأیید می‌گیریم."
+            "ð¢ ÙØªÙ Ù¾ÛØ§Ù ÙÙÚ¯Ø§ÙÛ Ø±Ø§ Ø§Ø±Ø³Ø§Ù Ú©Ù.\n\n"
+            "â ï¸ Ø¨Ø¹Ø¯ Ø§Ø² Ø§Ø±Ø³Ø§ÙØ ÙØ¨Ù Ø§Ø² ÙØ±Ø³ØªØ§Ø¯Ù Ø¨Ø±Ø§Û ÙÙÙ ØªØ£ÛÛØ¯ ÙÛâÚ¯ÛØ±ÛÙ."
         )
 
 
@@ -3778,13 +3757,13 @@ async def admin_command(update, context):
     uid = update.effective_user.id
     if not admin_guard(uid):
         await update.message.reply_text(
-            f"⛔ دسترسی به پنل مدیریت ندارید.\n\n🆔 ID شما: {uid}\n\n"
-            "این ID را در Railway → Variables در ADMIN_IDS یا ADMIN_ID قرار بده و سرویس را Restart/Redeploy کن."
+            f"â Ø¯Ø³ØªØ±Ø³Û Ø¨Ù Ù¾ÙÙ ÙØ¯ÛØ±ÛØª ÙØ¯Ø§Ø±ÛØ¯.\n\nð ID Ø´ÙØ§: {uid}\n\n"
+            "Ø§ÛÙ ID Ø±Ø§ Ø¯Ø± Railway â Variables Ø¯Ø± ADMIN_IDS ÛØ§ ADMIN_ID ÙØ±Ø§Ø± Ø¨Ø¯Ù Ù Ø³Ø±ÙÛØ³ Ø±Ø§ Restart/Redeploy Ú©Ù."
         )
         return
     log_activity(uid, "admin_open")
     await update.message.reply_text(
-        "🛡 <b>پنل مدیریت مرکزی</b>\n\nابتدا بخش موردنظر را انتخاب کن. هر بخش تنظیمات مستقل خودش را دارد:",
+        "ð¡ <b>Ù¾ÙÙ ÙØ¯ÛØ±ÛØª ÙØ±Ú©Ø²Û</b>\n\nØ§Ø¨ØªØ¯Ø§ Ø¨Ø®Ø´ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù. ÙØ± Ø¨Ø®Ø´ ØªÙØ¸ÛÙØ§Øª ÙØ³ØªÙÙ Ø®ÙØ¯Ø´ Ø±Ø§ Ø¯Ø§Ø±Ø¯:",
         parse_mode="HTML",
         reply_markup=admin_keyboard(),
     )
@@ -3792,9 +3771,9 @@ async def admin_command(update, context):
 
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 🎂  BIRTHDAY HANDLERS (User-facing)
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  BIRTHDAY HANDLERS (User-facing)
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 async def birthday_register_callback(update, context):
     """User registers their birthday."""
@@ -3802,15 +3781,15 @@ async def birthday_register_callback(update, context):
     await q.answer()
     uid = q.from_user.id
     if not birthday_enabled():
-        await q.message.edit_text("🎂 این قابلیت در حال حاضر غیرفعال است.")
+        await q.message.edit_text("ð Ø§ÛÙ ÙØ§Ø¨ÙÛØª Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.")
         return
     context.user_data["awaiting_birthday"] = True
     fa = lang(uid) == "fa"
     await q.message.edit_text(
-        "🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
-        "فرمت: <code>YYYY-MM-DD</code>\nمثال: <code>1995-03-15</code>\n\n"
-        "⚠️ تاریخ تولد دائمی ذخیره می‌شود و فقط برای تبریک و هدیه استفاده می‌شود." if fa else
-        "🎂 <b>Enter your birthday</b>\n\nFormat: <code>YYYY-MM-DD</code>\nExample: <code>1995-03-15</code>",
+        "ð <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø®ÙØ¯Øª Ø±Ù ÙØ§Ø±Ø¯ Ú©Ù</b>\n\n"
+        "ÙØ±ÙØª: <code>YYYY-MM-DD</code>\nÙØ«Ø§Ù: <code>1995-03-15</code>\n\n"
+        "â ï¸ ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø¯Ø§Ø¦ÙÛ Ø°Ø®ÛØ±Ù ÙÛâØ´ÙØ¯ Ù ÙÙØ· Ø¨Ø±Ø§Û ØªØ¨Ø±ÛÚ© Ù ÙØ¯ÛÙ Ø§Ø³ØªÙØ§Ø¯Ù ÙÛâØ´ÙØ¯." if fa else
+        "ð <b>Enter your birthday</b>\n\nFormat: <code>YYYY-MM-DD</code>\nExample: <code>1995-03-15</code>",
         parse_mode="HTML",
     )
 
@@ -3824,22 +3803,22 @@ async def birthday_text_handler(update, context):
     # Validate format
     import re
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", text):
-        await update.message.reply_text("❌ فرمت نادرست. مثال: 1995-03-15")
+        await update.message.reply_text("â ÙØ±ÙØª ÙØ§Ø¯Ø±Ø³Øª. ÙØ«Ø§Ù: 1995-03-15")
         return True
     try:
         dt = datetime.strptime(text, "%Y-%m-%d")
         if dt > datetime.now(TZ) or dt.year < 1900:
-            await update.message.reply_text("❌ تاریخ نامعتبر.")
+            await update.message.reply_text("â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø±.")
             return True
     except ValueError:
-        await update.message.reply_text("❌ تاریخ نامعتبر.")
+        await update.message.reply_text("â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø±.")
         return True
     set_birthday(uid, text)
     fa = lang(uid) == "fa"
     await update.message.reply_text(
-        f"🎂 تاریخ تولد ثبت شد: <code>{text}</code>\n\n"
-        "🎁 در روز تولدت یک هدیه ویژه دریافت خواهی کرد!" if fa else
-        f"🎂 Birthday saved: <code>{text}</code>",
+        f"ð ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø«Ø¨Øª Ø´Ø¯: <code>{text}</code>\n\n"
+        "ð Ø¯Ø± Ø±ÙØ² ØªÙÙØ¯Øª ÛÚ© ÙØ¯ÛÙ ÙÛÚÙ Ø¯Ø±ÛØ§ÙØª Ø®ÙØ§ÙÛ Ú©Ø±Ø¯!" if fa else
+        f"ð Birthday saved: <code>{text}</code>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]),
     )
@@ -3854,60 +3833,60 @@ async def birthday_show_callback(update, context):
     fa = lang(uid) == "fa"
     if not b:
         await q.message.edit_text(
-            "🎂 <b>تولد تو ثبت نشده</b>\n\nروی دکمه زیر بزن تا تاریخ تولدت رو ثبت کنی." if fa else
-            "🎂 <b>No birthday registered</b>",
+            "ð <b>ØªÙÙØ¯ ØªÙ Ø«Ø¨Øª ÙØ´Ø¯Ù</b>\n\nØ±ÙÛ Ø¯Ú©ÙÙ Ø²ÛØ± Ø¨Ø²Ù ØªØ§ ØªØ§Ø±ÛØ® ØªÙÙØ¯Øª Ø±Ù Ø«Ø¨Øª Ú©ÙÛ." if fa else
+            "ð <b>No birthday registered</b>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🎂 ثبت تولد" if fa else "🎂 Set Birthday", callback_data="birthday:set")],
-                [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+                [InlineKeyboardButton("ð Ø«Ø¨Øª ØªÙÙØ¯" if fa else "ð Set Birthday", callback_data="birthday:set")],
+                [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu", callback_data="nav:main")],
             ]),
         )
         return
     claimed = birthday_gift_claimed(uid)
     text = (
-        f"🎂 <b>تاریخ تولد تو</b>\n\n"
-        f"📅 <code>{b['birth_date']}</code>\n"
-        f"🎁 هدیه امسال: {'✅ دریافت شد' if claimed else '📭 هنوز دریافت نشده'}"
+        f"ð <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ ØªÙ</b>\n\n"
+        f"ð <code>{b['birth_date']}</code>\n"
+        f"ð ÙØ¯ÛÙ Ø§ÙØ³Ø§Ù: {'â Ø¯Ø±ÛØ§ÙØª Ø´Ø¯' if claimed else 'ð­ ÙÙÙØ² Ø¯Ø±ÛØ§ÙØª ÙØ´Ø¯Ù'}"
     )
     kb = [
-        [InlineKeyboardButton("✏️ ویرایش" if fa else "✏️ Edit", callback_data="birthday:set")],
-        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+        [InlineKeyboardButton("âï¸ ÙÛØ±Ø§ÛØ´" if fa else "âï¸ Edit", callback_data="birthday:set")],
+        [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu", callback_data="nav:main")],
     ]
     await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 📅  EVENTS HANDLERS (Admin-facing)
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  EVENTS HANDLERS (Admin-facing)
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 async def admin_events_callback(update, context):
     """Admin panel for events management."""
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True)
+        await q.answer("â", show_alert=True)
         return
     await q.answer()
     action = q.data.split(":", 2)[-1] if q.data.count(":") >= 2 else ""
     if action == "list":
         events = get_all_events()
         if not events:
-            text = "📅 <b>مناسبتی ثبت نشده</b>"
+            text = "ð <b>ÙÙØ§Ø³Ø¨ØªÛ Ø«Ø¨Øª ÙØ´Ø¯Ù</b>"
         else:
-            lines = ["📅 <b>لیست مناسبت‌ها</b>", ""]
+            lines = ["ð <b>ÙÛØ³Øª ÙÙØ§Ø³Ø¨ØªâÙØ§</b>", ""]
             for e in events:
-                status = "🟢" if e["enabled"] else "🔴"
+                status = "ð¢" if e["enabled"] else "ð´"
                 lines.append(f"{status} #{e['id']} | {e['name']} | {e['event_date']}")
             text = "\n".join(lines)
         kb = [
-            [InlineKeyboardButton("➕ مناسبت جدید", callback_data="adm:events:create")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("â ÙÙØ§Ø³Ø¨Øª Ø¬Ø¯ÛØ¯", callback_data="adm:events:create")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ]
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     elif action == "create":
         context.user_data["admin_create_event"] = True
         await q.message.reply_text(
-            "📅 <b>نام مناسبت رو بفرست:</b>\nمثال: نوروز، ولنتاین، ...",
+            "ð <b>ÙØ§Ù ÙÙØ§Ø³Ø¨Øª Ø±Ù Ø¨ÙØ±Ø³Øª:</b>\nÙØ«Ø§Ù: ÙÙØ±ÙØ²Ø ÙÙÙØªØ§ÛÙØ ...",
             parse_mode="HTML",
         )
 
@@ -3917,7 +3896,7 @@ async def admin_birthday_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True)
+        await q.answer("â", show_alert=True)
         return
     await q.answer()
     action = q.data.split(":", 2)[-1] if q.data.count(":") >= 2 else ""
@@ -3926,29 +3905,29 @@ async def admin_birthday_callback(update, context):
         rows = c.execute("SELECT b.*, u.first_name FROM birthdays b JOIN users u ON u.user_id=b.user_id ORDER BY substr(b.birth_date,6)").fetchall()
         c.close()
         if not rows:
-            text = "🎂 <b>هیچ تولدی ثبت نشده</b>"
+            text = "ð <b>ÙÛÚ ØªÙÙØ¯Û Ø«Ø¨Øª ÙØ´Ø¯Ù</b>"
         else:
-            lines = ["🎂 <b>تولدهای ثبت‌شده</b>", ""]
+            lines = ["ð <b>ØªÙÙØ¯ÙØ§Û Ø«Ø¨ØªâØ´Ø¯Ù</b>", ""]
             for r in rows:
-                status = "🟢" if r["enabled"] else "🔴"
+                status = "ð¢" if r["enabled"] else "ð´"
                 lines.append(f"{status} {r['first_name']} | <code>{r['birth_date']}</code>")
             text = "\n".join(lines)
-        kb = [[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]]
+        kb = [[InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]]
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     elif action == "settings":
         gift_type = birthday_settings_get("gift_type", "xp")
         gift_value = birthday_settings_get("gift_value", "50")
         enabled = feature_enabled("birthday")
         text = (
-            f"🎂 <b>تنظیمات تولد</b>\n\n"
-            f"وضعیت: {'🟢 فعال' if enabled else '🔴 غیرفعال'}\n"
-            f"نوع هدیه: {gift_type}\n"
-            f"مقدار هدیه: {gift_value}"
+            f"ð <b>ØªÙØ¸ÛÙØ§Øª ØªÙÙØ¯</b>\n\n"
+            f"ÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if enabled else 'ð´ ØºÛØ±ÙØ¹Ø§Ù'}\n"
+            f"ÙÙØ¹ ÙØ¯ÛÙ: {gift_type}\n"
+            f"ÙÙØ¯Ø§Ø± ÙØ¯ÛÙ: {gift_value}"
         )
         kb = [
-            [InlineKeyboardButton("🟢 فعال" if not enabled else "🔴 غیرفعال", callback_data="adm:birthdays:toggle")],
-            [InlineKeyboardButton("🎁 تغییر نوع هدیه", callback_data="adm:birthdays:set_gift_type")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð¢ ÙØ¹Ø§Ù" if not enabled else "ð´ ØºÛØ±ÙØ¹Ø§Ù", callback_data="adm:birthdays:toggle")],
+            [InlineKeyboardButton("ð ØªØºÛÛØ± ÙÙØ¹ ÙØ¯ÛÙ", callback_data="adm:birthdays:set_gift_type")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ]
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     elif action == "toggle":
@@ -3957,7 +3936,7 @@ async def admin_birthday_callback(update, context):
         await admin_birthday_callback(update, context)
     elif action == "set_gift_type":
         context.user_data["admin_birthday_gift_type"] = True
-        await q.message.reply_text("🎁 نوع هدیه رو بفرست:\n\nxp / vip / none")
+        await q.message.reply_text("ð ÙÙØ¹ ÙØ¯ÛÙ Ø±Ù Ø¨ÙØ±Ø³Øª:\n\nxp / vip / none")
 
 
 async def admin_gifts_callback(update, context):
@@ -3965,17 +3944,17 @@ async def admin_gifts_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True)
+        await q.answer("â", show_alert=True)
         return
     await q.answer()
     text = (
-        "🎁 <b>هدیه مدیریتی</b>\n\n"
-        "برای ارسال هدیه به کاربر:\n"
-        "1️⃣ شناسه کاربر رو بفرست\n"
-        "2️⃣ نوع هدیه رو انتخاب کن\n"
-        "3️⃣ مقدار و مدت رو تعیین کن"
+        "ð <b>ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ</b>\n\n"
+        "Ø¨Ø±Ø§Û Ø§Ø±Ø³Ø§Ù ÙØ¯ÛÙ Ø¨Ù Ú©Ø§Ø±Ø¨Ø±:\n"
+        "1ï¸â£ Ø´ÙØ§Ø³Ù Ú©Ø§Ø±Ø¨Ø± Ø±Ù Ø¨ÙØ±Ø³Øª\n"
+        "2ï¸â£ ÙÙØ¹ ÙØ¯ÛÙ Ø±Ù Ø§ÙØªØ®Ø§Ø¨ Ú©Ù\n"
+        "3ï¸â£ ÙÙØ¯Ø§Ø± Ù ÙØ¯Øª Ø±Ù ØªØ¹ÛÛÙ Ú©Ù"
     )
-    kb = [[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]]
+    kb = [[InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]]
     await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb))
     context.user_data["admin_gift_mode"] = "user_id"
 
@@ -3985,12 +3964,12 @@ async def admin_access_matrix_callback(update, context):
     q = update.callback_query
     uid = q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔", show_alert=True)
+        await q.answer("â", show_alert=True)
         return
     await q.answer()
     context.user_data["admin_access_matrix"] = True
     await q.message.reply_text(
-        "🔐 <b>ماتریس دسترسی</b>\n\nشناسه کاربر رو بفرست:",
+        "ð <b>ÙØ§ØªØ±ÛØ³ Ø¯Ø³ØªØ±Ø³Û</b>\n\nØ´ÙØ§Ø³Ù Ú©Ø§Ø±Ø¨Ø± Ø±Ù Ø¨ÙØ±Ø³Øª:",
         parse_mode="HTML",
     )
 
@@ -4016,16 +3995,16 @@ async def admin(update, context):
     c.close()
 
     await update.message.reply_text(
-        "🛠 پنل مدیریت\n\n"
-        f"📊 آمار کلی\n"
-        f"👥 تعداد کاربران: {users}\n"
-        f"🎯 تعداد اهداف: {goals}\n"
-        f"👀 تعداد استفاده و فعالیت‌ها: {activity}\n"
-        f"🟢 کاربران فعال امروز: {active_today}\n"
-        f"⏰ تعداد یادآوری‌ها: {reminders}\n"
-        f"📢 ارسال پیام همگانی: با دکمه زیر",
+        "ð  Ù¾ÙÙ ÙØ¯ÛØ±ÛØª\n\n"
+        f"ð Ø¢ÙØ§Ø± Ú©ÙÛ\n"
+        f"ð¥ ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: {users}\n"
+        f"ð¯ ØªØ¹Ø¯Ø§Ø¯ Ø§ÙØ¯Ø§Ù: {goals}\n"
+        f"ð ØªØ¹Ø¯Ø§Ø¯ Ø§Ø³ØªÙØ§Ø¯Ù Ù ÙØ¹Ø§ÙÛØªâÙØ§: {activity}\n"
+        f"ð¢ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: {active_today}\n"
+        f"â° ØªØ¹Ø¯Ø§Ø¯ ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§: {reminders}\n"
+        f"ð¢ Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù ÙÙÚ¯Ø§ÙÛ: Ø¨Ø§ Ø¯Ú©ÙÙ Ø²ÛØ±",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="admin:broadcast")
+            InlineKeyboardButton("ð¢ Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù ÙÙÚ¯Ø§ÙÛ", callback_data="admin:broadcast")
         ]]),
     )
     log_activity(uid, "admin_panel")
@@ -4068,14 +4047,14 @@ async def admin_broadcast_save(update, context):
     from telegram.error import RetryAfter
     for row in rows:
         try:
-            await context.bot.send_message(row["user_id"], f"📢 {text}")
+            await context.bot.send_message(row["user_id"], f"ð¢ {text}")
             sent += 1
         except RetryAfter as e:
             # Telegram asked us to slow down: wait exactly as long as required,
             # then retry this recipient once before giving up on them.
             try:
                 await asyncio.sleep(e.retry_after + 1)
-                await context.bot.send_message(row["user_id"], f"📢 {text}")
+                await context.bot.send_message(row["user_id"], f"ð¢ {text}")
                 sent += 1
             except Exception as e2:
                 failed += 1
@@ -4089,7 +4068,7 @@ async def admin_broadcast_save(update, context):
     log_activity(uid, "broadcast")
     done_txt = T[lang(uid)]["broadcast_done"].format(sent=sent)
     if failed:
-        done_txt += f"\n⚠️ {failed} ناموفق."
+        done_txt += f"\nâ ï¸ {failed} ÙØ§ÙÙÙÙ."
     await update.message.reply_text(done_txt)
     return True
 
@@ -4165,20 +4144,20 @@ async def reminder_job(context):
                 ),
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "✅ Done" if lang(uid) == "en" else "✅ انجام دادم",
+                        "â Done" if lang(uid) == "en" else "â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù",
                         callback_data=f"done:{g['id']}",
                     ),
                     InlineKeyboardButton(
-                        "❌ Not done" if lang(uid) == "en" else "❌ انجام ندادم",
+                        "â Not done" if lang(uid) == "en" else "â Ø§ÙØ¬Ø§Ù ÙØ¯Ø§Ø¯Ù",
                         callback_data=f"miss:{g['id']}",
                     ),
                 ], [
                     InlineKeyboardButton(
-                        "⏰ Tomorrow / فردا",
+                        "â° Tomorrow / ÙØ±Ø¯Ø§",
                         callback_data=f"goalrem:{g['id']}:menu",
                     ),
                     InlineKeyboardButton(
-                        "⏱ Snooze" if lang(uid) == "en" else "⏱ یادآوری بعداً",
+                        "â± Snooze" if lang(uid) == "en" else "â± ÛØ§Ø¯Ø¢ÙØ±Û Ø¨Ø¹Ø¯Ø§Ù",
                         callback_data=f"snooze_menu:{g['id']}",
                     ),
                 ]]),
@@ -4193,22 +4172,22 @@ async def reminder_job(context):
 def is_menu_button(uid, text):
     """Return True when text is a normal UI button, not input for a flow."""
     known = {
-        "⬅️ برگشت", "⬅️ Back", "🏠 منوی اصلی", "🏠 Main Menu",
-        "📢 مدیریت کانال", "📢 Channel Management",
-        "🛡 پنل مدیریت", "🛡 Admin Panel",
-        "📊 آمار من", "📊 My Stats",
-        "🎯 اهداف من", "🎯 My Goals",
-        "➕ افزودن هدف", "➕ Add Goal",
-        "📅 برنامه امروز", "📅 Today's Plan",
-        "⏰ یادآوری‌ها", "⏰ Reminders",
-        "🏆 دستاوردها", "🏆 Achievements",
-        "🤖 چت با AI", "🤖 AI Chat",
-        "💎 VIP و امکانات پولی", "💎 VIP & Paid Features",
-        "⚙️ تنظیمات", "⚙️ Settings",
-        "📈 قیمت آنلاین", "📈 Online Prices",
-        "🤝 دعوت دوستان", "🤝 Invite Friends",
-        "🎫 پشتیبانی", "🎫 Support",
-        "📅 رزروهای من", "📅 My Bookings",
+        "â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back", "ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu",
+        "ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", "ð¢ Channel Management",
+        "ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", "ð¡ Admin Panel",
+        "ð Ø¢ÙØ§Ø± ÙÙ", "ð My Stats",
+        "ð¯ Ø§ÙØ¯Ø§Ù ÙÙ", "ð¯ My Goals",
+        "â Ø§ÙØ²ÙØ¯Ù ÙØ¯Ù", "â Add Goal",
+        "ð Ø¨Ø±ÙØ§ÙÙ Ø§ÙØ±ÙØ²", "ð Today's Plan",
+        "â° ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§", "â° Reminders",
+        "ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "ð Achievements",
+        "ð¤ ÚØª Ø¨Ø§ AI", "ð¤ AI Chat",
+        "ð VIP Ù Ø§ÙÚ©Ø§ÙØ§Øª Ù¾ÙÙÛ", "ð VIP & Paid Features",
+        "âï¸ ØªÙØ¸ÛÙØ§Øª", "âï¸ Settings",
+        "ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ", "ð Online Prices",
+        "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù", "ð¤ Invite Friends",
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", "ð« Support",
+        "ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ", "ð My Bookings",
     }
     if text in known:
         return True
@@ -4233,9 +4212,9 @@ def feature_access_mode(key, uid=None):
         return "free"
 
 def main_menu_button(uid):
-    return InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="nav:main")
+    return InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if lang(uid)=="fa" else "ð  Main Menu", callback_data="nav:main")
 
-def back_button(callback_data, label_fa="⬅️ برگشت", label_en="⬅️ Back", uid=None):
+def back_button(callback_data, label_fa="â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", label_en="â¬ï¸ Back", uid=None):
     return InlineKeyboardButton(label_en if uid is not None and lang(uid)=="en" else label_fa, callback_data=callback_data)
 
 def gregorian_to_jalali(gy,gm,gd):
@@ -4272,14 +4251,14 @@ def jalali_date_str(value):
     except Exception: return str(value)
 
 def fa_digits(value):
-    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+    return str(value).translate(str.maketrans("0123456789", "Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹"))
 
 JALALI_MONTHS_FA = [
-    "فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور",
-    "مهر","آبان","آذر","دی","بهمن","اسفند"
+    "ÙØ±ÙØ±Ø¯ÛÙ","Ø§Ø±Ø¯ÛØ¨ÙØ´Øª","Ø®Ø±Ø¯Ø§Ø¯","ØªÛØ±","ÙØ±Ø¯Ø§Ø¯","Ø´ÙØ±ÛÙØ±",
+    "ÙÙØ±","Ø¢Ø¨Ø§Ù","Ø¢Ø°Ø±","Ø¯Û","Ø¨ÙÙÙ","Ø§Ø³ÙÙØ¯"
 ]
 WEEKDAYS_FA = [
-    "دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه","شنبه","یکشنبه"
+    "Ø¯ÙØ´ÙØ¨Ù","Ø³ÙâØ´ÙØ¨Ù","ÚÙØ§Ø±Ø´ÙØ¨Ù","Ù¾ÙØ¬Ø´ÙØ¨Ù","Ø¬ÙØ¹Ù","Ø´ÙØ¨Ù","ÛÚ©Ø´ÙØ¨Ù"
 ]
 
 def jalali_pretty_date(value):
@@ -4329,7 +4308,7 @@ def fa_datetime(value, with_seconds=False):
             dt=dt.astimezone(TZ)
         date_part=jalali_pretty_date(dt.date())
         clock=dt.strftime("%H:%M:%S" if with_seconds else "%H:%M")
-        return f"{date_part}، ساعت {fa_digits(clock)}"
+        return f"{date_part}Ø Ø³Ø§Ø¹Øª {fa_digits(clock)}"
     except Exception:
         return str(value)
 
@@ -4339,8 +4318,8 @@ def fa_date_iso(value):
 
 # ================= CUSTOMER / APPOINTMENT MODULE =================
 CUSTOMER_REMINDER_OPTIONS=[1,5,10,30,60,120,1440]
-BUSINESS_TYPES_FA=["💇 آرایشگر / سالن","🎨 تتو آرتیست","🔧 تعمیرکار","🩺 خدمات پزشکی","💆 زیبایی / ماساژ","🏋️ مربی","📚 مدرس / مشاور","📸 عکاس","🛠️ خدمات تخصصی","✏️ سایر"]
-BUSINESS_TYPES_EN=["💇 Barber / Salon","🎨 Tattoo Artist","🔧 Repairer","🩺 Medical Services","💆 Beauty / Massage","🏋️ Coach","📚 Teacher / Consultant","📸 Photographer","🛠️ Professional Services","✏️ Other"]
+BUSINESS_TYPES_FA=["ð Ø¢Ø±Ø§ÛØ´Ú¯Ø± / Ø³Ø§ÙÙ","ð¨ ØªØªÙ Ø¢Ø±ØªÛØ³Øª","ð§ ØªØ¹ÙÛØ±Ú©Ø§Ø±","ð©º Ø®Ø¯ÙØ§Øª Ù¾Ø²Ø´Ú©Û","ð Ø²ÛØ¨Ø§ÛÛ / ÙØ§Ø³Ø§Ú","ðï¸ ÙØ±Ø¨Û","ð ÙØ¯Ø±Ø³ / ÙØ´Ø§ÙØ±","ð¸ Ø¹Ú©Ø§Ø³","ð ï¸ Ø®Ø¯ÙØ§Øª ØªØ®ØµØµÛ","âï¸ Ø³Ø§ÛØ±"]
+BUSINESS_TYPES_EN=["ð Barber / Salon","ð¨ Tattoo Artist","ð§ Repairer","ð©º Medical Services","ð Beauty / Massage","ðï¸ Coach","ð Teacher / Consultant","ð¸ Photographer","ð ï¸ Professional Services","âï¸ Other"]
 
 def customer_feature_allowed(uid):
     mode=feature_access_mode("customers",uid)
@@ -4370,47 +4349,47 @@ def customer_keyboard(uid):
     if customer_option_allowed(uid,"customer_today") or customer_option_allowed(uid,"customer_new_appointment"):
         row=[]
         if customer_option_allowed(uid,"customer_today"):
-            row.append(InlineKeyboardButton("📅 نوبت‌های امروز" if fa else "📅 Today's Appointments",callback_data="cust:today"))
+            row.append(InlineKeyboardButton("ð ÙÙØ¨ØªâÙØ§Û Ø§ÙØ±ÙØ²" if fa else "ð Today's Appointments",callback_data="cust:today"))
         if customer_option_allowed(uid,"customer_new_appointment"):
-            row.append(InlineKeyboardButton("➕ نوبت جدید" if fa else "➕ New Appointment",callback_data="cust:new"))
+            row.append(InlineKeyboardButton("â ÙÙØ¨Øª Ø¬Ø¯ÛØ¯" if fa else "â New Appointment",callback_data="cust:new"))
         if row: rows.append(row)
     if customer_option_allowed(uid,"customer_customers") or customer_option_allowed(uid,"customer_calendar"):
         row=[]
         if customer_option_allowed(uid,"customer_customers"):
-            row.append(InlineKeyboardButton("👥 مشتریان" if fa else "👥 Customers",callback_data="cust:list"))
+            row.append(InlineKeyboardButton("ð¥ ÙØ´ØªØ±ÛØ§Ù" if fa else "ð¥ Customers",callback_data="cust:list"))
         if customer_option_allowed(uid,"customer_calendar"):
-            row.append(InlineKeyboardButton("🗓️ تقویم کاری" if fa else "🗓️ Calendar",callback_data="cust:calendar"))
+            row.append(InlineKeyboardButton("ðï¸ ØªÙÙÛÙ Ú©Ø§Ø±Û" if fa else "ðï¸ Calendar",callback_data="cust:calendar"))
         if row: rows.append(row)
     if customer_option_allowed(uid,"customer_hours") or customer_option_allowed(uid,"customer_reminders"):
         row=[]
         if customer_option_allowed(uid,"customer_hours"):
-            row.append(InlineKeyboardButton("⏰ ساعات کاری" if fa else "⏰ Working Hours",callback_data="cust:hours"))
+            row.append(InlineKeyboardButton("â° Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û" if fa else "â° Working Hours",callback_data="cust:hours"))
         if customer_option_allowed(uid,"customer_reminders"):
-            row.append(InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders",callback_data="cust:reminders"))
+            row.append(InlineKeyboardButton("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§" if fa else "ð Reminders",callback_data="cust:reminders"))
         if row: rows.append(row)
     if customer_option_allowed(uid,"customer_analytics") or customer_option_allowed(uid,"customer_loyal"):
         row=[]
         if customer_option_allowed(uid,"customer_analytics"):
-            row.append(InlineKeyboardButton("📊 آمار مشتریان" if fa else "📊 Customer Analytics",callback_data="cust:analytics"))
+            row.append(InlineKeyboardButton("ð Ø¢ÙØ§Ø± ÙØ´ØªØ±ÛØ§Ù" if fa else "ð Customer Analytics",callback_data="cust:analytics"))
         if customer_option_allowed(uid,"customer_loyal"):
-            row.append(InlineKeyboardButton("🏆 مشتریان وفادار" if fa else "🏆 Loyal Customers",callback_data="cust:loyal"))
+            row.append(InlineKeyboardButton("ð ÙØ´ØªØ±ÛØ§Ù ÙÙØ§Ø¯Ø§Ø±" if fa else "ð Loyal Customers",callback_data="cust:loyal"))
         if row: rows.append(row)
     if customer_option_allowed(uid,"customer_period"):
-        rows.append([InlineKeyboardButton("📆 هفتگی/ماهانه/سالانه" if fa else "📆 Weekly/Monthly/Yearly",callback_data="cust:period")])
+        rows.append([InlineKeyboardButton("ð ÙÙØªÚ¯Û/ÙØ§ÙØ§ÙÙ/Ø³Ø§ÙØ§ÙÙ" if fa else "ð Weekly/Monthly/Yearly",callback_data="cust:period")])
     if customer_option_allowed(uid,"customer_booking_link"):
-        rows.append([InlineKeyboardButton("🔗 لینک رزرو آنلاین" if fa else "🔗 Online Booking Link",callback_data="cust:link")])
+        rows.append([InlineKeyboardButton("ð ÙÛÙÚ© Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ" if fa else "ð Online Booking Link",callback_data="cust:link")])
     if customer_option_allowed(uid,"customer_business_settings"):
-        rows.append([InlineKeyboardButton("⚙️ تنظیمات کسب‌وکار" if fa else "⚙️ Business Settings",callback_data="cust:settings")])
+        rows.append([InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±" if fa else "âï¸ Business Settings",callback_data="cust:settings")])
     if customer_option_allowed(uid,"customer_customers"):
-        rows.append([InlineKeyboardButton("📨 پیام به مشتری‌ها" if fa else "📨 Message Customers",callback_data="cust:broadcast")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="nav:main")])
+        rows.append([InlineKeyboardButton("ð¨ Ù¾ÛØ§Ù Ø¨Ù ÙØ´ØªØ±ÛâÙØ§" if fa else "ð¨ Message Customers",callback_data="cust:broadcast")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",callback_data="nav:main")])
     return InlineKeyboardMarkup(rows)
 
 def customer_back(uid,cb="cust:main"): return InlineKeyboardMarkup([[back_button(cb,uid=uid),main_menu_button(uid)]])
 
 def appointment_reminder_keyboard(uid,aid):
     fa=lang(uid)=="fa"
-    return InlineKeyboardMarkup([[InlineKeyboardButton("✅ انجام شد" if fa else "✅ Done",callback_data=f"cust:done:{aid}"),InlineKeyboardButton("❌ لغو شد" if fa else "❌ Cancelled",callback_data=f"cust:cancel:{aid}")],[InlineKeyboardButton("🔄 جابه‌جایی" if fa else "🔄 Reschedule",callback_data=f"cust:reschedule:{aid}"),InlineKeyboardButton("🏠 مشتریان" if fa else "🏠 Customers",callback_data="cust:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("â Ø§ÙØ¬Ø§Ù Ø´Ø¯" if fa else "â Done",callback_data=f"cust:done:{aid}"),InlineKeyboardButton("â ÙØºÙ Ø´Ø¯" if fa else "â Cancelled",callback_data=f"cust:cancel:{aid}")],[InlineKeyboardButton("ð Ø¬Ø§Ø¨ÙâØ¬Ø§ÛÛ" if fa else "ð Reschedule",callback_data=f"cust:reschedule:{aid}"),InlineKeyboardButton("ð  ÙØ´ØªØ±ÛØ§Ù" if fa else "ð  Customers",callback_data="cust:main")]])
 
 def get_customer(owner,cid):
     c=db(); r=c.execute("SELECT * FROM customers WHERE id=? AND owner_user_id=?",(cid,owner)).fetchone(); c.close(); return r
@@ -4428,9 +4407,9 @@ def parse_reminder_list(v):
     return sorted(out,reverse=True)
 
 def reminder_label(n,fa=True):
-    if n==1440:return "۱ روز قبل" if fa else "1 day before"
-    if n>=60:return f"{n//60} ساعت قبل" if fa else f"{n//60} hour(s) before"
-    return f"{n} دقیقه قبل" if fa else f"{n} min before"
+    if n==1440:return "Û± Ø±ÙØ² ÙØ¨Ù" if fa else "1 day before"
+    if n>=60:return f"{n//60} Ø³Ø§Ø¹Øª ÙØ¨Ù" if fa else f"{n//60} hour(s) before"
+    return f"{n} Ø¯ÙÛÙÙ ÙØ¨Ù" if fa else f"{n} min before"
 
 def working_hours_for(uid,wd):
     c=db(); r=c.execute("SELECT * FROM working_hours WHERE owner_user_id=? AND weekday=?",(uid,wd)).fetchone(); c.close(); return r
@@ -4460,12 +4439,12 @@ def available_slots(owner,d,step=30):
 def loyalty_score(visits,cancelled=0): return min(100,(min(visits,15)*5)+(min(max(0,visits-cancelled),10)*3)) if visits else 0
 
 def customer_feature_message(uid):
-    return "💎 بخش مشتری و نوبت‌دهی برای پلن VIP فعال است." if lang(uid)=="fa" else "💎 Customers & Appointments are available on VIP plans."
+    return "ð Ø¨Ø®Ø´ ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ Ø¨Ø±Ø§Û Ù¾ÙÙ VIP ÙØ¹Ø§Ù Ø§Ø³Øª." if lang(uid)=="fa" else "ð Customers & Appointments are available on VIP plans."
 
 async def customer_panel(update,context):
     uid=update.effective_user.id
     if not customer_feature_allowed(uid): await update.message.reply_text(customer_feature_message(uid)); return
-    ensure_business_profile(uid); await update.message.reply_text("👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\nپنل مستقل مشتریان، نوبت‌ها، تقویم و یادآوری‌ها.",parse_mode="HTML",reply_markup=customer_keyboard(uid));
+    ensure_business_profile(uid); await update.message.reply_text("ð¥ <b>ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ</b>\n\nÙ¾ÙÙ ÙØ³ØªÙÙ ÙØ´ØªØ±ÛØ§ÙØ ÙÙØ¨ØªâÙØ§Ø ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§.",parse_mode="HTML",reply_markup=customer_keyboard(uid));
     await hide_main_reply_keyboard(update)
 
 async def customer_panel_callback(update,context):
@@ -4486,15 +4465,15 @@ async def customer_panel_callback(update,context):
     }
     required_key=customer_action_keys.get(a)
     if required_key and not customer_option_allowed(uid,required_key):
-        await q.message.edit_text("⛔ این گزینه توسط مدیر غیرفعال شده یا برای پلن شما فعال نیست.",reply_markup=customer_back(uid))
+        await q.message.edit_text("â Ø§ÛÙ Ú¯Ø²ÛÙÙ ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù ÛØ§ Ø¨Ø±Ø§Û Ù¾ÙÙ Ø´ÙØ§ ÙØ¹Ø§Ù ÙÛØ³Øª.",reply_markup=customer_back(uid))
         return
-    if a=="main": await q.message.edit_text("👥 مدیریت مشتری و نوبت‌دهی",reply_markup=customer_keyboard(uid)); return
+    if a=="main": await q.message.edit_text("ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ",reply_markup=customer_keyboard(uid)); return
     if a=="today": await customer_today(update,context); return
-    if a=="new": context.user_data["customer_mode"]="new_name"; await q.message.edit_text("➕ نام مشتری را بفرست:"); return
+    if a=="new": context.user_data["customer_mode"]="new_name"; await q.message.edit_text("â ÙØ§Ù ÙØ´ØªØ±Û Ø±Ø§ Ø¨ÙØ±Ø³Øª:"); return
     if a=="list": await customer_list_view(update,context); return
     if a=="calendar": await customer_calendar(update,context); return
     if a=="hours": await customer_hours(update,context); return
-    if a=="hours_edit": context.user_data.update(customer_mode="hours_edit",weekday=int(p[2])); await q.message.edit_text("⏰ ساعت شروع و پایان را بفرست. مثال: 09:00-20:00\nبرای تعطیل: off"); return
+    if a=="hours_edit": context.user_data.update(customer_mode="hours_edit",weekday=int(p[2])); await q.message.edit_text("â° Ø³Ø§Ø¹Øª Ø´Ø±ÙØ¹ Ù Ù¾Ø§ÛØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: 09:00-20:00\nØ¨Ø±Ø§Û ØªØ¹Ø·ÛÙ: off"); return
     if a=="reminders": await customer_reminders(update,context); return
     if a=="analytics": await customer_analytics_view(update,context); return
     if a=="period": await customer_period_menu(update,context); return
@@ -4502,22 +4481,22 @@ async def customer_panel_callback(update,context):
     if a=="loyal": await customer_loyal(update,context); return
     if a=="link": await customer_booking_link(update,context); return
     if a=="settings": await customer_settings(update,context); return
-    if a=="broadcast": context.user_data["customer_broadcast_mode"]="all"; await q.message.reply_text("📨 پیام را بفرست. برای لغو ⬅️ برگشت را بزن.",reply_markup=nav_keyboard(uid)); return
-    if a=="contact": context.user_data["customer_mode"]="contact"; await q.message.edit_text("📱 از قابلیت ارسال Contact تلگرام استفاده کن و مخاطب را برای ربات بفرست.\n⚠️ ربات به دفترچه مخاطبین خصوصی گوشی دسترسی مستقیم ندارد."); return
-    if a=="bizname": context.user_data["customer_mode"]="bizname"; await q.message.edit_text("🏪 نام کسب‌وکار را بفرست یا - برای حذف نام:"); return
-    if a=="contacts": context.user_data["customer_mode"]="contact_phone"; context.user_data["business_contact_pending"]={}; await q.message.edit_text("📞 شماره تماس را بفرست یا - بزن. (اختیاری)"); return
+    if a=="broadcast": context.user_data["customer_broadcast_mode"]="all"; await q.message.reply_text("ð¨ Ù¾ÛØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª. Ø¨Ø±Ø§Û ÙØºÙ â¬ï¸ Ø¨Ø±Ú¯Ø´Øª Ø±Ø§ Ø¨Ø²Ù.",reply_markup=nav_keyboard(uid)); return
+    if a=="contact": context.user_data["customer_mode"]="contact"; await q.message.edit_text("ð± Ø§Ø² ÙØ§Ø¨ÙÛØª Ø§Ø±Ø³Ø§Ù Contact ØªÙÚ¯Ø±Ø§Ù Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù Ù ÙØ®Ø§Ø·Ø¨ Ø±Ø§ Ø¨Ø±Ø§Û Ø±Ø¨Ø§Øª Ø¨ÙØ±Ø³Øª.\nâ ï¸ Ø±Ø¨Ø§Øª Ø¨Ù Ø¯ÙØªØ±ÚÙ ÙØ®Ø§Ø·Ø¨ÛÙ Ø®ØµÙØµÛ Ú¯ÙØ´Û Ø¯Ø³ØªØ±Ø³Û ÙØ³ØªÙÛÙ ÙØ¯Ø§Ø±Ø¯."); return
+    if a=="bizname": context.user_data["customer_mode"]="bizname"; await q.message.edit_text("ðª ÙØ§Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø±Ø§Û Ø­Ø°Ù ÙØ§Ù:"); return
+    if a=="contacts": context.user_data["customer_mode"]="contact_phone"; context.user_data["business_contact_pending"]={}; await q.message.edit_text("ð Ø´ÙØ§Ø±Ù ØªÙØ§Ø³ Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù. (Ø§Ø®ØªÛØ§Ø±Û)"); return
     if a=="type":
-        types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN; idx=int(p[2]); c=db(); c.execute("UPDATE business_profiles SET business_type=?,updated_at=? WHERE user_id=?",(types[idx],datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); await q.message.edit_text("✅ نوع فعالیت ذخیره شد.",reply_markup=customer_keyboard(uid)); return
+        types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN; idx=int(p[2]); c=db(); c.execute("UPDATE business_profiles SET business_type=?,updated_at=? WHERE user_id=?",(types[idx],datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); await q.message.edit_text("â ÙÙØ¹ ÙØ¹Ø§ÙÛØª Ø°Ø®ÛØ±Ù Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return
     if a=="done": await appointment_status(update,context,"done",int(p[2])); return
     if a=="cancel": await appointment_status(update,context,"cancelled",int(p[2])); return
-    if a=="reschedule": context.user_data.update(appointment_id=int(p[2]),customer_mode="reschedule_date"); await q.message.edit_text("📅 تاریخ جدید را بفرست. مثال: ۱۴۰۵/۰۵/۲۹"); return
+    if a=="reschedule": context.user_data.update(appointment_id=int(p[2]),customer_mode="reschedule_date"); await q.message.edit_text("ð ØªØ§Ø±ÛØ® Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: Û±Û´Û°Ûµ/Û°Ûµ/Û²Û¹"); return
     if a=="cust": await customer_detail(update,context,int(p[2])); return
-    if a=="edit": context.user_data.update(customer_mode="edit_name",customer_id=int(p[2])); await q.message.edit_text("✏️ نام جدید مشتری را بفرست:"); return
+    if a=="edit": context.user_data.update(customer_mode="edit_name",customer_id=int(p[2])); await q.message.edit_text("âï¸ ÙØ§Ù Ø¬Ø¯ÛØ¯ ÙØ´ØªØ±Û Ø±Ø§ Ø¨ÙØ±Ø³Øª:"); return
     if a=="delete":
-        c=db(); c.execute("UPDATE customers SET status='inactive',updated_at=? WHERE id=? AND owner_user_id=?",(datetime.now(TZ).isoformat(),int(p[2]),uid)); c.commit(); c.close(); await q.message.edit_text("🗑 مشتری از لیست فعال خارج شد؛ سابقه و فاکتور/نوبت‌های قبلی حذف نشد.",reply_markup=customer_keyboard(uid)); return
+        c=db(); c.execute("UPDATE customers SET status='inactive',updated_at=? WHERE id=? AND owner_user_id=?",(datetime.now(TZ).isoformat(),int(p[2]),uid)); c.commit(); c.close(); await q.message.edit_text("ð ÙØ´ØªØ±Û Ø§Ø² ÙÛØ³Øª ÙØ¹Ø§Ù Ø®Ø§Ø±Ø¬ Ø´Ø¯Ø Ø³Ø§Ø¨ÙÙ Ù ÙØ§Ú©ØªÙØ±/ÙÙØ¨ØªâÙØ§Û ÙØ¨ÙÛ Ø­Ø°Ù ÙØ´Ø¯.",reply_markup=customer_keyboard(uid)); return
     if a=="appt":
         context.user_data.update(customer_id=int(p[2]),customer_mode="appt_date")
-        await q.message.edit_text("📅 تاریخ نوبت را بفرست: ۱۴۰۵/۰۵/۲۹")
+        await q.message.edit_text("ð ØªØ§Ø±ÛØ® ÙÙØ¨Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª: Û±Û´Û°Ûµ/Û°Ûµ/Û²Û¹")
         return
     if a=="mybookings":
         await customer_my_bookings_callback(update,context); return
@@ -4544,26 +4523,26 @@ def customer_list_rows(uid):
     c=db(); rows=c.execute("SELECT c.*,COUNT(CASE WHEN a.status='done' THEN 1 END) visits FROM customers c LEFT JOIN appointments a ON a.customer_id=c.id WHERE c.owner_user_id=? AND c.status='active' GROUP BY c.id ORDER BY c.name",(uid,)).fetchall(); c.close(); return rows
 
 async def customer_list_view(update,context):
-    q=update.callback_query; uid=q.from_user.id; rows=customer_list_rows(uid); kb=[[InlineKeyboardButton(f"👤 {r['name']} — {r['visits']} مراجعه",callback_data=f"cust:cust:{r['id']}")] for r in rows[:40]]; kb.append([InlineKeyboardButton("➕ افزودن دستی",callback_data="cust:new"),InlineKeyboardButton("📱 افزودن از Contact",callback_data="cust:contact")]); kb.append([back_button("cust:main",uid=uid)])
-    text="👥 <b>لیست مشتری‌ها</b>\n\n"+ ("\n".join(f"• {r['name']} — {r['visits']} مراجعه" for r in rows) if rows else "مشتری‌ای ثبت نشده.")
+    q=update.callback_query; uid=q.from_user.id; rows=customer_list_rows(uid); kb=[[InlineKeyboardButton(f"ð¤ {r['name']} â {r['visits']} ÙØ±Ø§Ø¬Ø¹Ù",callback_data=f"cust:cust:{r['id']}")] for r in rows[:40]]; kb.append([InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù Ø¯Ø³ØªÛ",callback_data="cust:new"),InlineKeyboardButton("ð± Ø§ÙØ²ÙØ¯Ù Ø§Ø² Contact",callback_data="cust:contact")]); kb.append([back_button("cust:main",uid=uid)])
+    text="ð¥ <b>ÙÛØ³Øª ÙØ´ØªØ±ÛâÙØ§</b>\n\n"+ ("\n".join(f"â¢ {r['name']} â {r['visits']} ÙØ±Ø§Ø¬Ø¹Ù" for r in rows) if rows else "ÙØ´ØªØ±ÛâØ§Û Ø«Ø¨Øª ÙØ´Ø¯Ù.")
     await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_detail(update,context,cid):
     q=update.callback_query; uid=q.from_user.id; r=get_customer(uid,cid)
     if not r:return
-    c=db(); visits=c.execute("SELECT COUNT(*) n FROM appointments WHERE customer_id=? AND status='done'",(cid,)).fetchone()["n"]; canc=c.execute("SELECT COUNT(*) n FROM appointments WHERE customer_id=? AND status='cancelled'",(cid,)).fetchone()["n"]; hist=c.execute("SELECT * FROM appointments WHERE customer_id=? ORDER BY appointment_date DESC,appointment_time DESC LIMIT 10",(cid,)).fetchall(); c.close(); score=loyalty_score(visits,canc); status="💎 مشتری وفادار" if score>=70 else "⭐ مشتری فعال" if score>=40 else "🆕 مشتری جدید"
-    text=f"👤 <b>{html.escape(r['name'])}</b>\n📞 {html.escape(r['phone']) if r['phone'] else '—'}\n🔗 @{html.escape(r['telegram_username']) if r['telegram_username'] else '—'}\n\n{status}\n⭐ امتیاز وفاداری: {score}/100\n📅 کل مراجعه: {visits}\n❌ لغو: {canc}\n\n📋 سابقه:\n"+"\n".join(f"• {jalali_pretty_date(a['appointment_date'])} | ⏰ {a['appointment_time']} — {a['status']}" for a in hist)
-    await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ نوبت جدید",callback_data=f"cust:appt:{cid}")],[InlineKeyboardButton("✏️ ویرایش مشتری",callback_data=f"cust:edit:{cid}"),InlineKeyboardButton("🗑 حذف مشتری",callback_data=f"cust:delete:{cid}")],[back_button("cust:list",uid=uid),main_menu_button(uid)]]))
+    c=db(); visits=c.execute("SELECT COUNT(*) n FROM appointments WHERE customer_id=? AND status='done'",(cid,)).fetchone()["n"]; canc=c.execute("SELECT COUNT(*) n FROM appointments WHERE customer_id=? AND status='cancelled'",(cid,)).fetchone()["n"]; hist=c.execute("SELECT * FROM appointments WHERE customer_id=? ORDER BY appointment_date DESC,appointment_time DESC LIMIT 10",(cid,)).fetchall(); c.close(); score=loyalty_score(visits,canc); status="ð ÙØ´ØªØ±Û ÙÙØ§Ø¯Ø§Ø±" if score>=70 else "â­ ÙØ´ØªØ±Û ÙØ¹Ø§Ù" if score>=40 else "ð ÙØ´ØªØ±Û Ø¬Ø¯ÛØ¯"
+    text=f"ð¤ <b>{html.escape(r['name'])}</b>\nð {html.escape(r['phone']) if r['phone'] else 'â'}\nð @{html.escape(r['telegram_username']) if r['telegram_username'] else 'â'}\n\n{status}\nâ­ Ø§ÙØªÛØ§Ø² ÙÙØ§Ø¯Ø§Ø±Û: {score}/100\nð Ú©Ù ÙØ±Ø§Ø¬Ø¹Ù: {visits}\nâ ÙØºÙ: {canc}\n\nð Ø³Ø§Ø¨ÙÙ:\n"+"\n".join(f"â¢ {jalali_pretty_date(a['appointment_date'])} | â° {a['appointment_time']} â {a['status']}" for a in hist)
+    await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â ÙÙØ¨Øª Ø¬Ø¯ÛØ¯",callback_data=f"cust:appt:{cid}")],[InlineKeyboardButton("âï¸ ÙÛØ±Ø§ÛØ´ ÙØ´ØªØ±Û",callback_data=f"cust:edit:{cid}"),InlineKeyboardButton("ð Ø­Ø°Ù ÙØ´ØªØ±Û",callback_data=f"cust:delete:{cid}")],[back_button("cust:list",uid=uid),main_menu_button(uid)]]))
 
 async def appointment_detail(update,context,aid):
     q=update.callback_query; uid=q.from_user.id; r=get_appointment(uid,aid)
     if not r:return
-    await q.message.edit_text(f"📅 <b>{jalali_pretty_date(r['appointment_date'])} | ⏰ {r['appointment_time']}</b>\n👤 {html.escape(r['name'])}\n📞 {html.escape(r['phone']) if r['phone'] else '—'}\n🛠️ {html.escape(r['service'] or '—')}\n📝 {html.escape(r['notes'] or '—')}\n🔔 {', '.join(reminder_label(x,lang(uid)=='fa') for x in parse_reminder_list(r['reminder_minutes'])) or 'بدون یادآوری'}",parse_mode="HTML",reply_markup=appointment_reminder_keyboard(uid,aid))
+    await q.message.edit_text(f"ð <b>{jalali_pretty_date(r['appointment_date'])} | â° {r['appointment_time']}</b>\nð¤ {html.escape(r['name'])}\nð {html.escape(r['phone']) if r['phone'] else 'â'}\nð ï¸ {html.escape(r['service'] or 'â')}\nð {html.escape(r['notes'] or 'â')}\nð {', '.join(reminder_label(x,lang(uid)=='fa') for x in parse_reminder_list(r['reminder_minutes'])) or 'Ø¨Ø¯ÙÙ ÛØ§Ø¯Ø¢ÙØ±Û'}",parse_mode="HTML",reply_markup=appointment_reminder_keyboard(uid,aid))
 
 async def customer_today(update,context):
-    q=update.callback_query; uid=q.from_user.id; d=datetime.now(TZ).date().isoformat(); c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? ORDER BY a.appointment_time",(uid,d)).fetchall(); c.close(); lines=["🌅 <b>نوبت‌های امروز</b>",""]
-    for r in rows: lines.append(f"🕐 <b>{r['appointment_time']}</b> — 👤 {html.escape(r['name'])}"+(f" — 📞 {html.escape(r['phone'])}" if r['phone'] else "")+f" — {'🟢' if r['status']=='booked' else '✅' if r['status']=='done' else '❌'}")
-    lines.append(f"\n👥 مجموع: {len(rows)}")
+    q=update.callback_query; uid=q.from_user.id; d=datetime.now(TZ).date().isoformat(); c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? ORDER BY a.appointment_time",(uid,d)).fetchall(); c.close(); lines=["ð <b>ÙÙØ¨ØªâÙØ§Û Ø§ÙØ±ÙØ²</b>",""]
+    for r in rows: lines.append(f"ð <b>{r['appointment_time']}</b> â ð¤ {html.escape(r['name'])}"+(f" â ð {html.escape(r['phone'])}" if r['phone'] else "")+f" â {'ð¢' if r['status']=='booked' else 'â' if r['status']=='done' else 'â'}")
+    lines.append(f"\nð¥ ÙØ¬ÙÙØ¹: {len(rows)}")
     await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=customer_back(uid))
 
 def _jalali_months_buttons(prefix, years=2):
@@ -4571,7 +4550,7 @@ def _jalali_months_buttons(prefix, years=2):
     rows=[]
     for y in range(gy,gy+years):
         for m in range(1,13):
-            rows.append([InlineKeyboardButton(f"🗓️ {JALALI_MONTHS_FA[m-1]} {fa_digits(y)}",
+            rows.append([InlineKeyboardButton(f"ðï¸ {JALALI_MONTHS_FA[m-1]} {fa_digits(y)}",
                                                callback_data=f"{prefix}:{y:04d}-{m:02d}")])
     return rows
 
@@ -4581,14 +4560,14 @@ async def customer_calendar(update,context):
     kb=_jalali_months_buttons("cust:calmonth")
     kb.append([back_button("cust:main",uid=uid)])
     await q.message.edit_text(
-        "🗓️ <b>تقویم کاری و نوبت‌ها</b>\n\nماه موردنظر را انتخاب کن.\nتمام ماه‌های ۲ سال آینده در دسترس است.",
+        "ðï¸ <b>ØªÙÙÛÙ Ú©Ø§Ø±Û Ù ÙÙØ¨ØªâÙØ§</b>\n\nÙØ§Ù ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.\nØªÙØ§Ù ÙØ§ÙâÙØ§Û Û² Ø³Ø§Ù Ø¢ÛÙØ¯Ù Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø§Ø³Øª.",
         parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_calendar_month(update,context,ym):
     q=update.callback_query; uid=q.from_user.id
     try: jy,jm=map(int,ym.split("-")); gy,gm,gd=jalali_to_gregorian(jy,jm,1)
     except Exception:
-        await q.answer("تاریخ نامعتبر است.",show_alert=True); return
+        await q.answer("ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.",show_alert=True); return
     today=datetime.now(TZ).date()
     # Number of days in a Jalali month.
     days=31 if jm<=6 else 30 if jm<=11 else 30 if jalali_to_gregorian(jy+1,1,1)[0] else 29
@@ -4599,56 +4578,56 @@ async def customer_calendar_month(update,context,ym):
         iso=d.isoformat()
         n=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked'",(uid,iso)).fetchone()["n"]
         h=c.execute("SELECT 1 FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,iso)).fetchone()
-        mark="🔴" if h else "🟢"
-        kb.append([InlineKeyboardButton(f"{mark} {fa_digits(day)} — {fa_digits(n)} نوبت",callback_data=f"cust:day:{iso}")])
+        mark="ð´" if h else "ð¢"
+        kb.append([InlineKeyboardButton(f"{mark} {fa_digits(day)} â {fa_digits(n)} ÙÙØ¨Øª",callback_data=f"cust:day:{iso}")])
     c.close()
-    kb.append([InlineKeyboardButton("⬅️ ماه‌ها",callback_data="cust:calendar")])
-    await q.message.edit_text(f"🗓️ <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nروز را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    kb.append([InlineKeyboardButton("â¬ï¸ ÙØ§ÙâÙØ§",callback_data="cust:calendar")])
+    await q.message.edit_text(f"ðï¸ <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nØ±ÙØ² Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_day(update,context,d):
-    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? ORDER BY a.appointment_time",(uid,d)).fetchall(); h=c.execute("SELECT note FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,d)).fetchone(); c.close(); text=f"📅 <b>{jalali_pretty_date(d)}</b>\n{'🚫 تعطیل' if h else '🟢 روز کاری'}\n\n"+ ("\n".join(f"🕐 {r['appointment_time']} — {html.escape(r['name'])}" + (f" — 📞 {html.escape(r['phone'])}" if r['phone'] else "") for r in rows) or "بدون نوبت"); kb=[[InlineKeyboardButton("🚫 باز/تعطیل",callback_data=f"cust:holiday:{d}")],[back_button("cust:calendar",uid=uid)]]; await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.*,c.name,c.phone FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? ORDER BY a.appointment_time",(uid,d)).fetchall(); h=c.execute("SELECT note FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,d)).fetchone(); c.close(); text=f"ð <b>{jalali_pretty_date(d)}</b>\n{'ð« ØªØ¹Ø·ÛÙ' if h else 'ð¢ Ø±ÙØ² Ú©Ø§Ø±Û'}\n\n"+ ("\n".join(f"ð {r['appointment_time']} â {html.escape(r['name'])}" + (f" â ð {html.escape(r['phone'])}" if r['phone'] else "") for r in rows) or "Ø¨Ø¯ÙÙ ÙÙØ¨Øª"); kb=[[InlineKeyboardButton("ð« Ø¨Ø§Ø²/ØªØ¹Ø·ÛÙ",callback_data=f"cust:holiday:{d}")],[back_button("cust:calendar",uid=uid)]]; await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def holiday_toggle(update,context,d):
     q=update.callback_query; uid=q.from_user.id; c=db(); r=c.execute("SELECT id FROM business_holidays WHERE owner_user_id=? AND holiday_date=?",(uid,d)).fetchone()
-    if r:c.execute("DELETE FROM business_holidays WHERE id=?",(r["id"],)); msg="🟢 روز باز شد."
-    else:c.execute("INSERT INTO business_holidays(owner_user_id,holiday_date,note) VALUES(?,?,?)",(uid,d,"تعطیلی توسط کاربر")); msg="🔴 روز تعطیل شد."
+    if r:c.execute("DELETE FROM business_holidays WHERE id=?",(r["id"],)); msg="ð¢ Ø±ÙØ² Ø¨Ø§Ø² Ø´Ø¯."
+    else:c.execute("INSERT INTO business_holidays(owner_user_id,holiday_date,note) VALUES(?,?,?)",(uid,d,"ØªØ¹Ø·ÛÙÛ ØªÙØ³Ø· Ú©Ø§Ø±Ø¨Ø±")); msg="ð´ Ø±ÙØ² ØªØ¹Ø·ÛÙ Ø´Ø¯."
     c.commit(); c.close(); await q.message.edit_text(msg,reply_markup=customer_back(uid,"cust:calendar"))
 
 async def customer_hours(update,context):
-    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT * FROM working_hours WHERE owner_user_id=? ORDER BY weekday",(uid,)).fetchall(); c.close(); nf=["دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه","شنبه","یکشنبه"]; ne=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]; kb=[[InlineKeyboardButton(f"{'🟢' if r['enabled'] else '🔴'} {(nf if lang(uid)=='fa' else ne)[r['weekday']]} {r['start_time']}-{r['end_time']}",callback_data=f"cust:hours_edit:{r['weekday']}")] for r in rows]; kb.append([back_button("cust:main",uid=uid)]); await q.message.edit_text("⏰ <b>ساعات کاری</b>\nروی روز بزن و زمان را تغییر بده.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT * FROM working_hours WHERE owner_user_id=? ORDER BY weekday",(uid,)).fetchall(); c.close(); nf=["Ø¯ÙØ´ÙØ¨Ù","Ø³ÙâØ´ÙØ¨Ù","ÚÙØ§Ø±Ø´ÙØ¨Ù","Ù¾ÙØ¬Ø´ÙØ¨Ù","Ø¬ÙØ¹Ù","Ø´ÙØ¨Ù","ÛÚ©Ø´ÙØ¨Ù"]; ne=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]; kb=[[InlineKeyboardButton(f"{'ð¢' if r['enabled'] else 'ð´'} {(nf if lang(uid)=='fa' else ne)[r['weekday']]} {r['start_time']}-{r['end_time']}",callback_data=f"cust:hours_edit:{r['weekday']}")] for r in rows]; kb.append([back_button("cust:main",uid=uid)]); await q.message.edit_text("â° <b>Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û</b>\nØ±ÙÛ Ø±ÙØ² Ø¨Ø²Ù Ù Ø²ÙØ§Ù Ø±Ø§ ØªØºÛÛØ± Ø¨Ø¯Ù.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_reminders(update,context):
-    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.appointment_date,a.appointment_time,a.reminder_minutes,c.name FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.status='booked' AND a.appointment_date>=? ORDER BY a.appointment_date,a.appointment_time LIMIT 50",(uid,datetime.now(TZ).date().isoformat())).fetchall(); c.close(); text="🔔 <b>یادآوری‌های نوبت</b>\n\n"+ ("\n".join(f"{jalali_pretty_date(r['appointment_date'])} — ⏰ {fa_digits(r['appointment_time'])} — {html.escape(r['name'])} — {', '.join(reminder_label(x,lang(uid)=='fa') for x in parse_reminder_list(r['reminder_minutes']))}" for r in rows) or "یادآوری‌ای نیست."); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
+    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT a.appointment_date,a.appointment_time,a.reminder_minutes,c.name FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.status='booked' AND a.appointment_date>=? ORDER BY a.appointment_date,a.appointment_time LIMIT 50",(uid,datetime.now(TZ).date().isoformat())).fetchall(); c.close(); text="ð <b>ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙØ¨Øª</b>\n\n"+ ("\n".join(f"{jalali_pretty_date(r['appointment_date'])} â â° {fa_digits(r['appointment_time'])} â {html.escape(r['name'])} â {', '.join(reminder_label(x,lang(uid)=='fa') for x in parse_reminder_list(r['reminder_minutes']))}" for r in rows) or "ÛØ§Ø¯Ø¢ÙØ±ÛâØ§Û ÙÛØ³Øª."); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
 
 async def customer_period_menu(update,context):
-    q=update.callback_query; uid=q.from_user.id; kb=[[InlineKeyboardButton("📅 هفتگی",callback_data="cust:periodreport:7"),InlineKeyboardButton("📅 ماهانه",callback_data="cust:periodreport:30")],[InlineKeyboardButton("📅 سالانه",callback_data="cust:periodreport:365")],[back_button("cust:main",uid=uid)]]; await q.message.edit_text("📊 دوره گزارش مشتری را انتخاب کن:",reply_markup=InlineKeyboardMarkup(kb))
+    q=update.callback_query; uid=q.from_user.id; kb=[[InlineKeyboardButton("ð ÙÙØªÚ¯Û",callback_data="cust:periodreport:7"),InlineKeyboardButton("ð ÙØ§ÙØ§ÙÙ",callback_data="cust:periodreport:30")],[InlineKeyboardButton("ð Ø³Ø§ÙØ§ÙÙ",callback_data="cust:periodreport:365")],[back_button("cust:main",uid=uid)]]; await q.message.edit_text("ð Ø¯ÙØ±Ù Ú¯Ø²Ø§Ø±Ø´ ÙØ´ØªØ±Û Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_period_report(update,context,days):
-    q=update.callback_query; uid=q.from_user.id; days=int(days); since=(datetime.now(TZ).date()-timedelta(days=days-1)).isoformat(); c=db(); total=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,since)).fetchone()["n"]; unique=c.execute("SELECT COUNT(DISTINCT customer_id) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,since)).fetchone()["n"]; rows=c.execute("SELECT c.name,COUNT(*) n FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.status='done' AND a.appointment_date>=? GROUP BY a.customer_id ORDER BY n DESC LIMIT 10",(uid,since)).fetchall(); c.close(); title="هفتگی" if days==7 else "ماهانه" if days==30 else "سالانه"; text=f"📊 <b>گزارش {title} مشتریان</b>\n\n👥 مشتری یکتا: {unique}\n✅ نوبت انجام‌شده: {total}\n\n🏆 پرتکرارترین‌ها:\n"+("\n".join(f"• {r['name']} — {r['n']} مراجعه" for r in rows) or "موردی نیست"); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid,"cust:period"))
+    q=update.callback_query; uid=q.from_user.id; days=int(days); since=(datetime.now(TZ).date()-timedelta(days=days-1)).isoformat(); c=db(); total=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,since)).fetchone()["n"]; unique=c.execute("SELECT COUNT(DISTINCT customer_id) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,since)).fetchone()["n"]; rows=c.execute("SELECT c.name,COUNT(*) n FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.status='done' AND a.appointment_date>=? GROUP BY a.customer_id ORDER BY n DESC LIMIT 10",(uid,since)).fetchall(); c.close(); title="ÙÙØªÚ¯Û" if days==7 else "ÙØ§ÙØ§ÙÙ" if days==30 else "Ø³Ø§ÙØ§ÙÙ"; text=f"ð <b>Ú¯Ø²Ø§Ø±Ø´ {title} ÙØ´ØªØ±ÛØ§Ù</b>\n\nð¥ ÙØ´ØªØ±Û ÛÚ©ØªØ§: {unique}\nâ ÙÙØ¨Øª Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {total}\n\nð Ù¾Ø±ØªÚ©Ø±Ø§Ø±ØªØ±ÛÙâÙØ§:\n"+("\n".join(f"â¢ {r['name']} â {r['n']} ÙØ±Ø§Ø¬Ø¹Ù" for r in rows) or "ÙÙØ±Ø¯Û ÙÛØ³Øª"); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid,"cust:period"))
 
 async def customer_analytics_view(update,context):
-    q=update.callback_query; uid=q.from_user.id; c=db(); total=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,(datetime.now(TZ).date()-timedelta(days=29)).isoformat())).fetchone()["n"]; unique=c.execute("SELECT COUNT(DISTINCT customer_id) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,(datetime.now(TZ).date()-timedelta(days=29)).isoformat())).fetchone()["n"]; alltime=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done'",(uid,)).fetchone()["n"]; c.close(); await q.message.edit_text(f"📊 <b>تحلیل مشتریان</b>\n\n📅 ۳۰ روز اخیر: {total} نوبت\n👥 مشتری یکتا: {unique}\n📈 کل مراجعه انجام‌شده: {alltime}\n\nگزارش ماهانه/سالانه از همین سابقه قابل محاسبه است.",parse_mode="HTML",reply_markup=customer_back(uid))
+    q=update.callback_query; uid=q.from_user.id; c=db(); total=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,(datetime.now(TZ).date()-timedelta(days=29)).isoformat())).fetchone()["n"]; unique=c.execute("SELECT COUNT(DISTINCT customer_id) n FROM appointments WHERE owner_user_id=? AND status='done' AND appointment_date>=?",(uid,(datetime.now(TZ).date()-timedelta(days=29)).isoformat())).fetchone()["n"]; alltime=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND status='done'",(uid,)).fetchone()["n"]; c.close(); await q.message.edit_text(f"ð <b>ØªØ­ÙÛÙ ÙØ´ØªØ±ÛØ§Ù</b>\n\nð Û³Û° Ø±ÙØ² Ø§Ø®ÛØ±: {total} ÙÙØ¨Øª\nð¥ ÙØ´ØªØ±Û ÛÚ©ØªØ§: {unique}\nð Ú©Ù ÙØ±Ø§Ø¬Ø¹Ù Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {alltime}\n\nÚ¯Ø²Ø§Ø±Ø´ ÙØ§ÙØ§ÙÙ/Ø³Ø§ÙØ§ÙÙ Ø§Ø² ÙÙÛÙ Ø³Ø§Ø¨ÙÙ ÙØ§Ø¨Ù ÙØ­Ø§Ø³Ø¨Ù Ø§Ø³Øª.",parse_mode="HTML",reply_markup=customer_back(uid))
 
 async def customer_loyal(update,context):
-    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT c.id,c.name,COUNT(CASE WHEN a.status='done' THEN 1 END) visits,COUNT(CASE WHEN a.status='cancelled' THEN 1 END) canc FROM customers c LEFT JOIN appointments a ON a.customer_id=c.id WHERE c.owner_user_id=? GROUP BY c.id ORDER BY visits DESC LIMIT 30",(uid,)).fetchall(); c.close(); text="🏆 <b>مشتریان وفادار</b>\n\n"+("\n".join(f"{'🥇' if i==0 else '🥈' if i==1 else '🥉' if i==2 else '⭐'} {r['name']} — {r['visits']} مراجعه — امتیاز {loyalty_score(r['visits'],r['canc'])}/100" for i,r in enumerate(rows)) or "مشتری‌ای نیست."); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
+    q=update.callback_query; uid=q.from_user.id; c=db(); rows=c.execute("SELECT c.id,c.name,COUNT(CASE WHEN a.status='done' THEN 1 END) visits,COUNT(CASE WHEN a.status='cancelled' THEN 1 END) canc FROM customers c LEFT JOIN appointments a ON a.customer_id=c.id WHERE c.owner_user_id=? GROUP BY c.id ORDER BY visits DESC LIMIT 30",(uid,)).fetchall(); c.close(); text="ð <b>ÙØ´ØªØ±ÛØ§Ù ÙÙØ§Ø¯Ø§Ø±</b>\n\n"+("\n".join(f"{'ð¥' if i==0 else 'ð¥' if i==1 else 'ð¥' if i==2 else 'â­'} {r['name']} â {r['visits']} ÙØ±Ø§Ø¬Ø¹Ù â Ø§ÙØªÛØ§Ø² {loyalty_score(r['visits'],r['canc'])}/100" for i,r in enumerate(rows)) or "ÙØ´ØªØ±ÛâØ§Û ÙÛØ³Øª."); await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
 
 async def customer_booking_link(update,context):
-    q=update.callback_query; uid=q.from_user.id; p=ensure_business_profile(uid); me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=book_{p['booking_token']}" if me.username else "—"
+    q=update.callback_query; uid=q.from_user.id; p=ensure_business_profile(uid); me=await context.bot.get_me(); link=f"https://t.me/{me.username}?start=book_{p['booking_token']}" if me.username else "â"
     contacts=[]
-    if p["contact_phone"]: contacts.append(f"📞 {html.escape(p['contact_phone'])}")
-    if p["contact_telegram"]: contacts.append(f"💬 تلگرام: @{html.escape(p['contact_telegram'].lstrip('@'))}")
-    if p["contact_instagram"]: contacts.append(f"📸 اینستاگرام: @{html.escape(p['contact_instagram'].lstrip('@'))}")
-    title=html.escape(p["business_name"] or p["business_type"] or "کسب‌وکار")
-    text=f"🔗 <b>لینک رزرو آنلاین</b>\n\n🏪 {title}\n\n<code>{link}</code>\n\nمشتری از این لینک زمان‌های آزاد را می‌بیند و نوبت ثبت می‌کند."
+    if p["contact_phone"]: contacts.append(f"ð {html.escape(p['contact_phone'])}")
+    if p["contact_telegram"]: contacts.append(f"ð¬ ØªÙÚ¯Ø±Ø§Ù: @{html.escape(p['contact_telegram'].lstrip('@'))}")
+    if p["contact_instagram"]: contacts.append(f"ð¸ Ø§ÛÙØ³ØªØ§Ú¯Ø±Ø§Ù: @{html.escape(p['contact_instagram'].lstrip('@'))}")
+    title=html.escape(p["business_name"] or p["business_type"] or "Ú©Ø³Ø¨âÙÚ©Ø§Ø±")
+    text=f"ð <b>ÙÛÙÚ© Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ</b>\n\nðª {title}\n\n<code>{link}</code>\n\nÙØ´ØªØ±Û Ø§Ø² Ø§ÛÙ ÙÛÙÚ© Ø²ÙØ§ÙâÙØ§Û Ø¢Ø²Ø§Ø¯ Ø±Ø§ ÙÛâØ¨ÛÙØ¯ Ù ÙÙØ¨Øª Ø«Ø¨Øª ÙÛâÚ©ÙØ¯."
     if contacts: text += "\n\n"+"\n".join(contacts)
     await q.message.edit_text(text,parse_mode="HTML",reply_markup=customer_back(uid))
     # Deliver the booking link as its own message so it can be copied/forwarded directly.
     try:
         await context.bot.send_message(
             uid,
-            f"🔗 <b>لینک رزرو آنلاین «{title}»:</b>\n\n{link}\n\n"
-            "✅ این لینک را برای مشتریانتان بفرستید.\n"
-            "🔒 رزرو هر مشتری جداگانه ثبت می\u200cشود و بخش «رزروهای من» هر شخص فقط رزروهای خودش را نشان می\u200cدهد.",
+            f"ð <b>ÙÛÙÚ© Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ Â«{title}Â»:</b>\n\n{link}\n\n"
+            "â Ø§ÛÙ ÙÛÙÚ© Ø±Ø§ Ø¨Ø±Ø§Û ÙØ´ØªØ±ÛØ§ÙØªØ§Ù Ø¨ÙØ±Ø³ØªÛØ¯.\n"
+            "ð Ø±Ø²Ø±Ù ÙØ± ÙØ´ØªØ±Û Ø¬Ø¯Ø§Ú¯Ø§ÙÙ Ø«Ø¨Øª ÙÛ\u200cØ´ÙØ¯ Ù Ø¨Ø®Ø´ Â«Ø±Ø²Ø±ÙÙØ§Û ÙÙÂ» ÙØ± Ø´Ø®Øµ ÙÙØ· Ø±Ø²Ø±ÙÙØ§Û Ø®ÙØ¯Ø´ Ø±Ø§ ÙØ´Ø§Ù ÙÛ\u200cØ¯ÙØ¯.",
             parse_mode="HTML", disable_web_page_preview=True)
     except Exception:
         logger.warning("Booking link delivery message failed")
@@ -4656,12 +4635,12 @@ async def customer_booking_link(update,context):
 async def customer_settings(update,context):
     q=update.callback_query; uid=q.from_user.id; p=ensure_business_profile(uid); types=BUSINESS_TYPES_FA if lang(uid)=="fa" else BUSINESS_TYPES_EN
     kb=[[InlineKeyboardButton(x,callback_data=f"cust:type:{i}")] for i,x in enumerate(types)]
-    kb += [[InlineKeyboardButton("🏪 نام کسب‌وکار",callback_data="cust:bizname"),InlineKeyboardButton("📞 اطلاعات تماس",callback_data="cust:contacts")],[InlineKeyboardButton("📱 افزودن از Contact",callback_data="cust:contact")],[back_button("cust:main",uid=uid)]]
+    kb += [[InlineKeyboardButton("ðª ÙØ§Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø±",callback_data="cust:bizname"),InlineKeyboardButton("ð Ø§Ø·ÙØ§Ø¹Ø§Øª ØªÙØ§Ø³",callback_data="cust:contacts")],[InlineKeyboardButton("ð± Ø§ÙØ²ÙØ¯Ù Ø§Ø² Contact",callback_data="cust:contact")],[back_button("cust:main",uid=uid)]]
     contacts=[]
-    if p["contact_phone"]: contacts.append(f"📞 {html.escape(p['contact_phone'])}")
-    if p["contact_telegram"]: contacts.append(f"💬 @{html.escape(p['contact_telegram'].lstrip('@'))}")
-    if p["contact_instagram"]: contacts.append(f"📸 @{html.escape(p['contact_instagram'].lstrip('@'))}")
-    text=f"⚙️ <b>تنظیمات کسب‌وکار</b>\n\n🏪 نام: {html.escape(p['business_name'] or 'ثبت نشده')}\nنوع فعلی: {html.escape(p['business_type'] or 'انتخاب نشده')}\n\n"+"\n".join(contacts or ["📭 اطلاعات تماس ثبت نشده است."])
+    if p["contact_phone"]: contacts.append(f"ð {html.escape(p['contact_phone'])}")
+    if p["contact_telegram"]: contacts.append(f"ð¬ @{html.escape(p['contact_telegram'].lstrip('@'))}")
+    if p["contact_instagram"]: contacts.append(f"ð¸ @{html.escape(p['contact_instagram'].lstrip('@'))}")
+    text=f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±</b>\n\nðª ÙØ§Ù: {html.escape(p['business_name'] or 'Ø«Ø¨Øª ÙØ´Ø¯Ù')}\nÙÙØ¹ ÙØ¹ÙÛ: {html.escape(p['business_type'] or 'Ø§ÙØªØ®Ø§Ø¨ ÙØ´Ø¯Ù')}\n\n"+"\n".join(contacts or ["ð­ Ø§Ø·ÙØ§Ø¹Ø§Øª ØªÙØ§Ø³ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª."])
     await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def appointment_status(update,context,status,aid):
@@ -4671,71 +4650,71 @@ async def appointment_status(update,context,status,aid):
     c=db(); c.execute("UPDATE appointments SET status=?,updated_at=? WHERE id=? AND owner_user_id=?",(status,now,aid,uid)); c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r['customer_id'],aid,status,"",now)); c.commit(); c.close()
     if r["telegram_user_id"]:
         try:
-            msg = (f"❌ <b>نوبت شما توسط ارائه‌دهنده لغو شد.</b>\n\n📅 {jalali_pretty_date(r['appointment_date'])}\n⏰ {r['appointment_time']}") if status=="cancelled" else (f"✅ <b>نوبت شما انجام‌شده ثبت شد.</b>\n\n📅 {jalali_pretty_date(r['appointment_date'])}\n⏰ {r['appointment_time']}")
-            await context.bot.send_message(r["telegram_user_id"],msg,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]]))
+            msg = (f"â <b>ÙÙØ¨Øª Ø´ÙØ§ ØªÙØ³Ø· Ø§Ø±Ø§Ø¦ÙâØ¯ÙÙØ¯Ù ÙØºÙ Ø´Ø¯.</b>\n\nð {jalali_pretty_date(r['appointment_date'])}\nâ° {r['appointment_time']}") if status=="cancelled" else (f"â <b>ÙÙØ¨Øª Ø´ÙØ§ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø«Ø¨Øª Ø´Ø¯.</b>\n\nð {jalali_pretty_date(r['appointment_date'])}\nâ° {r['appointment_time']}")
+            await context.bot.send_message(r["telegram_user_id"],msg,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ",callback_data="cust:mybookings")],[InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")]]))
         except Exception: logger.warning("Customer status notification failed")
-    await q.message.edit_text("✅ نوبت انجام شد و در سابقه مشتری ثبت شد." if status=="done" else "❌ نوبت لغو شد و سابقه حفظ شد.",reply_markup=customer_back(uid))
+    await q.message.edit_text("â ÙÙØ¨Øª Ø§ÙØ¬Ø§Ù Ø´Ø¯ Ù Ø¯Ø± Ø³Ø§Ø¨ÙÙ ÙØ´ØªØ±Û Ø«Ø¨Øª Ø´Ø¯." if status=="done" else "â ÙÙØ¨Øª ÙØºÙ Ø´Ø¯ Ù Ø³Ø§Ø¨ÙÙ Ø­ÙØ¸ Ø´Ø¯.",reply_markup=customer_back(uid))
 
 async def customer_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get("customer_mode"); text=update.message.text.strip()
     if not mode:return False
     if mode=="bizname":
-        value="" if text=="-" else text[:100]; c=db(); c.execute("UPDATE business_profiles SET business_name=?,updated_at=? WHERE user_id=?",(value,datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text("✅ نام کسب‌وکار ذخیره شد.",reply_markup=customer_keyboard(uid)); return True
+        value="" if text=="-" else text[:100]; c=db(); c.execute("UPDATE business_profiles SET business_name=?,updated_at=? WHERE user_id=?",(value,datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text("â ÙØ§Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø°Ø®ÛØ±Ù Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
     if mode=="contact_phone":
-        context.user_data["business_contact_pending"]["phone"]="" if text=="-" else text[:50]; context.user_data["customer_mode"]="contact_telegram"; await update.message.reply_text("💬 آیدی تلگرام را بفرست یا - بزن. (اختیاری)"); return True
+        context.user_data["business_contact_pending"]["phone"]="" if text=="-" else text[:50]; context.user_data["customer_mode"]="contact_telegram"; await update.message.reply_text("ð¬ Ø¢ÛØ¯Û ØªÙÚ¯Ø±Ø§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù. (Ø§Ø®ØªÛØ§Ø±Û)"); return True
     if mode=="contact_telegram":
-        context.user_data["business_contact_pending"]["telegram"]="" if text=="-" else text.lstrip("@").strip()[:100]; context.user_data["customer_mode"]="contact_instagram"; await update.message.reply_text("📸 آیدی اینستاگرام را بفرست یا - بزن. (اختیاری)"); return True
+        context.user_data["business_contact_pending"]["telegram"]="" if text=="-" else text.lstrip("@").strip()[:100]; context.user_data["customer_mode"]="contact_instagram"; await update.message.reply_text("ð¸ Ø¢ÛØ¯Û Ø§ÛÙØ³ØªØ§Ú¯Ø±Ø§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù. (Ø§Ø®ØªÛØ§Ø±Û)"); return True
     if mode=="contact_instagram":
-        pend=context.user_data.pop("business_contact_pending",{}); value="" if text=="-" else text.lstrip("@").strip()[:100]; c=db(); c.execute("UPDATE business_profiles SET contact_phone=?,contact_telegram=?,contact_instagram=?,updated_at=? WHERE user_id=?",(pend.get("phone",""),pend.get("telegram",""),value,datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text("✅ اطلاعات تماس ذخیره شد. موارد خالی نمایش داده نمی‌شوند.",reply_markup=customer_keyboard(uid)); return True
+        pend=context.user_data.pop("business_contact_pending",{}); value="" if text=="-" else text.lstrip("@").strip()[:100]; c=db(); c.execute("UPDATE business_profiles SET contact_phone=?,contact_telegram=?,contact_instagram=?,updated_at=? WHERE user_id=?",(pend.get("phone",""),pend.get("telegram",""),value,datetime.now(TZ).isoformat(),uid)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text("â Ø§Ø·ÙØ§Ø¹Ø§Øª ØªÙØ§Ø³ Ø°Ø®ÛØ±Ù Ø´Ø¯. ÙÙØ§Ø±Ø¯ Ø®Ø§ÙÛ ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÙÛâØ´ÙÙØ¯.",reply_markup=customer_keyboard(uid)); return True
     if mode=="hours_edit":
         wd=context.user_data.get("weekday"); val=normalize_digits(text)
-        if val.lower() in ("off","تعطیل"):
-            c=db(); c.execute("UPDATE working_hours SET enabled=0 WHERE owner_user_id=? AND weekday=?",(uid,wd)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); context.user_data.pop("weekday",None); await update.message.reply_text("🚫 روز تعطیل شد.",reply_markup=customer_keyboard(uid)); return True
-        m=re.fullmatch(r"(\d{1,2}:\d{2})[-–](\d{1,2}:\d{2})",val)
-        if not m or not parse_time(m.group(1)) or not parse_time(m.group(2)): await update.message.reply_text("❌ فرمت نادرست. مثال: 09:00-20:00"); return True
-        c=db(); c.execute("UPDATE working_hours SET start_time=?,end_time=?,enabled=1 WHERE owner_user_id=? AND weekday=?",(parse_time(m.group(1)),parse_time(m.group(2)),uid,wd)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); context.user_data.pop("weekday",None); await update.message.reply_text("✅ ساعات کاری ذخیره شد.",reply_markup=customer_keyboard(uid)); return True
-    if mode=="edit_name": context.user_data["customer_mode"]="edit_phone"; await update.message.reply_text("📞 شماره جدید را بفرست یا - برای بدون تغییر:"); context.user_data["customer_pending"]={"name":text}; return True
+        if val.lower() in ("off","ØªØ¹Ø·ÛÙ"):
+            c=db(); c.execute("UPDATE working_hours SET enabled=0 WHERE owner_user_id=? AND weekday=?",(uid,wd)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); context.user_data.pop("weekday",None); await update.message.reply_text("ð« Ø±ÙØ² ØªØ¹Ø·ÛÙ Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
+        m=re.fullmatch(r"(\d{1,2}:\d{2})[-â](\d{1,2}:\d{2})",val)
+        if not m or not parse_time(m.group(1)) or not parse_time(m.group(2)): await update.message.reply_text("â ÙØ±ÙØª ÙØ§Ø¯Ø±Ø³Øª. ÙØ«Ø§Ù: 09:00-20:00"); return True
+        c=db(); c.execute("UPDATE working_hours SET start_time=?,end_time=?,enabled=1 WHERE owner_user_id=? AND weekday=?",(parse_time(m.group(1)),parse_time(m.group(2)),uid,wd)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); context.user_data.pop("weekday",None); await update.message.reply_text("â Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û Ø°Ø®ÛØ±Ù Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
+    if mode=="edit_name": context.user_data["customer_mode"]="edit_phone"; await update.message.reply_text("ð Ø´ÙØ§Ø±Ù Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø±Ø§Û Ø¨Ø¯ÙÙ ØªØºÛÛØ±:"); context.user_data["customer_pending"]={"name":text}; return True
     if mode=="edit_phone":
         cid=context.user_data.get("customer_id"); phone=text if text!="-" else None; p=context.user_data.pop("customer_pending",{}); c=db();
         if phone is None: c.execute("UPDATE customers SET name=?,updated_at=? WHERE id=? AND owner_user_id=?",(p.get("name",""),datetime.now(TZ).isoformat(),cid,uid))
         else: c.execute("UPDATE customers SET name=?,phone=?,updated_at=? WHERE id=? AND owner_user_id=?",(p.get("name",""),phone,datetime.now(TZ).isoformat(),cid,uid))
-        c.commit(); c.close(); context.user_data.pop("customer_id",None); context.user_data.pop("customer_mode",None); await update.message.reply_text("✅ اطلاعات مشتری ویرایش شد.",reply_markup=customer_keyboard(uid)); return True
-    if mode=="new_name": context.user_data["customer_pending"]={"name":text}; context.user_data["customer_mode"]="new_phone"; await update.message.reply_text("📞 شماره مشتری را بفرست یا - بزن:"); return True
-    if mode=="new_phone": context.user_data["customer_pending"]["phone"]="" if text=="-" else text; context.user_data["customer_mode"]="new_notes"; await update.message.reply_text("📝 توضیحات اختیاری را بفرست یا - بزن:"); return True
+        c.commit(); c.close(); context.user_data.pop("customer_id",None); context.user_data.pop("customer_mode",None); await update.message.reply_text("â Ø§Ø·ÙØ§Ø¹Ø§Øª ÙØ´ØªØ±Û ÙÛØ±Ø§ÛØ´ Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
+    if mode=="new_name": context.user_data["customer_pending"]={"name":text}; context.user_data["customer_mode"]="new_phone"; await update.message.reply_text("ð Ø´ÙØ§Ø±Ù ÙØ´ØªØ±Û Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:"); return True
+    if mode=="new_phone": context.user_data["customer_pending"]["phone"]="" if text=="-" else text; context.user_data["customer_mode"]="new_notes"; await update.message.reply_text("ð ØªÙØ¶ÛØ­Ø§Øª Ø§Ø®ØªÛØ§Ø±Û Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:"); return True
     if mode=="new_notes":
-        p=context.user_data.pop("customer_pending",{}); p["notes"]="" if text=="-" else text; now=datetime.now(TZ).isoformat(); c=db(); cid=c.execute("INSERT INTO customers(owner_user_id,name,phone,notes,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,p["name"],p.get("phone"),p.get("notes"),now,now)).lastrowid; c.commit(); c.close(); context.user_data.update(customer_id=cid,customer_mode="appt_date"); await update.message.reply_text("✅ مشتری ثبت شد.\n📅 تاریخ نوبت را بفرست: ۱۴۰۵/۰۵/۲۹"); return True
+        p=context.user_data.pop("customer_pending",{}); p["notes"]="" if text=="-" else text; now=datetime.now(TZ).isoformat(); c=db(); cid=c.execute("INSERT INTO customers(owner_user_id,name,phone,notes,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,p["name"],p.get("phone"),p.get("notes"),now,now)).lastrowid; c.commit(); c.close(); context.user_data.update(customer_id=cid,customer_mode="appt_date"); await update.message.reply_text("â ÙØ´ØªØ±Û Ø«Ø¨Øª Ø´Ø¯.\nð ØªØ§Ø±ÛØ® ÙÙØ¨Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª: Û±Û´Û°Ûµ/Û°Ûµ/Û²Û¹"); return True
     if mode=="appt_date":
         try:d=datetime.fromisoformat(text).date().isoformat()
-        except Exception: await update.message.reply_text("❌ تاریخ نامعتبر است."); return True
+        except Exception: await update.message.reply_text("â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª."); return True
         slots=available_slots(uid,d)
-        if not slots: await update.message.reply_text("⚠️ این روز تعطیل است یا زمان خالی ندارد."); return True
-        context.user_data.update(booking_date=d,customer_mode="appt_time"); await update.message.reply_text("⏰ زمان آزاد را بفرست:\n"+" | ".join(slots[:50])); return True
+        if not slots: await update.message.reply_text("â ï¸ Ø§ÛÙ Ø±ÙØ² ØªØ¹Ø·ÛÙ Ø§Ø³Øª ÛØ§ Ø²ÙØ§Ù Ø®Ø§ÙÛ ÙØ¯Ø§Ø±Ø¯."); return True
+        context.user_data.update(booking_date=d,customer_mode="appt_time"); await update.message.reply_text("â° Ø²ÙØ§Ù Ø¢Ø²Ø§Ø¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª:\n"+" | ".join(slots[:50])); return True
     if mode=="appt_time":
         tm=parse_time(text); d=context.user_data.get("booking_date")
-        if not tm or tm not in available_slots(uid,d): await update.message.reply_text("❌ این ساعت آزاد نیست."); return True
-        context.user_data.update(booking_time=tm,customer_mode="appt_service"); await update.message.reply_text("🛠️ نوع خدمت را بفرست یا - بزن:"); return True
-    if mode=="appt_service": context.user_data["customer_pending"]={"service":"" if text=="-" else text}; context.user_data["customer_mode"]="appt_rem"; await update.message.reply_text("🔔 یادآوری‌ها را با دقیقه و کاما بنویس: 1440,120,30\nگزینه‌ها: 1،5،10،30،60،120،1440"); return True
+        if not tm or tm not in available_slots(uid,d): await update.message.reply_text("â Ø§ÛÙ Ø³Ø§Ø¹Øª Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª."); return True
+        context.user_data.update(booking_time=tm,customer_mode="appt_service"); await update.message.reply_text("ð ï¸ ÙÙØ¹ Ø®Ø¯ÙØª Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:"); return True
+    if mode=="appt_service": context.user_data["customer_pending"]={"service":"" if text=="-" else text}; context.user_data["customer_mode"]="appt_rem"; await update.message.reply_text("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§ Ø±Ø§ Ø¨Ø§ Ø¯ÙÛÙÙ Ù Ú©Ø§ÙØ§ Ø¨ÙÙÛØ³: 1440,120,30\nÚ¯Ø²ÛÙÙâÙØ§: 1Ø5Ø10Ø30Ø60Ø120Ø1440"); return True
     if mode=="appt_rem":
-        vals=parse_reminder_list(text); p=context.user_data.pop("customer_pending",{}); now=datetime.now(TZ).isoformat(); c=db(); aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(uid,context.user_data["customer_id"],context.user_data["booking_date"],context.user_data["booking_time"],30,p.get("service",""),"",",".join(map(str,vals or [30])),"booked","manual",now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,context.user_data["customer_id"],aid,"booked","manual",now)); c.commit(); c.close(); context.user_data.clear(); await update.message.reply_text("✅ نوبت ثبت شد.",reply_markup=customer_keyboard(uid)); return True
+        vals=parse_reminder_list(text); p=context.user_data.pop("customer_pending",{}); now=datetime.now(TZ).isoformat(); c=db(); aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(uid,context.user_data["customer_id"],context.user_data["booking_date"],context.user_data["booking_time"],30,p.get("service",""),"",",".join(map(str,vals or [30])),"booked","manual",now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,context.user_data["customer_id"],aid,"booked","manual",now)); c.commit(); c.close(); context.user_data.clear(); await update.message.reply_text("â ÙÙØ¨Øª Ø«Ø¨Øª Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
     if mode=="reschedule_date":
         try:d=datetime.fromisoformat(text).date().isoformat()
-        except Exception: await update.message.reply_text("❌ تاریخ نامعتبر است."); return True
-        context.user_data.update(booking_date=d,customer_mode="reschedule_time"); await update.message.reply_text("⏰ ساعت جدید را بفرست:"); return True
+        except Exception: await update.message.reply_text("â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª."); return True
+        context.user_data.update(booking_date=d,customer_mode="reschedule_time"); await update.message.reply_text("â° Ø³Ø§Ø¹Øª Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª:"); return True
     if mode=="reschedule_time":
         aid=context.user_data["appointment_id"]; tm=parse_time(text); d=context.user_data["booking_date"]
         if not tm or not d or tm not in available_slots(uid,d,30) or has_conflict(uid,d,tm,30,aid):
-            await update.message.reply_text("❌ این زمان خارج از ساعات کاری است یا آزاد نیست. یکی از زمان‌های نمایش‌داده‌شده را انتخاب کن."); return True
+            await update.message.reply_text("â Ø§ÛÙ Ø²ÙØ§Ù Ø®Ø§Ø±Ø¬ Ø§Ø² Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û Ø§Ø³Øª ÛØ§ Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª. ÛÚ©Û Ø§Ø² Ø²ÙØ§ÙâÙØ§Û ÙÙØ§ÛØ´âØ¯Ø§Ø¯ÙâØ´Ø¯Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù."); return True
         now=datetime.now(TZ).isoformat()
         c=db()
         try:
             c.execute("BEGIN IMMEDIATE")
             r=c.execute("SELECT a.*,c.name,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND a.owner_user_id=?",(aid,uid)).fetchone()
             if not r:
-                c.rollback(); c.close(); context.user_data.clear(); await update.message.reply_text("❌ نوبت پیدا نشد.",reply_markup=customer_keyboard(uid)); return True
+                c.rollback(); c.close(); context.user_data.clear(); await update.message.reply_text("â ÙÙØ¨Øª Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",reply_markup=customer_keyboard(uid)); return True
             rows=c.execute("SELECT appointment_time,duration_minutes FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked' AND id!=?",(uid,d,aid)).fetchall()
             start=_mins(tm); end=start+int(r['duration_minutes'] or 30)
             if any(start < _mins(x['appointment_time'])+int(x['duration_minutes'] or 30) and _mins(x['appointment_time']) < end for x in rows):
-                c.rollback(); c.close(); await update.message.reply_text("❌ این زمان دیگر آزاد نیست.",reply_markup=customer_keyboard(uid)); return True
+                c.rollback(); c.close(); await update.message.reply_text("â Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª.",reply_markup=customer_keyboard(uid)); return True
             old_date,old_time=r["appointment_date"],r["appointment_time"]
             c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=? AND owner_user_id=?",(d,tm,now,aid,uid))
             c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(uid,r["customer_id"],aid,"owner_rescheduled",f"{old_date} {old_time} -> {d} {tm}",now)); c.commit(); c.close()
@@ -4745,14 +4724,14 @@ async def customer_text_save(update,context):
             raise
         if r["telegram_user_id"]:
             try:
-                await context.bot.send_message(r["telegram_user_id"],f"🔄 <b>زمان نوبت شما تغییر کرد.</b>\n\n📅 قبلی: {jalali_pretty_date(old_date)}\n⏰ {old_time}\n📅 جدید: {jalali_pretty_date(d)}\n⏰ {tm}",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")]]))
+                await context.bot.send_message(r["telegram_user_id"],f"ð <b>Ø²ÙØ§Ù ÙÙØ¨Øª Ø´ÙØ§ ØªØºÛÛØ± Ú©Ø±Ø¯.</b>\n\nð ÙØ¨ÙÛ: {jalali_pretty_date(old_date)}\nâ° {old_time}\nð Ø¬Ø¯ÛØ¯: {jalali_pretty_date(d)}\nâ° {tm}",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ",callback_data="cust:mybookings")]]))
             except Exception: logger.warning("Customer owner-reschedule notification failed")
-        context.user_data.clear(); await update.message.reply_text("🔄 نوبت جابه‌جا شد و مشتری هم مطلع شد.",reply_markup=customer_keyboard(uid)); return True
+        context.user_data.clear(); await update.message.reply_text("ð ÙÙØ¨Øª Ø¬Ø§Ø¨ÙâØ¬Ø§ Ø´Ø¯ Ù ÙØ´ØªØ±Û ÙÙ ÙØ·ÙØ¹ Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
     return False
 
 async def customer_contact_save(update,context):
     if context.user_data.get("customer_mode")!="contact":return False
-    uid=update.effective_user.id; ct=update.message.contact; name=((ct.first_name or "")+" "+(ct.last_name or "")).strip() or "مشتری"; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,name,ct.phone_number,ct.user_id,now,now)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text(f"✅ {name} به مشتریان اضافه شد.",reply_markup=customer_keyboard(uid)); return True
+    uid=update.effective_user.id; ct=update.message.contact; name=((ct.first_name or "")+" "+(ct.last_name or "")).strip() or "ÙØ´ØªØ±Û"; now=datetime.now(TZ).isoformat(); c=db(); c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?)",(uid,name,ct.phone_number,ct.user_id,now,now)); c.commit(); c.close(); context.user_data.pop("customer_mode",None); await update.message.reply_text(f"â {name} Ø¨Ù ÙØ´ØªØ±ÛØ§Ù Ø§Ø¶Ø§ÙÙ Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
 
 
 async def customer_my_bookings(update,context):
@@ -4772,7 +4751,7 @@ async def customer_my_bookings(update,context):
     c.close()
     if not rows:
         await update.message.reply_text(
-            "📅 <b>رزروهای من</b>\n\nرزرو فعال و آینده‌ای برای شما ثبت نشده است.",
+            "ð <b>Ø±Ø²Ø±ÙÙØ§Û ÙÙ</b>\n\nØ±Ø²Ø±Ù ÙØ¹Ø§Ù Ù Ø¢ÛÙØ¯ÙâØ§Û Ø¨Ø±Ø§Û Ø´ÙØ§ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª.",
             parse_mode="HTML", reply_markup=keyboard(uid)
         )
         return
@@ -4780,14 +4759,14 @@ async def customer_my_bookings(update,context):
     lines=[]
     for r in rows:
         date_text=jalali_pretty_date(r["appointment_date"])
-        lines.append(f"• {date_text} — ⏰ {r['appointment_time']}")
+        lines.append(f"â¢ {date_text} â â° {r['appointment_time']}")
         kb.append([InlineKeyboardButton(
-            f"📅 {date_text} | ⏰ {r['appointment_time']}",
+            f"ð {date_text} | â° {r['appointment_time']}",
             callback_data=f"cust:mybook:{r['id']}"
         )])
-    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
+    kb.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")])
     await update.message.reply_text(
-        "📅 <b>رزروهای من</b>\n\n"+"\n".join(lines),
+        "ð <b>Ø±Ø²Ø±ÙÙØ§Û ÙÙ</b>\n\n"+"\n".join(lines),
         parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
     )
 
@@ -4803,16 +4782,16 @@ async def customer_my_bookings_callback(update,context):
     c.close()
     if not rows:
         await q.message.edit_text(
-            "📅 <b>رزروهای من</b>\n\nرزرو فعال و آینده‌ای ندارید.",
+            "ð <b>Ø±Ø²Ø±ÙÙØ§Û ÙÙ</b>\n\nØ±Ø²Ø±Ù ÙØ¹Ø§Ù Ù Ø¢ÛÙØ¯ÙâØ§Û ÙØ¯Ø§Ø±ÛØ¯.",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")]])
         ); return
     kb=[[InlineKeyboardButton(
-        f"📅 {jalali_pretty_date(r['appointment_date'])} | ⏰ {r['appointment_time']}",
+        f"ð {jalali_pretty_date(r['appointment_date'])} | â° {r['appointment_time']}",
         callback_data=f"cust:mybook:{r['id']}"
     )] for r in rows]
-    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
-    await q.message.edit_text("📅 <b>رزروهای من</b>\n\nیک رزرو را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    kb.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")])
+    await q.message.edit_text("ð <b>Ø±Ø²Ø±ÙÙØ§Û ÙÙ</b>\n\nÛÚ© Ø±Ø²Ø±Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def customer_booking_detail(update,context,aid):
     q=update.callback_query; uid=q.from_user.id
@@ -4824,23 +4803,23 @@ async def customer_booking_detail(update,context,aid):
     """,(aid,uid)).fetchone()
     c.close()
     if not r:
-        await q.answer("این رزرو فعال پیدا نشد.",show_alert=True); return
+        await q.answer("Ø§ÛÙ Ø±Ø²Ø±Ù ÙØ¹Ø§Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",show_alert=True); return
     p=ensure_business_profile(r["owner_user_id"])
-    bname=p["business_name"] or p["business_type"] or "کسب‌وکار"
+    bname=p["business_name"] or p["business_type"] or "Ú©Ø³Ø¨âÙÚ©Ø§Ø±"
     kb=[
-        [InlineKeyboardButton("🔄 تغییر زمان",callback_data=f"cust:reschedulebook:{aid}"),
-         InlineKeyboardButton("❌ لغو رزرو",callback_data=f"cust:cancelbook:{aid}")],
-        [InlineKeyboardButton("⬅️ رزروهای من",callback_data="cust:mybookings"),
-         InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+        [InlineKeyboardButton("ð ØªØºÛÛØ± Ø²ÙØ§Ù",callback_data=f"cust:reschedulebook:{aid}"),
+         InlineKeyboardButton("â ÙØºÙ Ø±Ø²Ø±Ù",callback_data=f"cust:cancelbook:{aid}")],
+        [InlineKeyboardButton("â¬ï¸ Ø±Ø²Ø±ÙÙØ§Û ÙÙ",callback_data="cust:mybookings"),
+         InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")]
     ]
     await q.message.edit_text(
-        f"📅 <b>جزئیات رزرو</b>\n\n"
-        f"🏪 {html.escape(bname)}\n"
-        f"👤 {html.escape(r['name'] or 'مشتری')}\n"
-        f"📅 {jalali_pretty_date(r['appointment_date'])}\n"
-        f"⏰ {r['appointment_time']}\n"
-        f"📞 {html.escape(r['phone']) if r['phone'] else '—'}\n\n"
-        "از اینجا می‌توانید زمان را تغییر دهید یا رزرو را لغو کنید.",
+        f"ð <b>Ø¬Ø²Ø¦ÛØ§Øª Ø±Ø²Ø±Ù</b>\n\n"
+        f"ðª {html.escape(bname)}\n"
+        f"ð¤ {html.escape(r['name'] or 'ÙØ´ØªØ±Û')}\n"
+        f"ð {jalali_pretty_date(r['appointment_date'])}\n"
+        f"â° {r['appointment_time']}\n"
+        f"ð {html.escape(r['phone']) if r['phone'] else 'â'}\n\n"
+        "Ø§Ø² Ø§ÛÙØ¬Ø§ ÙÛâØªÙØ§ÙÛØ¯ Ø²ÙØ§Ù Ø±Ø§ ØªØºÛÛØ± Ø¯ÙÛØ¯ ÛØ§ Ø±Ø²Ø±Ù Ø±Ø§ ÙØºÙ Ú©ÙÛØ¯.",
         parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
     )
 
@@ -4853,7 +4832,7 @@ async def customer_cancel_booking(update,context,aid):
         WHERE a.id=? AND c.telegram_user_id=? AND a.status='booked'
     """,(aid,uid)).fetchone()
     if not r:
-        c.close(); await q.answer("این رزرو دیگر فعال نیست.",show_alert=True); return
+        c.close(); await q.answer("Ø§ÛÙ Ø±Ø²Ø±Ù Ø¯ÛÚ¯Ø± ÙØ¹Ø§Ù ÙÛØ³Øª.",show_alert=True); return
     now=datetime.now(TZ).isoformat()
     c.execute("UPDATE appointments SET status='cancelled',updated_at=? WHERE id=? AND status='booked'",(now,aid))
     c.execute(
@@ -4864,22 +4843,22 @@ async def customer_cancel_booking(update,context,aid):
     try:
         await context.bot.send_message(
             r["owner_user_id"],
-            f"❌ <b>مشتری رزرو آنلاین را لغو کرد</b>\n\n"
-            f"👤 {html.escape(r['name'] or 'مشتری')}\n"
-            f"📅 {jalali_pretty_date(r['appointment_date'])}\n"
-            f"⏰ {r['appointment_time']}\n"
-            f"📞 {html.escape(r['phone']) if r['phone'] else '—'}",
+            f"â <b>ÙØ´ØªØ±Û Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ Ø±Ø§ ÙØºÙ Ú©Ø±Ø¯</b>\n\n"
+            f"ð¤ {html.escape(r['name'] or 'ÙØ´ØªØ±Û')}\n"
+            f"ð {jalali_pretty_date(r['appointment_date'])}\n"
+            f"â° {r['appointment_time']}\n"
+            f"ð {html.escape(r['phone']) if r['phone'] else 'â'}",
             parse_mode="HTML"
         )
     except Exception as e:
         logger.warning("Owner cancellation notification failed: %s",e)
-    await q.answer("✅ رزرو لغو شد.")
+    await q.answer("â Ø±Ø²Ø±Ù ÙØºÙ Ø´Ø¯.")
     await q.message.edit_text(
-        "✅ <b>رزرو شما لغو شد.</b>\n\nصاحب کسب‌وکار نیز از لغو رزرو مطلع شد.",
+        "â <b>Ø±Ø²Ø±Ù Ø´ÙØ§ ÙØºÙ Ø´Ø¯.</b>\n\nØµØ§Ø­Ø¨ Ú©Ø³Ø¨âÙÚ©Ø§Ø± ÙÛØ² Ø§Ø² ÙØºÙ Ø±Ø²Ø±Ù ÙØ·ÙØ¹ Ø´Ø¯.",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],
-            [InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+            [InlineKeyboardButton("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ",callback_data="cust:mybookings")],
+            [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")]
         ])
     )
 
@@ -4893,7 +4872,7 @@ async def customer_reschedule_booking(update,context,aid):
     """,(aid,uid)).fetchone()
     c.close()
     if not r:
-        await q.answer("این رزرو دیگر فعال نیست.",show_alert=True); return
+        await q.answer("Ø§ÛÙ Ø±Ø²Ø±Ù Ø¯ÛÚ¯Ø± ÙØ¹Ø§Ù ÙÛØ³Øª.",show_alert=True); return
     context.user_data.clear()
     context.user_data.update(
         booking_owner=r["owner_user_id"],
@@ -4910,29 +4889,29 @@ async def customer_booking_start(update,context,token):
     if p:
         owner_row=p["user_id"]
     if not p:
-        await update.message.reply_text("❌ لینک رزرو معتبر نیست یا غیرفعال شده."); return True
+        await update.message.reply_text("â ÙÛÙÚ© Ø±Ø²Ø±Ù ÙØ¹ØªØ¨Ø± ÙÛØ³Øª ÛØ§ ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù."); return True
     if not feature_enabled("customer_online_booking") or feature_access_mode("customer_online_booking", owner_row)=="off":
-        await update.message.reply_text("❌ رزرو آنلاین این کسب‌وکار فعلاً غیرفعال است."); return True
+        await update.message.reply_text("â Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ Ø§ÛÙ Ú©Ø³Ø¨âÙÚ©Ø§Ø± ÙØ¹ÙØ§Ù ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª."); return True
     context.user_data["booking_owner"]=p["user_id"]
     await booking_date_menu_list(update,context)
     return True
 
 async def booking_date_menu_list(update,context,reschedule=False):
     kb=_jalali_months_buttons("cust:bookmonth")
-    kb.append([InlineKeyboardButton("⬅️ رزرو من" if reschedule else "⬅️ برگشت",
+    kb.append([InlineKeyboardButton("â¬ï¸ Ø±Ø²Ø±Ù ÙÙ" if reschedule else "â¬ï¸ Ø¨Ø±Ú¯Ø´Øª",
                                     callback_data="cust:mybookings" if reschedule else "nav:main")])
-    text=("🔄 <b>تغییر زمان رزرو</b>\n\nماه موردنظر را انتخاب کن."
-          if reschedule else "📅 <b>تقویم رزرو آنلاین</b>\n\nماه موردنظر را انتخاب کن.")
+    text=("ð <b>ØªØºÛÛØ± Ø²ÙØ§Ù Ø±Ø²Ø±Ù</b>\n\nÙØ§Ù ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù."
+          if reschedule else "ð <b>ØªÙÙÛÙ Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ</b>\n\nÙØ§Ù ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.")
     target=update.callback_query.message if update.callback_query else update.message
     await target.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)) if update.callback_query else await target.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def booking_month_menu(update,context,ym):
     owner=context.user_data.get("booking_owner")
     if not owner:
-        await update.callback_query.answer("صاحب کسب‌وکار مشخص نیست.",show_alert=True); return
+        await update.callback_query.answer("ØµØ§Ø­Ø¨ Ú©Ø³Ø¨âÙÚ©Ø§Ø± ÙØ´Ø®Øµ ÙÛØ³Øª.",show_alert=True); return
     try: jy,jm=map(int,ym.split("-"))
     except Exception:
-        await update.callback_query.answer("تاریخ نامعتبر است.",show_alert=True); return
+        await update.callback_query.answer("ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.",show_alert=True); return
     today=datetime.now(TZ).date(); kb=[]
     days=31 if jm<=6 else 30
     if jm==12:
@@ -4942,10 +4921,10 @@ async def booking_month_menu(update,context,ym):
         except Exception: continue
         if d<today: continue
         slots=available_slots(owner,d.isoformat())
-        status=f"🟢 {fa_digits(len(slots))} زمان آزاد" if slots else "🔴 تکمیل"
-        kb.append([InlineKeyboardButton(f"📅 {fa_digits(day)} — {status}",callback_data=f"cust:bookdate:{d.isoformat()}")])
-    kb.append([InlineKeyboardButton("⬅️ ماه‌ها",callback_data="cust:booklink")])
-    await update.callback_query.message.edit_text(f"📅 <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nروز را انتخاب کن:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+        status=f"ð¢ {fa_digits(len(slots))} Ø²ÙØ§Ù Ø¢Ø²Ø§Ø¯" if slots else "ð´ ØªÚ©ÙÛÙ"
+        kb.append([InlineKeyboardButton(f"ð {fa_digits(day)} â {status}",callback_data=f"cust:bookdate:{d.isoformat()}")])
+    kb.append([InlineKeyboardButton("â¬ï¸ ÙØ§ÙâÙØ§",callback_data="cust:booklink")])
+    await update.callback_query.message.edit_text(f"ð <b>{JALALI_MONTHS_FA[jm-1]} {fa_digits(jy)}</b>\nØ±ÙØ² Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def booking_date_menu(update,context,d):
     context.user_data["booking_date"]=d
@@ -4955,11 +4934,11 @@ async def booking_slots_for_owner(update,context,owner,d):
     q=update.callback_query
     slots=available_slots(owner,d) if owner else []
     kb=[[InlineKeyboardButton(x,callback_data=f"cust:slot:{x}") for x in slots[i:i+4]] for i in range(0,len(slots),4)]
-    kb.append([InlineKeyboardButton("↩️ تاریخ دیگر",callback_data="cust:booklink")])
-    kb.append([InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")])
-    title="🔄 ساعت جدید را انتخاب کن:" if context.user_data.get("reschedule_appointment_id") else "⏰ زمان آزاد را انتخاب کن:"
+    kb.append([InlineKeyboardButton("â©ï¸ ØªØ§Ø±ÛØ® Ø¯ÛÚ¯Ø±",callback_data="cust:booklink")])
+    kb.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")])
+    title="ð Ø³Ø§Ø¹Øª Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if context.user_data.get("reschedule_appointment_id") else "â° Ø²ÙØ§Ù Ø¢Ø²Ø§Ø¯ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:"
     await q.message.edit_text(
-        f"📅 {jalali_pretty_date(d)}\n\n{title if slots else '❌ این روز زمان آزادی ندارد.'}",
+        f"ð {jalali_pretty_date(d)}\n\n{title if slots else 'â Ø§ÛÙ Ø±ÙØ² Ø²ÙØ§Ù Ø¢Ø²Ø§Ø¯Û ÙØ¯Ø§Ø±Ø¯.'}",
         parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
     )
 
@@ -4969,11 +4948,11 @@ async def booking_slot_select(update,context,tm):
     d=context.user_data.get("booking_date")
     tm = parse_time(tm)
     if not owner or not d or not tm or tm not in available_slots(owner,d,30):
-        await q.answer("این زمان دیگر آزاد نیست یا خارج از ساعات کاری است.",show_alert=True); return
+        await q.answer("Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª ÛØ§ Ø®Ø§Ø±Ø¬ Ø§Ø² Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û Ø§Ø³Øª.",show_alert=True); return
     aid=context.user_data.get("reschedule_appointment_id")
     if aid:
         if has_conflict(owner,d,tm,30,aid):
-            await q.answer("این زمان دیگر آزاد نیست.",show_alert=True); return
+            await q.answer("Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª.",show_alert=True); return
         now=datetime.now(TZ).isoformat()
         c=db()
         r=c.execute("""
@@ -4982,7 +4961,7 @@ async def booking_slot_select(update,context,tm):
             WHERE a.id=? AND a.status='booked' AND c.telegram_user_id=?
         """,(aid,q.from_user.id)).fetchone()
         if not r:
-            c.close(); await q.answer("رزرو پیدا نشد.",show_alert=True); return
+            c.close(); await q.answer("Ø±Ø²Ø±Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",show_alert=True); return
         c.execute("UPDATE appointments SET appointment_date=?,appointment_time=?,updated_at=? WHERE id=?",(d,tm,now,aid))
         c.execute(
             "INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",
@@ -4992,12 +4971,12 @@ async def booking_slot_select(update,context,tm):
         try:
             await context.bot.send_message(
                 owner,
-                f"🔄 <b>مشتری زمان رزرو را تغییر داد</b>\n\n"
-                f"👤 {html.escape(r['name'] or 'مشتری')}\n"
-                f"📅 قبلی: {jalali_pretty_date(r['appointment_date'])}\n"
-                f"⏰ قبلی: {r['appointment_time']}\n"
-                f"📅 جدید: {jalali_pretty_date(d)}\n"
-                f"⏰ جدید: {tm}",
+                f"ð <b>ÙØ´ØªØ±Û Ø²ÙØ§Ù Ø±Ø²Ø±Ù Ø±Ø§ ØªØºÛÛØ± Ø¯Ø§Ø¯</b>\n\n"
+                f"ð¤ {html.escape(r['name'] or 'ÙØ´ØªØ±Û')}\n"
+                f"ð ÙØ¨ÙÛ: {jalali_pretty_date(r['appointment_date'])}\n"
+                f"â° ÙØ¨ÙÛ: {r['appointment_time']}\n"
+                f"ð Ø¬Ø¯ÛØ¯: {jalali_pretty_date(d)}\n"
+                f"â° Ø¬Ø¯ÛØ¯: {tm}",
                 parse_mode="HTML"
             )
         except Exception as e:
@@ -5005,44 +4984,44 @@ async def booking_slot_select(update,context,tm):
         try:
             await context.bot.send_message(
                 q.from_user.id,
-                f"🔄 <b>رزرو شما تغییر کرد</b>\n\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\nصاحب کسب‌وکار از تغییر زمان مطلع شد.",
+                f"ð <b>Ø±Ø²Ø±Ù Ø´ÙØ§ ØªØºÛÛØ± Ú©Ø±Ø¯</b>\n\nð {jalali_pretty_date(d)}\nâ° {tm}\n\nØµØ§Ø­Ø¨ Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø§Ø² ØªØºÛÛØ± Ø²ÙØ§Ù ÙØ·ÙØ¹ Ø´Ø¯.",
                 parse_mode="HTML"
             )
         except Exception as e:
             logger.warning("Customer reschedule confirmation failed: %s",e)
         context.user_data.clear()
-        await q.answer("✅ زمان رزرو تغییر کرد.")
+        await q.answer("â Ø²ÙØ§Ù Ø±Ø²Ø±Ù ØªØºÛÛØ± Ú©Ø±Ø¯.")
         await q.message.edit_text(
-            f"✅ <b>زمان رزرو با موفقیت تغییر کرد.</b>\n\n"
-            f"📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\n"
-            "صاحب کسب‌وکار از تغییر زمان مطلع شد.",
+            f"â <b>Ø²ÙØ§Ù Ø±Ø²Ø±Ù Ø¨Ø§ ÙÙÙÙÛØª ØªØºÛÛØ± Ú©Ø±Ø¯.</b>\n\n"
+            f"ð {jalali_pretty_date(d)}\nâ° {tm}\n\n"
+            "ØµØ§Ø­Ø¨ Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø§Ø² ØªØºÛÛØ± Ø²ÙØ§Ù ÙØ·ÙØ¹ Ø´Ø¯.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📅 رزروهای من",callback_data="cust:mybookings")],
-                [InlineKeyboardButton("🏠 منوی اصلی",callback_data="nav:main")]
+                [InlineKeyboardButton("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ",callback_data="cust:mybookings")],
+                [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="nav:main")]
             ])
         )
         return
     context.user_data.update(booking_time=tm,customer_mode="public_booking_name")
     await q.answer()
-    await q.message.edit_text("👤 <b>نام شما را بفرست:</b>",parse_mode="HTML")
+    await q.message.edit_text("ð¤ <b>ÙØ§Ù Ø´ÙØ§ Ø±Ø§ Ø¨ÙØ±Ø³Øª:</b>",parse_mode="HTML")
 
 async def public_booking_save(update,context):
 
     mode=context.user_data.get("customer_mode");
     if mode not in ("public_booking_name","public_booking_phone"):return False
     text=update.message.text.strip(); uid=update.effective_user.id
-    if mode=="public_booking_name": context.user_data.update(public_name=text,customer_mode="public_booking_phone"); await update.message.reply_text("📞 شماره تلفن را بفرست یا - بزن:"); return True
+    if mode=="public_booking_name": context.user_data.update(public_name=text,customer_mode="public_booking_phone"); await update.message.reply_text("ð Ø´ÙØ§Ø±Ù ØªÙÙÙ Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:"); return True
     owner=context.user_data.get("booking_owner"); d=context.user_data.get("booking_date"); tm=context.user_data.get("booking_time"); phone="" if text=="-" else text; name=context.user_data.get("public_name") or display_name(uid); now=datetime.now(TZ).isoformat();
     c=db(); existing=c.execute("SELECT id FROM customers WHERE owner_user_id=? AND telegram_user_id=? LIMIT 1",(owner,uid)).fetchone(); cid=existing["id"] if existing else c.execute("INSERT INTO customers(owner_user_id,name,phone,telegram_username,telegram_user_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(owner,name,phone,update.effective_user.username or '',uid,now,now)).lastrowid
     if existing:c.execute("UPDATE customers SET name=?,phone=?,telegram_username=?,updated_at=? WHERE id=?",(name,phone,update.effective_user.username or '',now,cid))
     if not d or not tm or tm not in available_slots(owner,d,30) or has_conflict(owner,d,tm,30):
-        c.close(); context.user_data.clear(); await update.message.reply_text("❌ این زمان دیگر آزاد نیست یا خارج از ساعات کاری است. لطفاً دوباره تاریخ را انتخاب کن."); return True
-    aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(owner,cid,d,tm,30,'','رزرو آنلاین','30','booked','online',now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(owner,cid,aid,'online_booking','',now)); c.commit(); c.close()
-    p=ensure_business_profile(owner); business_name=p["business_name"] or p["business_type"] or "کسب‌وکار"
-    try: await context.bot.send_message(owner,f"🔔 <b>رزرو جدید داری!</b>\n\n🏪 {html.escape(business_name)}\n👤 {html.escape(name)}\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n📞 {html.escape(phone) if phone else '—'}")
+        c.close(); context.user_data.clear(); await update.message.reply_text("â Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª ÛØ§ Ø®Ø§Ø±Ø¬ Ø§Ø² Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û Ø§Ø³Øª. ÙØ·ÙØ§Ù Ø¯ÙØ¨Ø§Ø±Ù ØªØ§Ø±ÛØ® Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù."); return True
+    aid=c.execute("INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(owner,cid,d,tm,30,'','Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ','30','booked','online',now,now)).lastrowid; c.execute("INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)",(owner,cid,aid,'online_booking','',now)); c.commit(); c.close()
+    p=ensure_business_profile(owner); business_name=p["business_name"] or p["business_type"] or "Ú©Ø³Ø¨âÙÚ©Ø§Ø±"
+    try: await context.bot.send_message(owner,f"ð <b>Ø±Ø²Ø±Ù Ø¬Ø¯ÛØ¯ Ø¯Ø§Ø±Û!</b>\n\nðª {html.escape(business_name)}\nð¤ {html.escape(name)}\nð {jalali_pretty_date(d)}\nâ° {tm}\nð {html.escape(phone) if phone else 'â'}")
     except Exception:pass
-    context.user_data.clear(); await update.message.reply_text(f"✅ <b>رزرو شما با موفقیت ثبت شد.</b>\n\n🏪 {html.escape(business_name)}\n📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\n📅 از بخش «رزروهای من» می‌توانید رزرو را مدیریت، لغو یا جابه‌جا کنید."); return True
+    context.user_data.clear(); await update.message.reply_text(f"â <b>Ø±Ø²Ø±Ù Ø´ÙØ§ Ø¨Ø§ ÙÙÙÙÛØª Ø«Ø¨Øª Ø´Ø¯.</b>\n\nðª {html.escape(business_name)}\nð {jalali_pretty_date(d)}\nâ° {tm}\n\nð Ø§Ø² Ø¨Ø®Ø´ Â«Ø±Ø²Ø±ÙÙØ§Û ÙÙÂ» ÙÛâØªÙØ§ÙÛØ¯ Ø±Ø²Ø±Ù Ø±Ø§ ÙØ¯ÛØ±ÛØªØ ÙØºÙ ÛØ§ Ø¬Ø§Ø¨ÙâØ¬Ø§ Ú©ÙÛØ¯."); return True
 
 async def customer_reminder_job(context):
     now=datetime.now(TZ).replace(second=0,microsecond=0); c=db(); rows=c.execute("SELECT a.*,c.name,c.phone,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.status='booked' AND a.appointment_date>=?",(now.date().isoformat(),)).fetchall(); c.close()
@@ -5052,12 +5031,12 @@ async def customer_reminder_job(context):
             if diff not in parse_reminder_list(r['reminder_minutes']):continue
             reminder_key=f"appointment:{r['id']}:{diff}:{r['appointment_date']}"
             if not delivery_once(reminder_key,r['owner_user_id'],"owner_appointment_reminder"): continue
-            await context.bot.send_message(r['owner_user_id'],f"🔔 <b>یادآوری نوبت</b>\n\n👤 {html.escape(r['name'])}\n📅 {jalali_date_str(r['appointment_date'])}\n⏰ {r['appointment_time']}\n📞 {html.escape(r['phone']) if r['phone'] else '—'}",parse_mode="HTML",reply_markup=appointment_reminder_keyboard(r['owner_user_id'],r['id']))
+            await context.bot.send_message(r['owner_user_id'],f"ð <b>ÛØ§Ø¯Ø¢ÙØ±Û ÙÙØ¨Øª</b>\n\nð¤ {html.escape(r['name'])}\nð {jalali_date_str(r['appointment_date'])}\nâ° {r['appointment_time']}\nð {html.escape(r['phone']) if r['phone'] else 'â'}",parse_mode="HTML",reply_markup=appointment_reminder_keyboard(r['owner_user_id'],r['id']))
             if r['telegram_user_id']:
                 customer_key=f"appointment_customer:{r['id']}:{diff}:{r['appointment_date']}"
                 if delivery_once(customer_key,r['telegram_user_id'],"customer_appointment_reminder"):
-                    p=ensure_business_profile(r['owner_user_id']); bname=p['business_name'] or p['business_type'] or 'کسب‌وکار'
-                    await context.bot.send_message(r['telegram_user_id'],f"🔔 <b>یادآوری نوبت شما</b>\n\n🏪 {html.escape(bname)}\n📅 {jalali_date_str(r['appointment_date'])}\n⏰ {r['appointment_time']}",parse_mode='HTML')
+                    p=ensure_business_profile(r['owner_user_id']); bname=p['business_name'] or p['business_type'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±'
+                    await context.bot.send_message(r['telegram_user_id'],f"ð <b>ÛØ§Ø¯Ø¢ÙØ±Û ÙÙØ¨Øª Ø´ÙØ§</b>\n\nðª {html.escape(bname)}\nð {jalali_date_str(r['appointment_date'])}\nâ° {r['appointment_time']}",parse_mode='HTML')
         except Exception as e:logger.warning("Customer reminder failed: %s",e)
 
 async def customer_reengagement_job(context):
@@ -5070,8 +5049,8 @@ async def customer_reengagement_job(context):
         key=f"rebook:{r['owner_user_id']}:{r['customer_id']}:{r['appointment_date']}"
         if not delivery_once(key,int(r['telegram_user_id']),"customer_reengagement"): continue
         try:
-            p=ensure_business_profile(r['owner_user_id']); bname=p['business_name'] or p['business_type'] or 'کسب‌وکار'
-            await context.bot.send_message(r['telegram_user_id'],f"📅 <b>یادآوری نوبت بعدی</b>\n\n{html.escape(r['name'] or 'مشتری')} عزیز، حدود ۱۰ ماه از نوبت قبلی شما در <b>{html.escape(bname)}</b> گذشته است.\n\nاگر برای نوبت بعدی آماده‌ای، می‌توانی دوباره رزرو کنی.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📅 رزرو دوباره",callback_data=f"cust:booklink:{r['owner_user_id']}")],[main_menu_button(r['telegram_user_id'])]]))
+            p=ensure_business_profile(r['owner_user_id']); bname=p['business_name'] or p['business_type'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±'
+            await context.bot.send_message(r['telegram_user_id'],f"ð <b>ÛØ§Ø¯Ø¢ÙØ±Û ÙÙØ¨Øª Ø¨Ø¹Ø¯Û</b>\n\n{html.escape(r['name'] or 'ÙØ´ØªØ±Û')} Ø¹Ø²ÛØ²Ø Ø­Ø¯ÙØ¯ Û±Û° ÙØ§Ù Ø§Ø² ÙÙØ¨Øª ÙØ¨ÙÛ Ø´ÙØ§ Ø¯Ø± <b>{html.escape(bname)}</b> Ú¯Ø°Ø´ØªÙ Ø§Ø³Øª.\n\nØ§Ú¯Ø± Ø¨Ø±Ø§Û ÙÙØ¨Øª Ø¨Ø¹Ø¯Û Ø¢ÙØ§Ø¯ÙâØ§ÛØ ÙÛâØªÙØ§ÙÛ Ø¯ÙØ¨Ø§Ø±Ù Ø±Ø²Ø±Ù Ú©ÙÛ.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø±Ø²Ø±Ù Ø¯ÙØ¨Ø§Ø±Ù",callback_data=f"cust:booklink:{r['owner_user_id']}")],[main_menu_button(r['telegram_user_id'])]]))
         except Exception: logger.warning("Customer reengagement failed",exc_info=True)
 
 async def customer_daily_report_job(context):
@@ -5080,7 +5059,7 @@ async def customer_daily_report_job(context):
     d=now.date().isoformat(); c=db(); owners=c.execute("SELECT DISTINCT owner_user_id FROM appointments WHERE appointment_date=?",(d,)).fetchall()
     for o in owners:
         uid=o["owner_user_id"]; total=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=?",(uid,d)).fetchone()["n"]; done=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='done'",(uid,d)).fetchone()["n"]; cancelled=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='cancelled'",(uid,d)).fetchone()["n"]; top=c.execute("SELECT c.name,COUNT(*) n FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.owner_user_id=? AND a.appointment_date=? AND a.status='done' GROUP BY a.customer_id ORDER BY n DESC LIMIT 5",(uid,d)).fetchall()
-        text=f"🌙 <b>گزارش پایان روز مشتریان</b>\n\n📅 {d}\n👥 کل نوبت‌ها: {total}\n✅ انجام‌شده: {done}\n❌ لغوشده: {cancelled}\n\n🏆 مشتریان پرتکرار امروز:\n"+("\n".join(f"• {r['name']} — {r['n']} مراجعه" for r in top) or "امروز مراجعه‌ای ثبت نشده.")
+        text=f"ð <b>Ú¯Ø²Ø§Ø±Ø´ Ù¾Ø§ÛØ§Ù Ø±ÙØ² ÙØ´ØªØ±ÛØ§Ù</b>\n\nð {d}\nð¥ Ú©Ù ÙÙØ¨ØªâÙØ§: {total}\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {done}\nâ ÙØºÙØ´Ø¯Ù: {cancelled}\n\nð ÙØ´ØªØ±ÛØ§Ù Ù¾Ø±ØªÚ©Ø±Ø§Ø± Ø§ÙØ±ÙØ²:\n"+("\n".join(f"â¢ {r['name']} â {r['n']} ÙØ±Ø§Ø¬Ø¹Ù" for r in top) or "Ø§ÙØ±ÙØ² ÙØ±Ø§Ø¬Ø¹ÙâØ§Û Ø«Ø¨Øª ÙØ´Ø¯Ù.")
         try: await context.bot.send_message(uid,text,parse_mode="HTML",reply_markup=customer_keyboard(uid))
         except Exception as e: logger.warning("Customer daily report failed: %s",e)
     c.close()
@@ -5091,7 +5070,7 @@ async def customer_morning_job(context):
     c=db(); rows=c.execute("SELECT a.*,c.name,c.phone,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.appointment_date=? AND a.status='booked' ORDER BY a.owner_user_id,a.appointment_time",(now.date().isoformat(),)).fetchall(); c.close(); groups={}
     for r in rows:groups.setdefault(r['owner_user_id'],[]).append(r)
     for owner,items in groups.items():
-        lines=["🌅 <b>برنامه مشتری‌های امروز</b>",""]+[f"🕐 <b>{r['appointment_time']}</b> — 👤 {html.escape(r['name'])}"+(f" — 📞 {html.escape(r['phone'])}" if r['phone'] else '') for r in items]+[f"\n👥 مجموع: {len(items)} مشتری"]
+        lines=["ð <b>Ø¨Ø±ÙØ§ÙÙ ÙØ´ØªØ±ÛâÙØ§Û Ø§ÙØ±ÙØ²</b>",""]+[f"ð <b>{r['appointment_time']}</b> â ð¤ {html.escape(r['name'])}"+(f" â ð {html.escape(r['phone'])}" if r['phone'] else '') for r in items]+[f"\nð¥ ÙØ¬ÙÙØ¹: {len(items)} ÙØ´ØªØ±Û"]
         try:await context.bot.send_message(owner,"\n".join(lines),parse_mode="HTML",reply_markup=customer_keyboard(owner))
         except Exception as e:logger.warning("Customer morning failed: %s",e)
 
@@ -5110,18 +5089,18 @@ async def customer_morning_job(context):
         if r['owner_user_id'] not in profile_cache:
             profile_cache[r['owner_user_id']] = ensure_business_profile(r['owner_user_id'])
         prof = profile_cache[r['owner_user_id']]
-        bname = prof["business_name"] or prof["business_type"] or "کسب\u200cوکار"
+        bname = prof["business_name"] or prof["business_type"] or "Ú©Ø³Ø¨\u200cÙÚ©Ø§Ø±"
         todays = sorted([x for x in rows if x['telegram_user_id'] == cust_tg and x['owner_user_id'] == r['owner_user_id']],
                         key=lambda x: x['appointment_time'])
-        sched = "\n".join("🕐 " + x['appointment_time'] + (" — " + html.escape(x['service']) if x['service'] else "")
+        sched = "\n".join("ð " + x['appointment_time'] + (" â " + html.escape(x['service']) if x['service'] else "")
                           for x in todays)
         try:
             await context.bot.send_message(
                 cust_key,
-                f"🔔 <b>یادآوری نوبت امروز</b>\n\n🏪 {html.escape(bname)}\n{sched}\n\nمنتظر حضور گرمتان هستیم! 🌟",
+                f"ð <b>ÛØ§Ø¯Ø¢ÙØ±Û ÙÙØ¨Øª Ø§ÙØ±ÙØ²</b>\n\nðª {html.escape(bname)}\n{sched}\n\nÙÙØªØ¸Ø± Ø­Ø¶ÙØ± Ú¯Ø±ÙØªØ§Ù ÙØ³ØªÛÙ! ð",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📅 رزروهای من", callback_data="cust:mybookings")],
+                    [InlineKeyboardButton("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ", callback_data="cust:mybookings")],
                     [main_menu_button(cust_key)],
                 ]))
         except Exception as e:
@@ -5130,7 +5109,7 @@ async def customer_morning_job(context):
 async def hide_main_reply_keyboard(update):
     """Remove the persistent main ReplyKeyboard without adding a visible UI message."""
     try:
-        m = await update.effective_chat.send_message("⁣", reply_markup=ReplyKeyboardRemove())
+        m = await update.effective_chat.send_message("â£", reply_markup=ReplyKeyboardRemove())
         try:
             await m.delete()
         except Exception:
@@ -5163,11 +5142,11 @@ async def text_router(update, context):
     )):
         context.user_data.setdefault("_flow_started_at", datetime.now(TZ).isoformat())
 
-    if text in ("⬅️ برگشت","⬅️ Back","🏠 منوی اصلی","🏠 Main Menu"):
+    if text in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª","â¬ï¸ Back","ð  ÙÙÙÛ Ø§ØµÙÛ","ð  Main Menu"):
         clear_flow(context)
         try: await update.message.delete()
         except Exception: pass
-        await update.message.chat.send_message("🏠",reply_markup=keyboard(uid))
+        await update.message.chat.send_message("ð ",reply_markup=keyboard(uid))
         return
 
     # A failed input flow must never trap the user inside that flow.
@@ -5178,7 +5157,7 @@ async def text_router(update, context):
     if context.user_data.get("admin_vip_edit_user") and admin_guard(uid):
         target=int(context.user_data.pop("admin_vip_edit_user")); raw=normalize_digits(text)
         try: days=int(raw); assert -3650<=days<=3650
-        except Exception: await update.message.reply_text("❌ تعداد روز نامعتبر است.",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return True
+        except Exception: await update.message.reply_text("â ØªØ¹Ø¯Ø§Ø¯ Ø±ÙØ² ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return True
         c=db(); r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(target,)).fetchone(); now_dt=datetime.now(TZ);
         if days==0: new_until=None
         else:
@@ -5187,37 +5166,37 @@ async def text_router(update, context):
                 try: base=max(base,datetime.fromisoformat(r["vip_until"]))
                 except Exception: pass
             new_until=(base+timedelta(days=days)).isoformat()
-        c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(new_until,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Edit",days,"admin_edit",now_dt.isoformat(),new_until,now_dt.isoformat())); c.commit(); c.close(); admin_log(uid,"vip_edit",target,str(days)); await update.message.reply_text("❌ VIP لغو شد." if days==0 else f"✅ اشتراک ویرایش شد. پایان: {fa_datetime(new_until)}",reply_markup=final_admin_keyboard()); return True
+        c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(new_until,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Edit",days,"admin_edit",now_dt.isoformat(),new_until,now_dt.isoformat())); c.commit(); c.close(); admin_log(uid,"vip_edit",target,str(days)); await update.message.reply_text("â VIP ÙØºÙ Ø´Ø¯." if days==0 else f"â Ø§Ø´ØªØ±Ø§Ú© ÙÛØ±Ø§ÛØ´ Ø´Ø¯. Ù¾Ø§ÛØ§Ù: {fa_datetime(new_until)}",reply_markup=final_admin_keyboard()); return True
 
     if context.user_data.get("customer_broadcast_mode"):
         msg=text.strip()
-        if not msg: await update.message.reply_text("❌ پیام خالی است.",reply_markup=nav_keyboard(uid)); return True
+        if not msg: await update.message.reply_text("â Ù¾ÛØ§Ù Ø®Ø§ÙÛ Ø§Ø³Øª.",reply_markup=nav_keyboard(uid)); return True
         c=db(); rows=c.execute("SELECT DISTINCT telegram_user_id FROM customers WHERE owner_user_id=? AND status='active' AND telegram_user_id IS NOT NULL",(uid,)).fetchall(); now=datetime.now(TZ).isoformat(); cur=c.execute("INSERT INTO customer_broadcasts(owner_user_id,audience,message,created_at) VALUES(?,?,?,?)",(uid,"active",msg,now)); bid=cur.lastrowid; c.commit(); c.close(); sent=0
         for r in rows:
             try:
-                await context.bot.send_message(r["telegram_user_id"],f"📢 <b>پیام از {html.escape(ensure_business_profile(uid)['business_name'] or 'کسب‌وکار')}</b>\n\n{html.escape(msg)}",parse_mode="HTML")
+                await context.bot.send_message(r["telegram_user_id"],f"ð¢ <b>Ù¾ÛØ§Ù Ø§Ø² {html.escape(ensure_business_profile(uid)['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±')}</b>\n\n{html.escape(msg)}",parse_mode="HTML")
                 sent+=1
             except Exception: pass
-        c=db(); c.execute("UPDATE customer_broadcasts SET sent_count=? WHERE id=?",(sent,bid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text(f"✅ پیام برای {sent} مشتری ارسال شد.",reply_markup=customer_keyboard(uid)); return True
+        c=db(); c.execute("UPDATE customer_broadcasts SET sent_count=? WHERE id=?",(sent,bid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text(f"â Ù¾ÛØ§Ù Ø¨Ø±Ø§Û {sent} ÙØ´ØªØ±Û Ø§Ø±Ø³Ø§Ù Ø´Ø¯.",reply_markup=customer_keyboard(uid)); return True
 
     if context.user_data.get("goal_reminder_custom"):
         gid=int(context.user_data.pop("goal_reminder_custom")); tm=parse_time(text); g=get_goal(uid,gid)
         if not g or not tm:
-            await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 20:30",reply_markup=nav_keyboard(uid)); context.user_data["goal_reminder_custom"]=gid; return True
-        d=(datetime.now(TZ).date()+timedelta(days=1)).isoformat(); c=db(); c.execute("INSERT OR REPLACE INTO goal_reminder_overrides(user_id,goal_id,reminder_date,reminder_time,created_at) VALUES(?,?,?,?,?)",(uid,gid,d,tm,datetime.now(TZ).isoformat())); c.commit(); c.close(); clear_flow(context); await update.message.reply_text(f"✅ یادآوری هدف «{html.escape(g['name'])}» برای فردا ساعت {tm} تنظیم شد.",parse_mode="HTML",reply_markup=keyboard(uid)); return True
+            await update.message.reply_text("â Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙØ«Ø§Ù: 20:30",reply_markup=nav_keyboard(uid)); context.user_data["goal_reminder_custom"]=gid; return True
+        d=(datetime.now(TZ).date()+timedelta(days=1)).isoformat(); c=db(); c.execute("INSERT OR REPLACE INTO goal_reminder_overrides(user_id,goal_id,reminder_date,reminder_time,created_at) VALUES(?,?,?,?,?)",(uid,gid,d,tm,datetime.now(TZ).isoformat())); c.commit(); c.close(); clear_flow(context); await update.message.reply_text(f"â ÛØ§Ø¯Ø¢ÙØ±Û ÙØ¯Ù Â«{html.escape(g['name'])}Â» Ø¨Ø±Ø§Û ÙØ±Ø¯Ø§ Ø³Ø§Ø¹Øª {tm} ØªÙØ¸ÛÙ Ø´Ø¯.",parse_mode="HTML",reply_markup=keyboard(uid)); return True
 
     if context.user_data.get("admin_pause_mode") and admin_guard(uid):
         value=text.strip().lower()
-        if value in ("forever","نامحدود"):
+        if value in ("forever","ÙØ§ÙØ­Ø¯ÙØ¯"):
             set_system_setting("bot_paused_until","9999-12-31T23:59:59+03:30")
             admin_log(uid,"bot_pause_on",None,"forever")
             context.user_data.pop("admin_pause_mode",None)
-            await update.message.reply_text("⏸ ربات متوقف شد. مدیران همچنان دسترسی دارند.",reply_markup=final_admin_keyboard()); return
+            await update.message.reply_text("â¸ Ø±Ø¨Ø§Øª ÙØªÙÙÙ Ø´Ø¯. ÙØ¯ÛØ±Ø§Ù ÙÙÚÙØ§Ù Ø¯Ø³ØªØ±Ø³Û Ø¯Ø§Ø±ÙØ¯.",reply_markup=final_admin_keyboard()); return
         try: minutes=int(normalize_digits(value)); assert 1<=minutes<=10080
         except Exception:
-            await update.message.reply_text("❌ عدد نامعتبر است. بین ۱ تا ۱۰۰۸۰ دقیقه وارد کن یا forever بنویس.",reply_markup=nav_keyboard(uid)); return
+            await update.message.reply_text("â Ø¹Ø¯Ø¯ ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. Ø¨ÛÙ Û± ØªØ§ Û±Û°Û°Û¸Û° Ø¯ÙÛÙÙ ÙØ§Ø±Ø¯ Ú©Ù ÛØ§ forever Ø¨ÙÙÛØ³.",reply_markup=nav_keyboard(uid)); return
         until=datetime.now(TZ)+timedelta(minutes=minutes); set_system_setting("bot_paused_until",until.isoformat()); admin_log(uid,"bot_pause_on",None,str(minutes)); context.user_data.pop("admin_pause_mode",None)
-        await update.message.reply_text(f"⏸ ربات تا {fa_datetime(until)} متوقف شد.",reply_markup=final_admin_keyboard()); return
+        await update.message.reply_text(f"â¸ Ø±Ø¨Ø§Øª ØªØ§ {fa_datetime(until)} ÙØªÙÙÙ Ø´Ø¯.",reply_markup=final_admin_keyboard()); return
 
     if context.user_data.get("auto_wait_interval"):
         try:
@@ -5225,14 +5204,14 @@ async def text_router(update, context):
             if minutes < 5 or minutes > 1440:
                 raise ValueError
         except ValueError:
-            await update.message.reply_text("❌ عدد نامعتبر است. فقط عددی بین ۵ تا ۱۴۴۰ دقیقه وارد کن.")
+            await update.message.reply_text("â Ø¹Ø¯Ø¯ ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙÙØ· Ø¹Ø¯Ø¯Û Ø¨ÛÙ Ûµ ØªØ§ Û±Û´Û´Û° Ø¯ÙÛÙÙ ÙØ§Ø±Ø¯ Ú©Ù.")
             return
         set_auto_setting("interval_minutes", str(minutes))
         set_auto_setting("enabled", "1")
         set_auto_setting("next_run", (datetime.now(TZ) + timedelta(minutes=minutes)).isoformat())
         context.user_data.pop("auto_wait_interval", None)
         await update.message.reply_text(
-            f"✅ انتشار خودکار روی هر {minutes} دقیقه تنظیم شد و روشن است.",
+            f"â Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙÛ ÙØ± {minutes} Ø¯ÙÛÙÙ ØªÙØ¸ÛÙ Ø´Ø¯ Ù Ø±ÙØ´Ù Ø§Ø³Øª.",
             reply_markup=auto_channel_keyboard(),
         )
         return
@@ -5240,19 +5219,19 @@ async def text_router(update, context):
     if context.user_data.get("auto_wait_time"):
         value = parse_time(text)
         if not value:
-            await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:00")
+            await update.message.reply_text("â Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙØ«Ø§Ù: 18:00")
             return
         set_auto_setting("time", value)
         context.user_data.pop("auto_wait_time", None)
         await update.message.reply_text(
-            "✅ ساعت انتشار خودکار روی " + value + " تنظیم شد.",
+            "â Ø³Ø§Ø¹Øª Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± Ø±ÙÛ " + value + " ØªÙØ¸ÛÙ Ø´Ø¯.",
             reply_markup=auto_channel_keyboard()
         )
         return
 
     if not await final_guard(update, context):
         return
-    if text in ("📅 رزروهای من","📅 My Bookings"):
+    if text in ("ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ","ð My Bookings"):
         await customer_my_bookings(update,context)
         return
     if await support_text(update, context):
@@ -5291,49 +5270,49 @@ async def text_router(update, context):
     menu = T[lang(uid)]["menu"]
     requested_feature=FEATURE_MENU_MAP.get(text)
     if requested_feature and not user_feature_allowed(uid,requested_feature):
-        await update.message.reply_text("⛔ این قابلیت فعلاً توسط مدیر غیرفعال شده است.",reply_markup=keyboard(uid)); return
-    if text in ("🎯 اهداف امروز", "🎯 Today's Goals"):
+        await update.message.reply_text("â Ø§ÛÙ ÙØ§Ø¨ÙÛØª ÙØ¹ÙØ§Ù ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù Ø§Ø³Øª.",reply_markup=keyboard(uid)); return
+    if text in ("ð¯ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²", "ð¯ Today's Goals"):
         await today(update, context)
-    elif text in ("✏️ هدف خودم می‌نویسم", "✏️ Write my own goal"):
+    elif text in ("âï¸ ÙØ¯Ù Ø®ÙØ¯Ù ÙÛâÙÙÛØ³Ù", "âï¸ Write my own goal"):
         await custom_goal_start(update, context)
-    elif text in ("🏆 اهداف آماده", "🏆 Ready Goals"):
+    elif text in ("ð Ø§ÙØ¯Ø§Ù Ø¢ÙØ§Ø¯Ù", "ð Ready Goals"):
         await ready_menu(update, context)
-    elif text in ("✏️ ویرایش اهداف", "✏️ Edit Goals"):
+    elif text in ("âï¸ ÙÛØ±Ø§ÛØ´ Ø§ÙØ¯Ø§Ù", "âï¸ Edit Goals"):
         await edit_menu(update, context)
-    elif text in ("📅 جدول هفتگی", "📅 Weekly Table"):
+    elif text in ("ð Ø¬Ø¯ÙÙ ÙÙØªÚ¯Û", "ð Weekly Table"):
         await weekly(update, context)
-    elif text in ("📊 آمار من", "📊 My Stats"):
+    elif text in ("ð Ø¢ÙØ§Ø± ÙÙ", "ð My Stats"):
         await stats(update, context)
-    elif text in ("👤 پروفایل", "👤 Profile"):
+    elif text in ("ð¤ Ù¾Ø±ÙÙØ§ÛÙ", "ð¤ Profile"):
         await profile(update, context)
-    elif text in ("🏆 دستاوردها", "🏆 Achievements"):
+    elif text in ("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "ð Achievements"):
         await achievements(update, context)
-    elif text in ("⭐ XP",):
+    elif text in ("â­ XP",):
         await xp_command(update, context)
-    elif text in ("🤝 دعوت دوستان", "🤝 Referrals"):
+    elif text in ("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù", "ð¤ Referrals"):
         await referral(update, context)
-    elif text in ("📈 قیمت آنلاین", "📈 Online Prices"):
+    elif text in ("ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ", "ð Online Prices"):
         await prices(update, context)
-    elif text in ("💎 VIP",):
+    elif text in ("ð VIP",):
         await vip_center(update, context)
-    elif text in ("🎫 پشتیبانی", "🎫 Support"):
+    elif text in ("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", "ð« Support"):
         await support_start(update, context)
-    elif text in ("⚙️ تنظیمات", "⚙️ Settings"):
+    elif text in ("âï¸ ØªÙØ¸ÛÙØ§Øª", "âï¸ Settings"):
         await settings(update, context)
-    elif text in ("👥 مدیریت مشتری و نوبت‌دهی", "👥 Customer & Appointments"):
+    elif text in ("ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ", "ð¥ Customer & Appointments"):
         await customer_panel(update, context)
-    elif text in ("📢 مدیریت کانال", "📢 Channel Management"):
+    elif text in ("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", "ð¢ Channel Management"):
         if admin_guard(uid):
             clear_flow(context)
             await update.message.reply_text(
-                "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\nاتصال کانال، ساخت پست، زمان‌بندی و انتشار خودکار.",
+                "ð¢ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>\n\nØ§ØªØµØ§Ù Ú©Ø§ÙØ§ÙØ Ø³Ø§Ø®Øª Ù¾Ø³ØªØ Ø²ÙØ§ÙâØ¨ÙØ¯Û Ù Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±.",
                 parse_mode="HTML",
                 reply_markup=channel_keyboard(),
             )
             await hide_main_reply_keyboard(update)
         else:
-            await update.message.reply_text("⛔ دسترسی ندارید.")
-    elif text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.")
+    elif text in ("ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", "ð¡ Admin Panel"):
         clear_flow(context)
         await admin_command(update, context)
 
@@ -5398,15 +5377,15 @@ def user_blocked(uid):
 async def final_guard(update,context):
     uid=update.effective_user.id
     if user_blocked(uid) and uid not in ADMIN_IDS:
-        if update.callback_query: await update.callback_query.answer("⛔ حساب شما مسدود است.",show_alert=True)
-        elif update.message: await update.message.reply_text("⛔ حساب شما مسدود است.")
+        if update.callback_query: await update.callback_query.answer("â Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙØ³Ø¯ÙØ¯ Ø§Ø³Øª.",show_alert=True)
+        elif update.message: await update.message.reply_text("â Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙØ³Ø¯ÙØ¯ Ø§Ø³Øª.")
         return False
     return True
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 🎂  BIRTHDAY MODULE
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  BIRTHDAY MODULE
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def birthday_enabled():
     return feature_enabled("birthday")
@@ -5540,20 +5519,20 @@ def birthday_gift_vip(uid, days=3):
 async def send_birthday_greeting(bot, uid, first_name):
     """Send personalized birthday greeting with gift."""
     greeting = birthday_settings_get("greeting_template",
-        "🎂 تولدت مبارک {name} عزیز! 🎉\n\nامروز روز خاص توئه! امیدوارم سال خوبی پیش رو داشته باشی! 🌷")
+        "ð ØªÙÙØ¯Øª ÙØ¨Ø§Ø±Ú© {name} Ø¹Ø²ÛØ²! ð\n\nØ§ÙØ±ÙØ² Ø±ÙØ² Ø®Ø§Øµ ØªÙØ¦Ù! Ø§ÙÛØ¯ÙØ§Ø±Ù Ø³Ø§Ù Ø®ÙØ¨Û Ù¾ÛØ´ Ø±Ù Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´Û! ð·")
     gift_type = birthday_settings_get("gift_type", "xp")
     gift_value = int(birthday_settings_get("gift_value", "50"))
 
-    text = greeting.replace("{name}", first_name or "عزیز")
+    text = greeting.replace("{name}", first_name or "Ø¹Ø²ÛØ²")
 
     if gift_type == "xp":
         granted = birthday_gift_xp(uid, gift_value)
         if granted:
-            text += f"\n\n🎁 هدیه تولد: ⭐ {gift_value} XP"
+            text += f"\n\nð ÙØ¯ÛÙ ØªÙÙØ¯: â­ {gift_value} XP"
     elif gift_type == "vip":
         granted = birthday_gift_vip(uid, gift_value)
         if granted:
-            text += f"\n\n🎁 هدیه تولد: 💎 {gift_value} روز VIP"
+            text += f"\n\nð ÙØ¯ÛÙ ØªÙÙØ¯: ð {gift_value} Ø±ÙØ² VIP"
 
     try:
         await bot.send_message(uid, text, parse_mode="HTML")
@@ -5561,9 +5540,9 @@ async def send_birthday_greeting(bot, uid, first_name):
         logger.warning("Birthday greeting failed for %s", uid)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 📅  EVENTS / OCCASIONS MODULE
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  EVENTS / OCCASIONS MODULE
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def events_enabled():
     return feature_enabled("events")
@@ -5625,9 +5604,9 @@ def delete_event(event_id):
     c.close()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 🎁  ADMIN GIFT SYSTEM
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  ADMIN GIFT SYSTEM
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def admin_grant_gift(user_id, gift_type, value="", xp_amount=0, vip_days=0,
                      feature_key="", granted_by=0, source="admin", source_detail=""):
@@ -5689,9 +5668,9 @@ def has_active_feature_access(uid, feature_key):
     return False
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 💎  SUBSCRIPTIONS V2 (precise expiry)
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  SUBSCRIPTIONS V2 (precise expiry)
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def create_subscription(user_id, plan="vip", duration_hours=0, source="admin", amount=0, payment_id=None):
     now = datetime.now(TZ)
@@ -5733,9 +5712,9 @@ def get_active_subscriptions(uid):
     return rows
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# 🔐  ACCESS CONTROL CENTER
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ð  ACCESS CONTROL CENTER
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def get_user_access_matrix(uid):
     """Return a dict of feature_key -> status for a user."""
@@ -5762,29 +5741,29 @@ def get_user_access_matrix(uid):
         key = f["key"]
         mode = feature_access_mode(key, uid)
         if mode == "off":
-            result[key] = "🔴 disabled"
+            result[key] = "ð´ disabled"
         elif mode == "vip":
-            result[key] = "🟢" if (vip or key in grant_map) else "💎 VIP"
+            result[key] = "ð¢" if (vip or key in grant_map) else "ð VIP"
         else:
-            result[key] = "🟢"
+            result[key] = "ð¢"
     return result
 
 
 async def xp_command(update,context):
-    uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"⭐ XP: {xp}\n🏅 سطح: {level}\n👑 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}")
+    uid=update.effective_user.id; xp,level,_=xp_info(uid); await update.message.reply_text(f"â­ XP: {xp}\nð Ø³Ø·Ø­: {level}\nð VIP: {'ÙØ¹Ø§Ù' if is_vip(uid) else 'ØºÛØ±ÙØ¹Ø§Ù'}")
 
 def final_admin_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats"),InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("🧰 ابزار کاربر",callback_data="adm:tools")],[InlineKeyboardButton("📡 کانال و پست‌گذاری",callback_data="adm:channel"),InlineKeyboardButton("👥 مدیریت مشتری",callback_data="adm:customers")],[InlineKeyboardButton("⚙️ قابلیت‌ها",callback_data="adm:features"),InlineKeyboardButton("💰 هزینه/سرویس‌ها",callback_data="adm:costs")],
-        [InlineKeyboardButton("⭐ XP / VIP",callback_data="adm:xpvip"),InlineKeyboardButton("👥 ظرفیت/کاربران",callback_data="adm:capacity")],[InlineKeyboardButton("🎫 تیکت‌ها",callback_data="adm:tickets"),InlineKeyboardButton("🩺 Health Check",callback_data="adm:health")],[InlineKeyboardButton("⏰ زمان‌بندی چکاپ",callback_data="adm:health_schedule"),InlineKeyboardButton("⏸ توقف موقت ربات",callback_data="adm:pause")],[InlineKeyboardButton("🧪 مرکز تست",callback_data="adm:test"),InlineKeyboardButton("💾 بکاپ",callback_data="adm:backup")],[InlineKeyboardButton("🔎 عیب‌یابی کامل",callback_data="adm:diagnostics"),InlineKeyboardButton("📝 لاگ مدیران",callback_data="adm:audit")],[InlineKeyboardButton("📋 گزارش روز",callback_data="adm:report"),InlineKeyboardButton("📢 پیام همگانی",callback_data="adm:broadcast")],[InlineKeyboardButton("🏠 منوی اصلی",callback_data="adm:main")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯",callback_data="adm:stats"),InlineKeyboardButton("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data="adm:users")],[InlineKeyboardButton("ð Ø¬Ø³ØªØ¬Ù",callback_data="adm:search"),InlineKeyboardButton("ð§° Ø§Ø¨Ø²Ø§Ø± Ú©Ø§Ø±Ø¨Ø±",callback_data="adm:tools")],[InlineKeyboardButton("ð¡ Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û",callback_data="adm:channel"),InlineKeyboardButton("ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û",callback_data="adm:customers")],[InlineKeyboardButton("âï¸ ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="adm:features"),InlineKeyboardButton("ð° ÙØ²ÛÙÙ/Ø³Ø±ÙÛØ³âÙØ§",callback_data="adm:costs")],
+        [InlineKeyboardButton("â­ XP / VIP",callback_data="adm:xpvip"),InlineKeyboardButton("ð¥ Ø¸Ø±ÙÛØª/Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data="adm:capacity")],[InlineKeyboardButton("ð« ØªÛÚ©ØªâÙØ§",callback_data="adm:tickets"),InlineKeyboardButton("ð©º Health Check",callback_data="adm:health")],[InlineKeyboardButton("â° Ø²ÙØ§ÙâØ¨ÙØ¯Û ÚÚ©Ø§Ù¾",callback_data="adm:health_schedule"),InlineKeyboardButton("â¸ ØªÙÙÙ ÙÙÙØª Ø±Ø¨Ø§Øª",callback_data="adm:pause")],[InlineKeyboardButton("ð§ª ÙØ±Ú©Ø² ØªØ³Øª",callback_data="adm:test"),InlineKeyboardButton("ð¾ Ø¨Ú©Ø§Ù¾",callback_data="adm:backup")],[InlineKeyboardButton("ð Ø¹ÛØ¨âÛØ§Ø¨Û Ú©Ø§ÙÙ",callback_data="adm:diagnostics"),InlineKeyboardButton("ð ÙØ§Ú¯ ÙØ¯ÛØ±Ø§Ù",callback_data="adm:audit")],[InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ Ø±ÙØ²",callback_data="adm:report"),InlineKeyboardButton("ð¢ Ù¾ÛØ§Ù ÙÙÚ¯Ø§ÙÛ",callback_data="adm:broadcast")],[InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ",callback_data="adm:main")]])
 
 async def admin_user_detail_callback(update,context, target_override=None):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     try:
         await q.answer(); target=int(target_override) if target_override is not None else int(q.data.split(":",1)[1]); c=db()
         u=c.execute("SELECT * FROM users WHERE user_id=?",(target,)).fetchone()
         if not u:
-            c.close(); await q.message.reply_text("❌ کاربر پیدا نشد.",reply_markup=final_admin_keyboard()); return
+            c.close(); await q.message.reply_text("â Ú©Ø§Ø±Ø¨Ø± Ù¾ÛØ¯Ø§ ÙØ´Ø¯.",reply_markup=final_admin_keyboard()); return
         usage=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=?",(target,)).fetchone()["n"]
         usage30=c.execute("SELECT COUNT(*) n FROM bot_usage_events WHERE user_id=? AND created_at>=?",(target,(datetime.now(TZ)-timedelta(days=30)).isoformat())).fetchone()["n"]
         goals=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=?",(target,)).fetchone()["n"]
@@ -5796,55 +5775,55 @@ async def admin_user_detail_callback(update,context, target_override=None):
         subs=c.execute("SELECT * FROM subscription_history WHERE user_id=? ORDER BY created_at DESC LIMIT 10",(target,)).fetchall()
         manager=c.execute("SELECT u.user_id,u.first_name,u.username FROM users u JOIN users t ON t.manager_user_id=u.user_id WHERE t.user_id=?",(target,)).fetchone()
         c.close()
-        sub_lines="\n".join(f"• {r['plan']} | {r['duration_days']} روز | {r['source']} | تا {r['expires_at'] or '—'}" for r in subs) or "سابقه‌ای ثبت نشده"
-        uname=("@"+u["username"]) if u["username"] else "ثبت نشده"
-        manager_name=(f"@{manager['username']}" if manager and manager['username'] else (manager['first_name'] if manager else "ثبت نشده"))
-        text=(f"👤 <b>پرونده کاربر</b>\n\nنام: {html.escape(u['first_name'] or 'بدون نام')}\n👤 Username: <code>{html.escape(uname)}</code>\n🆔 ID: <code>{target}</code>\n👨‍💼 مدیر مرتبط: <b>{html.escape(manager_name)}</b>\nوضعیت: {'⛔ محدود' if u['blocked'] else '🟢 فعال'}\n💎 اشتراک: {'فعال تا '+(u['vip_until'] or '')[:16] if u['vip_until'] else 'رایگان'}\n⭐ XP: {u['xp']}\n\n📊 <b>آمار استفاده</b>\n🤖 رویدادهای ربات: {usage}\n📅 ۳۰ روز اخیر: {usage30}\n🎯 اهداف: {goals} | انجام‌شده: {done}\n📣 واکنش کانال: {reactions}\n🗳 نظرسنجی: {polls}\n🤝 دعوت موفق: {referrals}\n👥 نوبت‌های کسب‌وکار: {appts}\n\n💳 <b>سوابق اشتراک/تمدید</b>\n{sub_lines}")
-        kb=[[InlineKeyboardButton("🚫 محدود کردن" if not u['blocked'] else "🔓 رفع محدودیت",callback_data=f"admu_block:{target}")],
-            [InlineKeyboardButton("🎁 ۷ روز رایگان",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("💎 ۳۰ روز",callback_data=f"admu_vip:{target}:30")],
-            [InlineKeyboardButton("♾️ اشتراک نامحدود",callback_data=f"admu_unlimited:{target}"),InlineKeyboardButton("✏️ ویرایش اشتراک",callback_data=f"admu_editvip:{target}")],
-            [InlineKeyboardButton("👨‍💼 ارتقاء به مدیر",callback_data=f"admu_promote:{target}"),InlineKeyboardButton("👨‍💼 مدیر مرتبط",callback_data=f"admu_manager:{target}")],
-            [InlineKeyboardButton("⬅️ کاربران",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")]]
+        sub_lines="\n".join(f"â¢ {r['plan']} | {r['duration_days']} Ø±ÙØ² | {r['source']} | ØªØ§ {r['expires_at'] or 'â'}" for r in subs) or "Ø³Ø§Ø¨ÙÙâØ§Û Ø«Ø¨Øª ÙØ´Ø¯Ù"
+        uname=("@"+u["username"]) if u["username"] else "Ø«Ø¨Øª ÙØ´Ø¯Ù"
+        manager_name=(f"@{manager['username']}" if manager and manager['username'] else (manager['first_name'] if manager else "Ø«Ø¨Øª ÙØ´Ø¯Ù"))
+        text=(f"ð¤ <b>Ù¾Ø±ÙÙØ¯Ù Ú©Ø§Ø±Ø¨Ø±</b>\n\nÙØ§Ù: {html.escape(u['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù')}\nð¤ Username: <code>{html.escape(uname)}</code>\nð ID: <code>{target}</code>\nð¨âð¼ ÙØ¯ÛØ± ÙØ±ØªØ¨Ø·: <b>{html.escape(manager_name)}</b>\nÙØ¶Ø¹ÛØª: {'â ÙØ­Ø¯ÙØ¯' if u['blocked'] else 'ð¢ ÙØ¹Ø§Ù'}\nð Ø§Ø´ØªØ±Ø§Ú©: {'ÙØ¹Ø§Ù ØªØ§ '+(u['vip_until'] or '')[:16] if u['vip_until'] else 'Ø±Ø§ÛÚ¯Ø§Ù'}\nâ­ XP: {u['xp']}\n\nð <b>Ø¢ÙØ§Ø± Ø§Ø³ØªÙØ§Ø¯Ù</b>\nð¤ Ø±ÙÛØ¯Ø§Ø¯ÙØ§Û Ø±Ø¨Ø§Øª: {usage}\nð Û³Û° Ø±ÙØ² Ø§Ø®ÛØ±: {usage30}\nð¯ Ø§ÙØ¯Ø§Ù: {goals} | Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {done}\nð£ ÙØ§Ú©ÙØ´ Ú©Ø§ÙØ§Ù: {reactions}\nð³ ÙØ¸Ø±Ø³ÙØ¬Û: {polls}\nð¤ Ø¯Ø¹ÙØª ÙÙÙÙ: {referrals}\nð¥ ÙÙØ¨ØªâÙØ§Û Ú©Ø³Ø¨âÙÚ©Ø§Ø±: {appts}\n\nð³ <b>Ø³ÙØ§Ø¨Ù Ø§Ø´ØªØ±Ø§Ú©/ØªÙØ¯ÛØ¯</b>\n{sub_lines}")
+        kb=[[InlineKeyboardButton("ð« ÙØ­Ø¯ÙØ¯ Ú©Ø±Ø¯Ù" if not u['blocked'] else "ð Ø±ÙØ¹ ÙØ­Ø¯ÙØ¯ÛØª",callback_data=f"admu_block:{target}")],
+            [InlineKeyboardButton("ð Û· Ø±ÙØ² Ø±Ø§ÛÚ¯Ø§Ù",callback_data=f"admu_vip:{target}:7"),InlineKeyboardButton("ð Û³Û° Ø±ÙØ²",callback_data=f"admu_vip:{target}:30")],
+            [InlineKeyboardButton("â¾ï¸ Ø§Ø´ØªØ±Ø§Ú© ÙØ§ÙØ­Ø¯ÙØ¯",callback_data=f"admu_unlimited:{target}"),InlineKeyboardButton("âï¸ ÙÛØ±Ø§ÛØ´ Ø§Ø´ØªØ±Ø§Ú©",callback_data=f"admu_editvip:{target}")],
+            [InlineKeyboardButton("ð¨âð¼ Ø§Ø±ØªÙØ§Ø¡ Ø¨Ù ÙØ¯ÛØ±",callback_data=f"admu_promote:{target}"),InlineKeyboardButton("ð¨âð¼ ÙØ¯ÛØ± ÙØ±ØªØ¨Ø·",callback_data=f"admu_manager:{target}")],
+            [InlineKeyboardButton("â¬ï¸ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")]]
         try: await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
         except Exception: await q.message.reply_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
     except Exception as e:
         logger.exception("admin_user_detail_callback failed")
-        try: await q.message.reply_text(f"❌ خطا در نمایش اطلاعات کاربر: <code>{type(e).__name__}</code>",parse_mode="HTML",reply_markup=final_admin_keyboard())
+        try: await q.message.reply_text(f"â Ø®Ø·Ø§ Ø¯Ø± ÙÙØ§ÛØ´ Ø§Ø·ÙØ§Ø¹Ø§Øª Ú©Ø§Ø±Ø¨Ø±: <code>{type(e).__name__}</code>",parse_mode="HTML",reply_markup=final_admin_keyboard())
         except Exception: pass
 
 async def admin_user_action_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     parts=q.data.split(":"); action=parts[0].split("_",1)[1]; target=int(parts[1]); now=datetime.now(TZ).isoformat(); c=db()
     if action=="block":
-        r=c.execute("SELECT blocked FROM users WHERE user_id=?",(target,)).fetchone(); new=0 if r and r["blocked"] else 1; c.execute("UPDATE users SET blocked=? WHERE user_id=?",(new,target)); c.commit(); c.close(); admin_log(uid,"user_block_toggle",target,str(new)); await q.answer("🔓 رفع محدودیت شد" if not new else "🚫 محدود شد")
+        r=c.execute("SELECT blocked FROM users WHERE user_id=?",(target,)).fetchone(); new=0 if r and r["blocked"] else 1; c.execute("UPDATE users SET blocked=? WHERE user_id=?",(new,target)); c.commit(); c.close(); admin_log(uid,"user_block_toggle",target,str(new)); await q.answer("ð Ø±ÙØ¹ ÙØ­Ø¯ÙØ¯ÛØª Ø´Ø¯" if not new else "ð« ÙØ­Ø¯ÙØ¯ Ø´Ø¯")
         try:
             await admin_user_detail_callback(update,context,target)
         except Exception:
             logger.exception("admin_user_detail_callback after block failed")
-            try: await q.message.reply_text("✅ وضعیت کاربر تغییر کرد.",reply_markup=final_admin_keyboard())
+            try: await q.message.reply_text("â ÙØ¶Ø¹ÛØª Ú©Ø§Ø±Ø¨Ø± ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=final_admin_keyboard())
             except Exception: pass
         return
     elif action=="vip":
-        days=int(parts[2]); expires=(datetime.now(TZ)+timedelta(days=days)).isoformat(); c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP",days,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_grant",target,f"{days}d"); await q.answer(f"💎 {days} روز VIP شد")
+        days=int(parts[2]); expires=(datetime.now(TZ)+timedelta(days=days)).isoformat(); c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP",days,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_grant",target,f"{days}d"); await q.answer(f"ð {days} Ø±ÙØ² VIP Ø´Ø¯")
     elif action=="unlimited":
-        expires="9999-12-31T23:59:59"; c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Unlimited",0,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_unlimited",target); await q.answer("♾️ اشتراک نامحدود شد")
+        expires="9999-12-31T23:59:59"; c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(expires,target)); c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",(target,"VIP Unlimited",0,"admin",now,expires,now)); c.commit(); c.close(); admin_log(uid,"vip_unlimited",target); await q.answer("â¾ï¸ Ø§Ø´ØªØ±Ø§Ú© ÙØ§ÙØ­Ø¯ÙØ¯ Ø´Ø¯")
     elif action=="editvip":
-        c.close(); await q.message.reply_text("✏️ <b>ویرایش اشتراک</b>\n\nروز مثبت = اضافه کردن\nروز منفی = کم کردن\n0 = لغو کامل\nمثال: -7 یا 15",parse_mode="HTML",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return
+        c.close(); await q.message.reply_text("âï¸ <b>ÙÛØ±Ø§ÛØ´ Ø§Ø´ØªØ±Ø§Ú©</b>\n\nØ±ÙØ² ÙØ«Ø¨Øª = Ø§Ø¶Ø§ÙÙ Ú©Ø±Ø¯Ù\nØ±ÙØ² ÙÙÙÛ = Ú©Ù Ú©Ø±Ø¯Ù\n0 = ÙØºÙ Ú©Ø§ÙÙ\nÙØ«Ø§Ù: -7 ÛØ§ 15",parse_mode="HTML",reply_markup=nav_keyboard(uid)); context.user_data["admin_vip_edit_user"]=target; return
     elif action=="manager":
         c.close()
         context.user_data["admin_manager_target"] = target
         await q.answer()
-        await q.message.edit_text("👨‍💼 <b>مدیر مرتبط</b>\n\nUsername یا Telegram ID مدیر را بفرست.\nبرای حذف مدیر، عبارت «حذف» را بفرست.",parse_mode="HTML",reply_markup=nav_keyboard(uid))
+        await q.message.edit_text("ð¨âð¼ <b>ÙØ¯ÛØ± ÙØ±ØªØ¨Ø·</b>\n\nUsername ÛØ§ Telegram ID ÙØ¯ÛØ± Ø±Ø§ Ø¨ÙØ±Ø³Øª.\nØ¨Ø±Ø§Û Ø­Ø°Ù ÙØ¯ÛØ±Ø Ø¹Ø¨Ø§Ø±Øª Â«Ø­Ø°ÙÂ» Ø±Ø§ Ø¨ÙØ±Ø³Øª.",parse_mode="HTML",reply_markup=nav_keyboard(uid))
         return
     elif action=="promote":
-        if target==master_owner_id(): c.close(); await q.answer("❌ Owner همیشه مدیر است.",show_alert=True); return
+        if target==master_owner_id(): c.close(); await q.answer("â Owner ÙÙÛØ´Ù ÙØ¯ÛØ± Ø§Ø³Øª.",show_alert=True); return
         existing=c.execute("SELECT user_id FROM management_roles WHERE user_id=?",(target,)).fetchone()
         if existing:
             c.execute("UPDATE management_roles SET active=1,updated_at=? WHERE user_id=?",(now,target))
         else:
             c.execute("INSERT INTO management_roles(user_id,role,domain,permissions_json,active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)",(target,"general_manager","general",json.dumps(sorted(MASTER_ROLE_PERMISSIONS.get("general_manager",set()))),now,now))
-        c.commit(); c.close(); admin_log(uid,"manager_promoted",target,"general_manager"); await q.answer("✅ کاربر به مدیر ارتقا یافت.",show_alert=True)
+        c.commit(); c.close(); admin_log(uid,"manager_promoted",target,"general_manager"); await q.answer("â Ú©Ø§Ø±Ø¨Ø± Ø¨Ù ÙØ¯ÛØ± Ø§Ø±ØªÙØ§ ÛØ§ÙØª.",show_alert=True)
         try: await admin_user_detail_callback(update,context,target)
         except Exception: pass
         return
@@ -5889,11 +5868,11 @@ def _admin_db_diagnostics():
 
 def _admin_diagnostics_text():
     checks=_admin_db_diagnostics()
-    lines=["🔎 <b>عیب‌یابی کامل ربات</b>",""]
+    lines=["ð <b>Ø¹ÛØ¨âÛØ§Ø¨Û Ú©Ø§ÙÙ Ø±Ø¨Ø§Øª</b>",""]
     for name,ok,detail in checks:
-        lines.append(f"{'🟢' if ok else '🔴'} {html.escape(name)} — {html.escape(detail)}")
+        lines.append(f"{'ð¢' if ok else 'ð´'} {html.escape(name)} â {html.escape(detail)}")
     bad=sum(1 for _,ok,_ in checks if not ok)
-    lines += ["", f"نتیجه: {'🟢 سالم' if not bad else f'🔴 {bad} مورد نیازمند بررسی'}"]
+    lines += ["", f"ÙØªÛØ¬Ù: {'ð¢ Ø³Ø§ÙÙ' if not bad else f'ð´ {bad} ÙÙØ±Ø¯ ÙÛØ§Ø²ÙÙØ¯ Ø¨Ø±Ø±Ø³Û'}"]
     return "\n".join(lines)
 
 def _admin_test_text():
@@ -5902,25 +5881,25 @@ def _admin_test_text():
     tables_ok=sum(1 for name,ok,_ in checks if name.startswith("table:") and ok)
     tables_total=sum(1 for name,_,_ in checks if name.startswith("table:"))
     return (
-        "🧪 <b>مرکز تست</b>\n\n"
-        f"🗄 دیتابیس: {'🟢 سالم' if db_ok else '🔴 مشکل دارد'}\n"
-        f"📦 جداول اصلی: {tables_ok}/{tables_total}\n"
-        f"🩺 Health Check: آماده اجرا از پنل\n"
-        f"📢 کانال: تست اتصال از بخش کانال\n"
-        f"📅 رزرو: تاریخ/ساعت در مسیر واقعی رزرو بررسی می‌شود\n\n"
-        "این بخش تست‌های غیرمخرب انجام می‌دهد و هیچ داده کاربر را حذف نمی‌کند."
+        "ð§ª <b>ÙØ±Ú©Ø² ØªØ³Øª</b>\n\n"
+        f"ð Ø¯ÛØªØ§Ø¨ÛØ³: {'ð¢ Ø³Ø§ÙÙ' if db_ok else 'ð´ ÙØ´Ú©Ù Ø¯Ø§Ø±Ø¯'}\n"
+        f"ð¦ Ø¬Ø¯Ø§ÙÙ Ø§ØµÙÛ: {tables_ok}/{tables_total}\n"
+        f"ð©º Health Check: Ø¢ÙØ§Ø¯Ù Ø§Ø¬Ø±Ø§ Ø§Ø² Ù¾ÙÙ\n"
+        f"ð¢ Ú©Ø§ÙØ§Ù: ØªØ³Øª Ø§ØªØµØ§Ù Ø§Ø² Ø¨Ø®Ø´ Ú©Ø§ÙØ§Ù\n"
+        f"ð Ø±Ø²Ø±Ù: ØªØ§Ø±ÛØ®/Ø³Ø§Ø¹Øª Ø¯Ø± ÙØ³ÛØ± ÙØ§ÙØ¹Û Ø±Ø²Ø±Ù Ø¨Ø±Ø±Ø³Û ÙÛâØ´ÙØ¯\n\n"
+        "Ø§ÛÙ Ø¨Ø®Ø´ ØªØ³ØªâÙØ§Û ØºÛØ±ÙØ®Ø±Ø¨ Ø§ÙØ¬Ø§Ù ÙÛâØ¯ÙØ¯ Ù ÙÛÚ Ø¯Ø§Ø¯Ù Ú©Ø§Ø±Ø¨Ø± Ø±Ø§ Ø­Ø°Ù ÙÙÛâÚ©ÙØ¯."
     )
 
 async def _admin_manual_backup(update, context):
     uid=update.effective_user.id
     if not admin_guard(uid):
-        await update.callback_query.answer("⛔",show_alert=True); return
-    await update.callback_query.answer("در حال ساخت بکاپ...")
+        await update.callback_query.answer("â",show_alert=True); return
+    await update.callback_query.answer("Ø¯Ø± Ø­Ø§Ù Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾...")
     ok=backup_database_snapshot(keep=20)
     admin_log(uid,"manual_backup",None,"success" if ok else "failed")
     await update.callback_query.message.edit_text(
-        ("💾 <b>بکاپ با موفقیت ساخته شد.</b>\nنسخه‌های قبلی هم حفظ شدند."
-         if ok else "❌ ساخت بکاپ انجام نشد. لاگ خطا را بررسی کن."),
+        ("ð¾ <b>Ø¨Ú©Ø§Ù¾ Ø¨Ø§ ÙÙÙÙÛØª Ø³Ø§Ø®ØªÙ Ø´Ø¯.</b>\nÙØ³Ø®ÙâÙØ§Û ÙØ¨ÙÛ ÙÙ Ø­ÙØ¸ Ø´Ø¯ÙØ¯."
+         if ok else "â Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾ Ø§ÙØ¬Ø§Ù ÙØ´Ø¯. ÙØ§Ú¯ Ø®Ø·Ø§ Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù."),
         parse_mode="HTML",reply_markup=final_admin_keyboard()
     )
 
@@ -5932,17 +5911,17 @@ def admin_costs_text():
     active7=c.execute("SELECT COUNT(*) n FROM users WHERE last_active_at>=?",((datetime.now(TZ)-timedelta(days=7)).isoformat(),)).fetchone()["n"]
     c.close()
     labels={
-        "free":"🟢 رایگان", "optional_paid":"🟡 پولیِ اختیاری", "variable":"🟠 هزینه متغیر",
-        "free_or_variable":"🟠 رایگان/متغیر", "transactional":"🔵 وابسته به تراکنش"
+        "free":"ð¢ Ø±Ø§ÛÚ¯Ø§Ù", "optional_paid":"ð¡ Ù¾ÙÙÛÙ Ø§Ø®ØªÛØ§Ø±Û", "variable":"ð  ÙØ²ÛÙÙ ÙØªØºÛØ±",
+        "free_or_variable":"ð  Ø±Ø§ÛÚ¯Ø§Ù/ÙØªØºÛØ±", "transactional":"ðµ ÙØ§Ø¨Ø³ØªÙ Ø¨Ù ØªØ±Ø§Ú©ÙØ´"
     }
-    lines=["💰 <b>مرکز هزینه و سرویس‌ها</b>","","این بخش با «رایگان/VIP» فرق دارد:","• ⚙️ قابلیت‌ها = دسترسی کاربر","• 💰 این بخش = هزینه سرویس زیرساختی/خارجی","",f"👥 کاربران ثبت‌شده: <b>{users}</b>",f"🟢 فعال ۲۴ ساعت اخیر: <b>{active24}</b>",f"📅 فعال ۷ روز اخیر: <b>{active7}</b>",""]
+    lines=["ð° <b>ÙØ±Ú©Ø² ÙØ²ÛÙÙ Ù Ø³Ø±ÙÛØ³âÙØ§</b>","","Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Â«Ø±Ø§ÛÚ¯Ø§Ù/VIPÂ» ÙØ±Ù Ø¯Ø§Ø±Ø¯:","â¢ âï¸ ÙØ§Ø¨ÙÛØªâÙØ§ = Ø¯Ø³ØªØ±Ø³Û Ú©Ø§Ø±Ø¨Ø±","â¢ ð° Ø§ÛÙ Ø¨Ø®Ø´ = ÙØ²ÛÙÙ Ø³Ø±ÙÛØ³ Ø²ÛØ±Ø³Ø§Ø®ØªÛ/Ø®Ø§Ø±Ø¬Û","",f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø«Ø¨ØªâØ´Ø¯Ù: <b>{users}</b>",f"ð¢ ÙØ¹Ø§Ù Û²Û´ Ø³Ø§Ø¹Øª Ø§Ø®ÛØ±: <b>{active24}</b>",f"ð ÙØ¹Ø§Ù Û· Ø±ÙØ² Ø§Ø®ÛØ±: <b>{active7}</b>",""]
     for r in rows:
         state=labels.get(r["status"],r["status"])
-        on="🟢 روشن" if r["enabled"] else "🔴 خاموش"
-        lines.append(f"{state} {html.escape(r['label'])} — {on}")
-        lines.append(f"  ارائه‌دهنده: {html.escape(r['provider'] or '—')}")
+        on="ð¢ Ø±ÙØ´Ù" if r["enabled"] else "ð´ Ø®Ø§ÙÙØ´"
+        lines.append(f"{state} {html.escape(r['label'])} â {on}")
+        lines.append(f"  Ø§Ø±Ø§Ø¦ÙâØ¯ÙÙØ¯Ù: {html.escape(r['provider'] or 'â')}")
         lines.append(f"  {html.escape(r['note'])}")
-    lines += ["","⚠️ قیمت دقیق سرویس‌های خارجی ثابت نیست و باید طبق ارائه‌دهنده انتخابی تنظیم شود."]
+    lines += ["","â ï¸ ÙÛÙØª Ø¯ÙÛÙ Ø³Ø±ÙÛØ³âÙØ§Û Ø®Ø§Ø±Ø¬Û Ø«Ø§Ø¨Øª ÙÛØ³Øª Ù Ø¨Ø§ÛØ¯ Ø·Ø¨Ù Ø§Ø±Ø§Ø¦ÙâØ¯ÙÙØ¯Ù Ø§ÙØªØ®Ø§Ø¨Û ØªÙØ¸ÛÙ Ø´ÙØ¯."]
     return "\n".join(lines)
 
 def admin_capacity_text():
@@ -5953,19 +5932,19 @@ def admin_capacity_text():
     d30=c.execute("SELECT COUNT(*) n FROM users WHERE last_active_at>=?",((datetime.now(TZ)-timedelta(days=30)).isoformat(),)).fetchone()["n"]
     blocked=c.execute("SELECT COUNT(*) n FROM users WHERE blocked=1").fetchone()["n"]
     c.close()
-    return ("👥 <b>ظرفیت و کاربران ربات</b>\n\n"
-            f"👤 کل کاربران ثبت‌شده: <b>{total}</b>\n"
-            f"🟢 فعال ۲۴ ساعت اخیر: <b>{d1}</b>\n"
-            f"📅 فعال ۷ روز اخیر: <b>{d7}</b>\n"
-            f"🗓 فعال ۳۰ روز اخیر: <b>{d30}</b>\n"
-            f"⛔ محدودشده: <b>{blocked}</b>\n\n"
-            "ℹ️ در کد فعلی سقف عددیِ ثابت برای تعداد کاربران تعریف نشده است. ظرفیت واقعی به منابع سرور، دیتابیس، APIها و محدودیت‌های Telegram بستگی دارد.\n"
-            "📌 این نسخه از SQLite استفاده می‌کند؛ برای تعداد بسیار زیاد کاربر بهتر است بعداً دیتابیس سروری مثل PostgreSQL و صف/کش اضافه شود.")
+    return ("ð¥ <b>Ø¸Ø±ÙÛØª Ù Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø±Ø¨Ø§Øª</b>\n\n"
+            f"ð¤ Ú©Ù Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø«Ø¨ØªâØ´Ø¯Ù: <b>{total}</b>\n"
+            f"ð¢ ÙØ¹Ø§Ù Û²Û´ Ø³Ø§Ø¹Øª Ø§Ø®ÛØ±: <b>{d1}</b>\n"
+            f"ð ÙØ¹Ø§Ù Û· Ø±ÙØ² Ø§Ø®ÛØ±: <b>{d7}</b>\n"
+            f"ð ÙØ¹Ø§Ù Û³Û° Ø±ÙØ² Ø§Ø®ÛØ±: <b>{d30}</b>\n"
+            f"â ÙØ­Ø¯ÙØ¯Ø´Ø¯Ù: <b>{blocked}</b>\n\n"
+            "â¹ï¸ Ø¯Ø± Ú©Ø¯ ÙØ¹ÙÛ Ø³ÙÙ Ø¹Ø¯Ø¯ÛÙ Ø«Ø§Ø¨Øª Ø¨Ø±Ø§Û ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ØªØ¹Ø±ÛÙ ÙØ´Ø¯Ù Ø§Ø³Øª. Ø¸Ø±ÙÛØª ÙØ§ÙØ¹Û Ø¨Ù ÙÙØ§Ø¨Ø¹ Ø³Ø±ÙØ±Ø Ø¯ÛØªØ§Ø¨ÛØ³Ø APIÙØ§ Ù ÙØ­Ø¯ÙØ¯ÛØªâÙØ§Û Telegram Ø¨Ø³ØªÚ¯Û Ø¯Ø§Ø±Ø¯.\n"
+            "ð Ø§ÛÙ ÙØ³Ø®Ù Ø§Ø² SQLite Ø§Ø³ØªÙØ§Ø¯Ù ÙÛâÚ©ÙØ¯Ø Ø¨Ø±Ø§Û ØªØ¹Ø¯Ø§Ø¯ Ø¨Ø³ÛØ§Ø± Ø²ÛØ§Ø¯ Ú©Ø§Ø±Ø¨Ø± Ø¨ÙØªØ± Ø§Ø³Øª Ø¨Ø¹Ø¯Ø§Ù Ø¯ÛØªØ§Ø¨ÛØ³ Ø³Ø±ÙØ±Û ÙØ«Ù PostgreSQL Ù ØµÙ/Ú©Ø´ Ø§Ø¶Ø§ÙÙ Ø´ÙØ¯.")
 
 
 async def admin_users_navigation_callback(update,context, page_override=None):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     parts=(q.data or "").split(":"); action=parts[1] if len(parts)>1 else "list"
     page=(int(page_override) if page_override is not None else (int(parts[2]) if len(parts)>2 and parts[2].isdigit() else 1))
     page=max(1,page)
@@ -5976,20 +5955,20 @@ async def admin_users_navigation_callback(update,context, page_override=None):
                             m.first_name manager_name,m.username manager_username
                      FROM users u LEFT JOIN users m ON m.user_id=u.manager_user_id
                      ORDER BY u.created_at DESC LIMIT ? OFFSET ?""",(per_page,offset)).fetchall(); c.close()
-    lines=[f"👥 <b>کاربران</b>\nصفحه {page} از {pages} | کل: {total}",""]
+    lines=[f"ð¥ <b>Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>\nØµÙØ­Ù {page} Ø§Ø² {pages} | Ú©Ù: {total}",""]
     kb=[]
     for r in rows:
-        uname=("@"+r["username"]) if r["username"] else "بدون username"
-        mgr=("@"+r["manager_username"]) if r["manager_username"] else (r["manager_name"] or "بدون مدیر")
-        state="⛔" if r["blocked"] else "🟢"
-        vip="💎" if r["vip_until"] and str(r["vip_until"])[:4] != "9999" else ("♾️" if r["vip_until"] else "")
-        lines.append(f"{state} {html.escape(r['first_name'] or 'بدون نام')} | {html.escape(uname)} | ⭐{r['xp']} {vip}\n👨‍💼 {html.escape(mgr)} | ID: <code>{r['user_id']}</code>")
-        kb.append([InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | {uname}",callback_data=f"admu:{r['user_id']}")])
+        uname=("@"+r["username"]) if r["username"] else "Ø¨Ø¯ÙÙ username"
+        mgr=("@"+r["manager_username"]) if r["manager_username"] else (r["manager_name"] or "Ø¨Ø¯ÙÙ ÙØ¯ÛØ±")
+        state="â" if r["blocked"] else "ð¢"
+        vip="ð" if r["vip_until"] and str(r["vip_until"])[:4] != "9999" else ("â¾ï¸" if r["vip_until"] else "")
+        lines.append(f"{state} {html.escape(r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù')} | {html.escape(uname)} | â­{r['xp']} {vip}\nð¨âð¼ {html.escape(mgr)} | ID: <code>{r['user_id']}</code>")
+        kb.append([InlineKeyboardButton(f"ð¤ {r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù'} | {uname}",callback_data=f"admu:{r['user_id']}")])
     nav=[]
-    if page>1: nav.append(InlineKeyboardButton("⬅️ قبلی",callback_data=f"adm:users:{page-1}"))
-    if page<pages: nav.append(InlineKeyboardButton("بعدی ➡️",callback_data=f"adm:users:{page+1}"))
+    if page>1: nav.append(InlineKeyboardButton("â¬ï¸ ÙØ¨ÙÛ",callback_data=f"adm:users:{page-1}"))
+    if page<pages: nav.append(InlineKeyboardButton("Ø¨Ø¹Ø¯Û â¡ï¸",callback_data=f"adm:users:{page+1}"))
     if nav: kb.append(nav)
-    kb.append([InlineKeyboardButton("🔎 جستجو",callback_data="adm:search"),InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+    kb.append([InlineKeyboardButton("ð Ø¬Ø³ØªØ¬Ù",callback_data="adm:search"),InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")])
     context.user_data["admin_users_page"]=page
     await q.answer()
     await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
@@ -6000,8 +5979,8 @@ async def admin_manager_assign_text(update,context):
     if not target or not admin_guard(uid): return False
     text=(update.message.text or "").strip()
     context.user_data.pop("admin_manager_target",None)
-    if text.lower() in ("حذف","remove","none","-"):
-        c=db(); c.execute("UPDATE users SET manager_user_id=NULL WHERE user_id=?",(int(target),)); c.commit(); c.close(); admin_log(uid,"manager_unassigned",target); await update.message.reply_text("✅ مدیر مرتبط حذف شد.",reply_markup=final_admin_keyboard()); return True
+    if text.lower() in ("Ø­Ø°Ù","remove","none","-"):
+        c=db(); c.execute("UPDATE users SET manager_user_id=NULL WHERE user_id=?",(int(target),)); c.commit(); c.close(); admin_log(uid,"manager_unassigned",target); await update.message.reply_text("â ÙØ¯ÛØ± ÙØ±ØªØ¨Ø· Ø­Ø°Ù Ø´Ø¯.",reply_markup=final_admin_keyboard()); return True
     ref=text.lstrip("@").strip().lower()
     c=db()
     if ref.isdigit():
@@ -6009,45 +5988,45 @@ async def admin_manager_assign_text(update,context):
     else:
         manager=c.execute("SELECT user_id,first_name,username FROM users WHERE lower(username)=?",(ref,)).fetchone()
     if not manager:
-        c.close(); await update.message.reply_text("❌ مدیر پیدا نشد. Username یا ID معتبر مدیر را بفرست.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+        c.close(); await update.message.reply_text("â ÙØ¯ÛØ± Ù¾ÛØ¯Ø§ ÙØ´Ø¯. Username ÛØ§ ID ÙØ¹ØªØ¨Ø± ÙØ¯ÛØ± Ø±Ø§ Ø¨ÙØ±Ø³Øª.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
     role=c.execute("SELECT active FROM management_roles WHERE user_id=?",(int(manager["user_id"]),)).fetchone()
     if not role or not role["active"]:
-        c.close(); await update.message.reply_text("❌ این کاربر مدیر فعال نیست.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+        c.close(); await update.message.reply_text("â Ø§ÛÙ Ú©Ø§Ø±Ø¨Ø± ÙØ¯ÛØ± ÙØ¹Ø§Ù ÙÛØ³Øª.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
     if int(manager["user_id"])==int(target):
-        c.close(); await update.message.reply_text("❌ کاربر نمی‌تواند مدیر خودش باشد.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
+        c.close(); await update.message.reply_text("â Ú©Ø§Ø±Ø¨Ø± ÙÙÛâØªÙØ§ÙØ¯ ÙØ¯ÛØ± Ø®ÙØ¯Ø´ Ø¨Ø§Ø´Ø¯.",reply_markup=nav_keyboard(uid)); context.user_data["admin_manager_target"]=target; return True
     c.execute("UPDATE users SET manager_user_id=? WHERE user_id=?",(int(manager["user_id"]),int(target))); c.commit(); c.close()
     admin_log(uid,"manager_assigned",target,str(manager["user_id"]))
-    await update.message.reply_text(f"✅ مدیر مرتبط روی {('@'+manager['username']) if manager['username'] else manager['first_name'] or manager['user_id']} تنظیم شد.",reply_markup=final_admin_keyboard()); return True
+    await update.message.reply_text(f"â ÙØ¯ÛØ± ÙØ±ØªØ¨Ø· Ø±ÙÛ {('@'+manager['username']) if manager['username'] else manager['first_name'] or manager['user_id']} ØªÙØ¸ÛÙ Ø´Ø¯.",reply_markup=final_admin_keyboard()); return True
 
 async def final_admin_panel_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔ دسترسی ندارید",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯",show_alert=True); return
     await q.answer(); a=q.data.split(":",1)[1]
     if a=="stats":
-        s=admin_stats(); text="📊 داشبورد مرکزی\n\n"+f"👥 کاربران: {s['users']}\n🆕 جدید امروز: {s['new_today']}\n🟢 فعال امروز: {s['active_today']}\n🎯 اهداف: {s['goals']}\n✅ انجام‌شده امروز: {s['done_today']}\n⏰ یادآوری: {s['reminders']}\n🏆 دستاورد: {s['achievements']}\n📅 نوبت امروز: {s['appointments_today']}\n💎 VIP فعال: {s['vip_users']}\n🎫 تیکت باز: {s['open_tickets']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
+        s=admin_stats(); text="ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ ÙØ±Ú©Ø²Û\n\n"+f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: {s['users']}\nð Ø¬Ø¯ÛØ¯ Ø§ÙØ±ÙØ²: {s['new_today']}\nð¢ ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: {s['active_today']}\nð¯ Ø§ÙØ¯Ø§Ù: {s['goals']}\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø§ÙØ±ÙØ²: {s['done_today']}\nâ° ÛØ§Ø¯Ø¢ÙØ±Û: {s['reminders']}\nð Ø¯Ø³ØªØ§ÙØ±Ø¯: {s['achievements']}\nð ÙÙØ¨Øª Ø§ÙØ±ÙØ²: {s['appointments_today']}\nð VIP ÙØ¹Ø§Ù: {s['vip_users']}\nð« ØªÛÚ©Øª Ø¨Ø§Ø²: {s['open_tickets']}"; await q.message.edit_text(text,reply_markup=final_admin_keyboard()); return
     if a.startswith("users"):
         page=int(a.split(":",1)[1]) if ":" in a and a.split(":",1)[1].isdigit() else 1
         context.user_data["admin_users_page"]=page
         # Render through the same paginated user-list implementation.
         return await admin_users_navigation_callback(update,context,page_override=page)
-    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("🔎 شناسه یا نام کاربر را بفرست:",reply_markup=nav_keyboard(uid)); return
-    if a=="tools": context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("🧰 دستورات: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
+    if a=="search": context.user_data["admin_tool_mode"]="search"; await q.message.reply_text("ð Ø´ÙØ§Ø³Ù ÛØ§ ÙØ§Ù Ú©Ø§Ø±Ø¨Ø± Ø±Ø§ Ø¨ÙØ±Ø³Øª:",reply_markup=nav_keyboard(uid)); return
+    if a=="tools": context.user_data["admin_tool_mode"]="tools"; await q.message.reply_text("ð§° Ø¯Ø³ØªÙØ±Ø§Øª: BLOCK:ID | UNBLOCK:ID | WARN:ID | XP:ID:50 | VIP:ID:30",reply_markup=nav_keyboard(uid)); return
     if a=="xpvip":
-        await q.message.edit_text("⭐ <b>XP / VIP</b>\n\nاز بخش کاربران، پرونده هر کاربر را باز کن تا XP و اشتراک را مدیریت کنی.\n\nبرای اشتراک: ➕ اضافه‌کردن روز، ➖ کم‌کردن روز، ✏️ ویرایش یا ❌ لغو کامل.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👥 کاربران",callback_data="adm:users")],[InlineKeyboardButton("⚙️ امکانات VIP",callback_data="adm:features")],[InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]])); return
+        await q.message.edit_text("â­ <b>XP / VIP</b>\n\nØ§Ø² Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ Ù¾Ø±ÙÙØ¯Ù ÙØ± Ú©Ø§Ø±Ø¨Ø± Ø±Ø§ Ø¨Ø§Ø² Ú©Ù ØªØ§ XP Ù Ø§Ø´ØªØ±Ø§Ú© Ø±Ø§ ÙØ¯ÛØ±ÛØª Ú©ÙÛ.\n\nØ¨Ø±Ø§Û Ø§Ø´ØªØ±Ø§Ú©: â Ø§Ø¶Ø§ÙÙâÚ©Ø±Ø¯Ù Ø±ÙØ²Ø â Ú©ÙâÚ©Ø±Ø¯Ù Ø±ÙØ²Ø âï¸ ÙÛØ±Ø§ÛØ´ ÛØ§ â ÙØºÙ Ú©Ø§ÙÙ.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data="adm:users")],[InlineKeyboardButton("âï¸ Ø§ÙÚ©Ø§ÙØ§Øª VIP",callback_data="adm:features")],[InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")]])); return
     if a=="features":
         await q.message.edit_text(feature_admin_text(),reply_markup=feature_admin_keyboard()); return
     if a=="costs":
         await q.message.edit_text(admin_costs_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 بروزرسانی",callback_data="adm:costs")],
-            [InlineKeyboardButton("⚙️ مدیریت دسترسی قابلیت‌ها",callback_data="adm:features")],
-            [InlineKeyboardButton("👥 ظرفیت/کاربران",callback_data="adm:capacity")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ",callback_data="adm:costs")],
+            [InlineKeyboardButton("âï¸ ÙØ¯ÛØ±ÛØª Ø¯Ø³ØªØ±Ø³Û ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="adm:features")],
+            [InlineKeyboardButton("ð¥ Ø¸Ø±ÙÛØª/Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data="adm:capacity")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")]
         ])); return
     if a=="capacity":
         await q.message.edit_text(admin_capacity_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 داشبورد",callback_data="adm:stats")],
-            [InlineKeyboardButton("💰 هزینه/سرویس‌ها",callback_data="adm:costs")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]
+            [InlineKeyboardButton("ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯",callback_data="adm:stats")],
+            [InlineKeyboardButton("ð° ÙØ²ÛÙÙ/Ø³Ø±ÙÛØ³âÙØ§",callback_data="adm:costs")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")]
         ])); return
     if a=="pause":
         until=get_system_setting("bot_paused_until","")
@@ -6058,16 +6037,16 @@ async def final_admin_panel_callback(update,context):
         if paused:
             set_system_setting("bot_paused_until","")
             admin_log(uid,"bot_pause_off",None,until)
-            await q.message.edit_text("▶️ توقف موقت لغو شد و ربات دوباره فعال است.",reply_markup=final_admin_keyboard())
+            await q.message.edit_text("â¶ï¸ ØªÙÙÙ ÙÙÙØª ÙØºÙ Ø´Ø¯ Ù Ø±Ø¨Ø§Øª Ø¯ÙØ¨Ø§Ø±Ù ÙØ¹Ø§Ù Ø§Ø³Øª.",reply_markup=final_admin_keyboard())
         else:
             context.user_data["admin_pause_mode"]=True
-            await q.message.reply_text("⏸ مدت توقف را به دقیقه بفرست. مثال: 60\nبرای توقف نامحدود بنویس: forever",reply_markup=nav_keyboard(uid))
+            await q.message.reply_text("â¸ ÙØ¯Øª ØªÙÙÙ Ø±Ø§ Ø¨Ù Ø¯ÙÛÙÙ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: 60\nØ¨Ø±Ø§Û ØªÙÙÙ ÙØ§ÙØ­Ø¯ÙØ¯ Ø¨ÙÙÛØ³: forever",reply_markup=nav_keyboard(uid))
         return
     if a=="main":
-        await q.message.edit_text("🏠 منوی اصلی")
-        await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
+        await q.message.edit_text("ð  ÙÙÙÛ Ø§ØµÙÛ")
+        await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid))
         return
-    if a=="channel": await q.message.edit_text("📡 مدیریت کانال و پست‌گذاری",reply_markup=channel_keyboard()); return
+    if a=="channel": await q.message.edit_text("ð¡ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û",reply_markup=channel_keyboard()); return
     if a=="customers":
         c=db()
         total=c.execute("SELECT COUNT(*) n FROM customers").fetchone()["n"]
@@ -6086,18 +6065,18 @@ async def final_admin_panel_callback(update,context):
                     callback_data=f"feat:{key}"
                 ))
             kb.append(row)
-        kb.append([InlineKeyboardButton("🔄 بازخوانی وضعیت",callback_data="adm:customers")])
-        kb.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+        kb.append([InlineKeyboardButton("ð Ø¨Ø§Ø²Ø®ÙØ§ÙÛ ÙØ¶Ø¹ÛØª",callback_data="adm:customers")])
+        kb.append([InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")])
         await q.message.edit_text(
-            f"👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\n"
-            f"👤 مشتریان ثبت‌شده: {total}\n"
-            f"📅 کل نوبت‌ها: {appts}\n"
-            f"🌅 نوبت امروز: {today_n}\n\n"
-            "هر گزینه مستقل است. با زدن هر گزینه وضعیتش بین 🟢 رایگان، 💎 VIP / پولی و 🔴 غیرفعال تغییر می‌کند.",
+            f"ð¥ <b>ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ</b>\n\n"
+            f"ð¤ ÙØ´ØªØ±ÛØ§Ù Ø«Ø¨ØªâØ´Ø¯Ù: {total}\n"
+            f"ð Ú©Ù ÙÙØ¨ØªâÙØ§: {appts}\n"
+            f"ð ÙÙØ¨Øª Ø§ÙØ±ÙØ²: {today_n}\n\n"
+            "ÙØ± Ú¯Ø²ÛÙÙ ÙØ³ØªÙÙ Ø§Ø³Øª. Ø¨Ø§ Ø²Ø¯Ù ÙØ± Ú¯Ø²ÛÙÙ ÙØ¶Ø¹ÛØªØ´ Ø¨ÛÙ ð¢ Ø±Ø§ÛÚ¯Ø§ÙØ ð VIP / Ù¾ÙÙÛ Ù ð´ ØºÛØ±ÙØ¹Ø§Ù ØªØºÛÛØ± ÙÛâÚ©ÙØ¯.",
             parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)
         ); return
     if a=="tickets":
-        c=db(); rows=c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close(); await q.message.edit_text("🎫 تیکت‌های باز\n\n"+"\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}" for r in rows) or "تیکت بازی نیست",reply_markup=final_admin_keyboard()); return
+        c=db(); rows=c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall(); c.close(); await q.message.edit_text("ð« ØªÛÚ©ØªâÙØ§Û Ø¨Ø§Ø²\n\n"+"\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'Ø¨Ø¯ÙÙ Ø¹ÙÙØ§Ù'}" for r in rows) or "ØªÛÚ©Øª Ø¨Ø§Ø²Û ÙÛØ³Øª",reply_markup=final_admin_keyboard()); return
     if a=="health":
         await run_health_checks(context.bot,uid)
         await q.message.edit_text(health_text(),reply_markup=final_admin_keyboard())
@@ -6105,40 +6084,40 @@ async def final_admin_panel_callback(update,context):
     if a=="health_schedule":
         enabled = get_system_setting("health_check_enabled", "1") != "0"
         schedule = get_system_setting("health_check_time", "03:00")
-        status = "🟢 روشن" if enabled else "🔴 خاموش"
+        status = "ð¢ Ø±ÙØ´Ù" if enabled else "ð´ Ø®Ø§ÙÙØ´"
         kb = [
-            [InlineKeyboardButton("⏰ تغییر ساعت", callback_data="adm:health_time")],
-            [InlineKeyboardButton("🔴 خاموش کردن" if enabled else "🟢 روشن کردن", callback_data="adm:health_toggle")],
-            [InlineKeyboardButton("🩺 اجرای همین الان", callback_data="adm:health_run")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("â° ØªØºÛÛØ± Ø³Ø§Ø¹Øª", callback_data="adm:health_time")],
+            [InlineKeyboardButton("ð´ Ø®Ø§ÙÙØ´ Ú©Ø±Ø¯Ù" if enabled else "ð¢ Ø±ÙØ´Ù Ú©Ø±Ø¯Ù", callback_data="adm:health_toggle")],
+            [InlineKeyboardButton("ð©º Ø§Ø¬Ø±Ø§Û ÙÙÛÙ Ø§ÙØ§Ù", callback_data="adm:health_run")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ]
         await q.message.edit_text(
-            f"⏰ <b>زمان‌بندی Health Check</b>\n\n"
-            f"وضعیت: {status}\n"
-            f"ساعت روزانه: <b>{html.escape(schedule)}</b>\n\n"
-            "ربات فقط یک‌بار در همان روز و در ساعت انتخاب‌شده چکاپ می‌گیرد.\n"
-            "ساعت را با قالب 24 ساعته مثل <code>14:30</code> وارد کن.",
+            f"â° <b>Ø²ÙØ§ÙâØ¨ÙØ¯Û Health Check</b>\n\n"
+            f"ÙØ¶Ø¹ÛØª: {status}\n"
+            f"Ø³Ø§Ø¹Øª Ø±ÙØ²Ø§ÙÙ: <b>{html.escape(schedule)}</b>\n\n"
+            "Ø±Ø¨Ø§Øª ÙÙØ· ÛÚ©âØ¨Ø§Ø± Ø¯Ø± ÙÙØ§Ù Ø±ÙØ² Ù Ø¯Ø± Ø³Ø§Ø¹Øª Ø§ÙØªØ®Ø§Ø¨âØ´Ø¯Ù ÚÚ©Ø§Ù¾ ÙÛâÚ¯ÛØ±Ø¯.\n"
+            "Ø³Ø§Ø¹Øª Ø±Ø§ Ø¨Ø§ ÙØ§ÙØ¨ 24 Ø³Ø§Ø¹ØªÙ ÙØ«Ù <code>14:30</code> ÙØ§Ø±Ø¯ Ú©Ù.",
             parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb)
         )
         return
     if a=="health_time":
         context.user_data["admin_health_time"] = True
-        await q.message.reply_text("⏰ ساعت جدید چکاپ را بفرست. مثال: 14:30", reply_markup=nav_keyboard(uid))
+        await q.message.reply_text("â° Ø³Ø§Ø¹Øª Ø¬Ø¯ÛØ¯ ÚÚ©Ø§Ù¾ Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: 14:30", reply_markup=nav_keyboard(uid))
         return
     if a=="health_toggle":
         enabled = get_system_setting("health_check_enabled", "1") != "0"
         set_system_setting("health_check_enabled", "0" if enabled else "1")
-        await q.message.edit_text("⏰ زمان‌بندی چکاپ تغییر کرد.", reply_markup=final_admin_keyboard())
+        await q.message.edit_text("â° Ø²ÙØ§ÙâØ¨ÙØ¯Û ÚÚ©Ø§Ù¾ ØªØºÛÛØ± Ú©Ø±Ø¯.", reply_markup=final_admin_keyboard())
         return
     if a=="health_run":
         await run_health_checks(context.bot,uid)
-        await q.message.edit_text(health_text()+"\n\n🩺 چکاپ دستی انجام شد.", reply_markup=final_admin_keyboard())
+        await q.message.edit_text(health_text()+"\n\nð©º ÚÚ©Ø§Ù¾ Ø¯Ø³ØªÛ Ø§ÙØ¬Ø§Ù Ø´Ø¯.", reply_markup=final_admin_keyboard())
         return
     if a=="test":
         await q.message.edit_text(_admin_test_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🩺 اجرای Health Check",callback_data="adm:health_run")],
-            [InlineKeyboardButton("🔎 اجرای عیب‌یابی",callback_data="adm:diagnostics")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]
+            [InlineKeyboardButton("ð©º Ø§Ø¬Ø±Ø§Û Health Check",callback_data="adm:health_run")],
+            [InlineKeyboardButton("ð Ø§Ø¬Ø±Ø§Û Ø¹ÛØ¨âÛØ§Ø¨Û",callback_data="adm:diagnostics")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")]
         ])); return
     if a=="diagnostics":
         await q.message.edit_text(_admin_diagnostics_text(),parse_mode="HTML",reply_markup=final_admin_keyboard()); return
@@ -6146,36 +6125,36 @@ async def final_admin_panel_callback(update,context):
         ok=backup_database_snapshot(keep=20)
         admin_log(uid,"manual_backup",None,"success" if ok else "failed")
         await q.message.edit_text(
-            "💾 بکاپ با موفقیت ساخته شد." if ok else "❌ ساخت بکاپ ناموفق بود.",
+            "ð¾ Ø¨Ú©Ø§Ù¾ Ø¨Ø§ ÙÙÙÙÛØª Ø³Ø§Ø®ØªÙ Ø´Ø¯." if ok else "â Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾ ÙØ§ÙÙÙÙ Ø¨ÙØ¯.",
             reply_markup=final_admin_keyboard()
         ); return
     if a=="audit":
         c=db()
         rows=c.execute("SELECT admin_id,action,target_user,details,created_at FROM admin_logs ORDER BY id DESC LIMIT 25").fetchall()
         c.close()
-        text="📝 <b>آخرین اقدامات مدیران</b>\n\n"+("\n".join(
-            f"• {r['created_at'][:16]} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'} | {html.escape(r['details'] or '')}"
+        text="ð <b>Ø¢Ø®Ø±ÛÙ Ø§ÙØ¯Ø§ÙØ§Øª ÙØ¯ÛØ±Ø§Ù</b>\n\n"+("\n".join(
+            f"â¢ {r['created_at'][:16]} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'} | {html.escape(r['details'] or '')}"
             for r in rows
-        ) or "لاگی ثبت نشده.")
+        ) or "ÙØ§Ú¯Û Ø«Ø¨Øª ÙØ´Ø¯Ù.")
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=final_admin_keyboard()); return
     if a=="report": await build_daily_report(); await q.message.edit_text(get_daily_report_text(),reply_markup=final_admin_keyboard()); return
-    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("📢 متن پیام را بفرست:",reply_markup=nav_keyboard(uid)); return
+    if a=="broadcast": context.user_data["admin_broadcast"]=True; await q.message.reply_text("ð¢ ÙØªÙ Ù¾ÛØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª:",reply_markup=nav_keyboard(uid)); return
 
 
 FEATURE_LABELS_FA = {
-    "sports": "⚽ ورزش", "nutrition": "🥗 تغذیه", "investing": "💰 سرمایه‌گذاری",
-    "self_growth": "🌱 رشد شخصی", "morning": "☀️ پیام صبح", "night": "🌙 پیام شب",
-    "auto_publish": "🤖 انتشار خودکار", "images": "🖼 تصاویر", "feedback": "👍 بازخورد",
-    "referrals": "🤝 دعوت دوستان", "mini_app": "📱 Mini App", "support": "🎫 پشتیبانی",
-    "price_data": "📈 قیمت آنلاین", "approval": "👁 تأیید قبل از انتشار",
-    "maintenance": "🛠 حالت تعمیرات", "test_mode": "🧪 تست ۷ روزه", "payments": "💳 پرداخت",
-    "customer_today": "📅 نوبت‌های امروز", "customer_new_appointment": "➕ نوبت جدید",
-    "customer_customers": "👥 مشتریان", "customer_calendar": "🗓️ تقویم کاری",
-    "customer_hours": "⏰ ساعات کاری", "customer_reminders": "🔔 یادآوری‌های مشتری",
-    "customer_analytics": "📊 آمار مشتریان", "customer_loyal": "🏆 مشتریان وفادار",
-    "customer_period": "📆 گزارش دوره‌ای", "customer_booking_link": "🔗 لینک رزرو آنلاین",
-    "customer_online_booking": "🌐 رزرو آنلاین", "customer_business_settings": "⚙️ تنظیمات کسب‌وکار",
-    "goals": "🎯 اهداف", "weekly": "📅 جدول هفتگی", "stats": "📊 آمار من", "profile": "👤 پروفایل", "achievements": "🏆 دستاوردها", "settings": "⚙️ تنظیمات", "customers": "👥 مشتری و نوبت‌دهی",
+    "sports": "â½ ÙØ±Ø²Ø´", "nutrition": "ð¥ ØªØºØ°ÛÙ", "investing": "ð° Ø³Ø±ÙØ§ÛÙâÚ¯Ø°Ø§Ø±Û",
+    "self_growth": "ð± Ø±Ø´Ø¯ Ø´Ø®ØµÛ", "morning": "âï¸ Ù¾ÛØ§Ù ØµØ¨Ø­", "night": "ð Ù¾ÛØ§Ù Ø´Ø¨",
+    "auto_publish": "ð¤ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±", "images": "ð¼ ØªØµØ§ÙÛØ±", "feedback": "ð Ø¨Ø§Ø²Ø®ÙØ±Ø¯",
+    "referrals": "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù", "mini_app": "ð± Mini App", "support": "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ",
+    "price_data": "ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ", "approval": "ð ØªØ£ÛÛØ¯ ÙØ¨Ù Ø§Ø² Ø§ÙØªØ´Ø§Ø±",
+    "maintenance": "ð  Ø­Ø§ÙØª ØªØ¹ÙÛØ±Ø§Øª", "test_mode": "ð§ª ØªØ³Øª Û· Ø±ÙØ²Ù", "payments": "ð³ Ù¾Ø±Ø¯Ø§Ø®Øª",
+    "customer_today": "ð ÙÙØ¨ØªâÙØ§Û Ø§ÙØ±ÙØ²", "customer_new_appointment": "â ÙÙØ¨Øª Ø¬Ø¯ÛØ¯",
+    "customer_customers": "ð¥ ÙØ´ØªØ±ÛØ§Ù", "customer_calendar": "ðï¸ ØªÙÙÛÙ Ú©Ø§Ø±Û",
+    "customer_hours": "â° Ø³Ø§Ø¹Ø§Øª Ú©Ø§Ø±Û", "customer_reminders": "ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙØ´ØªØ±Û",
+    "customer_analytics": "ð Ø¢ÙØ§Ø± ÙØ´ØªØ±ÛØ§Ù", "customer_loyal": "ð ÙØ´ØªØ±ÛØ§Ù ÙÙØ§Ø¯Ø§Ø±",
+    "customer_period": "ð Ú¯Ø²Ø§Ø±Ø´ Ø¯ÙØ±ÙâØ§Û", "customer_booking_link": "ð ÙÛÙÚ© Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ",
+    "customer_online_booking": "ð Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ", "customer_business_settings": "âï¸ ØªÙØ¸ÛÙØ§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±",
+    "goals": "ð¯ Ø§ÙØ¯Ø§Ù", "weekly": "ð Ø¬Ø¯ÙÙ ÙÙØªÚ¯Û", "stats": "ð Ø¢ÙØ§Ø± ÙÙ", "profile": "ð¤ Ù¾Ø±ÙÙØ§ÛÙ", "achievements": "ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "settings": "âï¸ ØªÙØ¸ÛÙØ§Øª", "customers": "ð¥ ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ",
 }
 
 def get_system_setting(key, default=""):
@@ -6215,27 +6194,27 @@ def test_mode_active():
 
 def test_mode_remaining():
     raw=get_system_setting("test_mode_started_at","")
-    if not raw: return "شروع نشده"
+    if not raw: return "Ø´Ø±ÙØ¹ ÙØ´Ø¯Ù"
     try:
         started=datetime.fromisoformat(raw)
         if started.tzinfo is None: started=started.replace(tzinfo=TZ)
         left=started+timedelta(days=7)-datetime.now(TZ)
-        if left.total_seconds() <= 0: return "پایان یافته"
-        return f"{left.days} روز و {left.seconds//3600} ساعت"
+        if left.total_seconds() <= 0: return "Ù¾Ø§ÛØ§Ù ÛØ§ÙØªÙ"
+        return f"{left.days} Ø±ÙØ² Ù {left.seconds//3600} Ø³Ø§Ø¹Øª"
     except Exception:
-        return "نامشخص"
+        return "ÙØ§ÙØ´Ø®Øµ"
 
 FEATURE_CATEGORIES={
-    "goals":("🎯 تنظیمات اهداف",["goals","weekly","stats","profile","achievements","reminders","morning","night"]),
-    "customers":("👥 تنظیمات مشتری و نوبت‌دهی",["customers","customer_today","customer_new_appointment","customer_customers","customer_calendar","customer_hours","customer_reminders","customer_analytics","customer_loyal","customer_period","customer_booking_link","customer_online_booking","customer_business_settings"]),
-    "channel":("📢 تنظیمات کانال و انتشار",["auto_publish","approval","images","feedback"]),
-    "engagement":("⭐ تنظیمات XP / VIP / دعوت",["xp","vip","referrals","payments"]),
-    "support":("🎫 تنظیمات پشتیبانی و سیستم",["support","mini_app","maintenance","test_mode"]),
-    "vipbuilder":("💎 سازنده امکانات VIP",["vip","ai","price_data","goals","weekly","stats","customers","customer_online_booking","auto_publish","approval","support","referrals"]),
+    "goals":("ð¯ ØªÙØ¸ÛÙØ§Øª Ø§ÙØ¯Ø§Ù",["goals","weekly","stats","profile","achievements","reminders","morning","night"]),
+    "customers":("ð¥ ØªÙØ¸ÛÙØ§Øª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ",["customers","customer_today","customer_new_appointment","customer_customers","customer_calendar","customer_hours","customer_reminders","customer_analytics","customer_loyal","customer_period","customer_booking_link","customer_online_booking","customer_business_settings"]),
+    "channel":("ð¢ ØªÙØ¸ÛÙØ§Øª Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±",["auto_publish","approval","images","feedback"]),
+    "engagement":("â­ ØªÙØ¸ÛÙØ§Øª XP / VIP / Ø¯Ø¹ÙØª",["xp","vip","referrals","payments"]),
+    "support":("ð« ØªÙØ¸ÛÙØ§Øª Ù¾Ø´ØªÛØ¨Ø§ÙÛ Ù Ø³ÛØ³ØªÙ",["support","mini_app","maintenance","test_mode"]),
+    "vipbuilder":("ð Ø³Ø§Ø²ÙØ¯Ù Ø§ÙÚ©Ø§ÙØ§Øª VIP",["vip","ai","price_data","goals","weekly","stats","customers","customer_online_booking","auto_publish","approval","support","referrals"]),
 }
 
 def feature_mode_label(mode):
-    return {"free":"🟢 رایگان","vip":"💎 VIP / پولی","off":"🔴 غیرفعال"}.get(mode,"🟢 رایگان")
+    return {"free":"ð¢ Ø±Ø§ÛÚ¯Ø§Ù","vip":"ð VIP / Ù¾ÙÙÛ","off":"ð´ ØºÛØ±ÙØ¹Ø§Ù"}.get(mode,"ð¢ Ø±Ø§ÛÚ¯Ø§Ù")
 
 
 def set_feature_access_mode(key, mode, admin_id=0):
@@ -6252,14 +6231,14 @@ def set_feature_access_mode(key, mode, admin_id=0):
 
 def feature_admin_keyboard():
     buttons=[[InlineKeyboardButton(label,callback_data=f"fcat:{key}")] for key,(label,_) in FEATURE_CATEGORIES.items()]
-    buttons.append([InlineKeyboardButton("🔧 همه قابلیت‌ها",callback_data="fcat:all")])
-    buttons.append([InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")])
+    buttons.append([InlineKeyboardButton("ð§ ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="fcat:all")])
+    buttons.append([InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")])
     return InlineKeyboardMarkup(buttons)
 
 
 async def feature_category_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     await q.answer(); cat=q.data.split(":",1)[1]
     c=db(); all_keys=[r["key"] for r in c.execute("SELECT key FROM feature_flags ORDER BY key").fetchall()]; c.close()
     keys=all_keys if cat=="all" else FEATURE_CATEGORIES.get(cat,("",[]))[1]
@@ -6271,37 +6250,37 @@ async def feature_category_callback(update,context):
             row.append(InlineKeyboardButton(f"{feature_mode_label(mode)} {FEATURE_LABELS_FA.get(key,key)}",callback_data=f"feat:{key}"))
         if row: kb.append(row)
     back_cat="adm:features"
-    kb.append([InlineKeyboardButton("⬅️ دسته‌های تنظیمات",callback_data=back_cat)])
-    title=FEATURE_CATEGORIES.get(cat,("⚙️ همه قابلیت‌ها",[]))[0] if cat!="all" else "⚙️ همه قابلیت‌ها"
-    await q.message.edit_text(f"⚙️ <b>{title}</b>\n\n🟢 رایگان = همه کاربران\n💎 VIP / پولی = فقط VIP\n🔴 غیرفعال = پنهان و غیرقابل استفاده\n\nبا زدن هر قابلیت، وضعیت آن بین این سه حالت تغییر می‌کند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    kb.append([InlineKeyboardButton("â¬ï¸ Ø¯Ø³ØªÙâÙØ§Û ØªÙØ¸ÛÙØ§Øª",callback_data=back_cat)])
+    title=FEATURE_CATEGORIES.get(cat,("âï¸ ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§",[]))[0] if cat!="all" else "âï¸ ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§"
+    await q.message.edit_text(f"âï¸ <b>{title}</b>\n\nð¢ Ø±Ø§ÛÚ¯Ø§Ù = ÙÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù\nð VIP / Ù¾ÙÙÛ = ÙÙØ· VIP\nð´ ØºÛØ±ÙØ¹Ø§Ù = Ù¾ÙÙØ§Ù Ù ØºÛØ±ÙØ§Ø¨Ù Ø§Ø³ØªÙØ§Ø¯Ù\n\nØ¨Ø§ Ø²Ø¯Ù ÙØ± ÙØ§Ø¨ÙÛØªØ ÙØ¶Ø¹ÛØª Ø¢Ù Ø¨ÛÙ Ø§ÛÙ Ø³Ù Ø­Ø§ÙØª ØªØºÛÛØ± ÙÛâÚ©ÙØ¯.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 
 def feature_admin_text():
     c=db(); rows=c.execute("SELECT key,mode FROM feature_access ORDER BY key").fetchall(); c.close()
     free=sum(1 for r in rows if r["mode"]=="free"); vip=sum(1 for r in rows if r["mode"]=="vip"); off=sum(1 for r in rows if r["mode"]=="off")
-    return ("⚙️ <b>مرکز تنظیمات قابلیت‌ها</b>\n\n"
-            f"🟢 رایگان: {free}\n💎 VIP / پولی: {vip}\n🔴 غیرفعال: {off}\n\n"
-            "هر دسته تنظیمات مستقل خودش را دارد و خاموش‌کردن قابلیت، اطلاعات قبلی را حذف نمی‌کند.")
+    return ("âï¸ <b>ÙØ±Ú©Ø² ØªÙØ¸ÛÙØ§Øª ÙØ§Ø¨ÙÛØªâÙØ§</b>\n\n"
+            f"ð¢ Ø±Ø§ÛÚ¯Ø§Ù: {free}\nð VIP / Ù¾ÙÙÛ: {vip}\nð´ ØºÛØ±ÙØ¹Ø§Ù: {off}\n\n"
+            "ÙØ± Ø¯Ø³ØªÙ ØªÙØ¸ÛÙØ§Øª ÙØ³ØªÙÙ Ø®ÙØ¯Ø´ Ø±Ø§ Ø¯Ø§Ø±Ø¯ Ù Ø®Ø§ÙÙØ´âÚ©Ø±Ø¯Ù ÙØ§Ø¨ÙÛØªØ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙØ¨ÙÛ Ø±Ø§ Ø­Ø°Ù ÙÙÛâÚ©ÙØ¯.")
 
 async def feature_info_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
     if not admin_guard(uid):
-        await q.answer("⛔",show_alert=True); return
+        await q.answer("â",show_alert=True); return
     await q.answer()
     await q.message.edit_text(
-        "🧪 تست ۷ روزه\n\n"
-        f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n"
-        f"زمان باقی‌مانده: {test_mode_remaining()}\n\n"
-        "در زمان تست، انتشار خودکار قبل از انتشار نهایی برای Admin پیش‌نمایش می‌شود.",
+        "ð§ª ØªØ³Øª Û· Ø±ÙØ²Ù\n\n"
+        f"ÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if test_mode_active() else 'ð´ Ù¾Ø§ÛØ§Ù ÛØ§ÙØªÙ/Ø®Ø§ÙÙØ´'}\n"
+        f"Ø²ÙØ§Ù Ø¨Ø§ÙÛâÙØ§ÙØ¯Ù: {test_mode_remaining()}\n\n"
+        "Ø¯Ø± Ø²ÙØ§Ù ØªØ³ØªØ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø± ÙØ¨Ù Ø§Ø² Ø§ÙØªØ´Ø§Ø± ÙÙØ§ÛÛ Ø¨Ø±Ø§Û Admin Ù¾ÛØ´âÙÙØ§ÛØ´ ÙÛâØ´ÙØ¯.",
         reply_markup=feature_admin_keyboard()
     )
 
 async def final_feature_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     key=q.data.split(":",1)[1]
     if key == "test":
-        await q.answer(); await q.message.edit_text("🧪 تست ۷ روزه\n\n" f"وضعیت: {'🟢 فعال' if test_mode_active() else '🔴 پایان یافته/خاموش'}\n" f"زمان باقی‌مانده: {test_mode_remaining()}",reply_markup=feature_admin_keyboard()); return
+        await q.answer(); await q.message.edit_text("ð§ª ØªØ³Øª Û· Ø±ÙØ²Ù\n\n" f"ÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if test_mode_active() else 'ð´ Ù¾Ø§ÛØ§Ù ÛØ§ÙØªÙ/Ø®Ø§ÙÙØ´'}\n" f"Ø²ÙØ§Ù Ø¨Ø§ÙÛâÙØ§ÙØ¯Ù: {test_mode_remaining()}",reply_markup=feature_admin_keyboard()); return
     current=feature_access_mode(key)
     new_mode={"free":"vip","vip":"off","off":"free"}.get(current,"free")
     set_feature_access_mode(key,new_mode,uid)
@@ -6321,9 +6300,9 @@ async def final_feature_callback(update,context):
         for k in keys[i:i+2]:
             row.append(InlineKeyboardButton(f"{feature_mode_label(feature_access_mode(k))} {FEATURE_LABELS_FA.get(k,k)}",callback_data=f"feat:{k}"))
         kb.append(row)
-    kb.append([InlineKeyboardButton("⬅️ دسته‌های تنظیمات",callback_data="adm:features")])
-    title=FEATURE_CATEGORIES.get(category,("⚙️ همه قابلیت‌ها",[]))[0]
-    await q.message.edit_text(f"⚙️ <b>{title}</b>\n\n🟢 رایگان | 💎 VIP / پولی | 🔴 غیرفعال",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
+    kb.append([InlineKeyboardButton("â¬ï¸ Ø¯Ø³ØªÙâÙØ§Û ØªÙØ¸ÛÙØ§Øª",callback_data="adm:features")])
+    title=FEATURE_CATEGORIES.get(category,("âï¸ ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§",[]))[0]
+    await q.message.edit_text(f"âï¸ <b>{title}</b>\n\nð¢ Ø±Ø§ÛÚ¯Ø§Ù | ð VIP / Ù¾ÙÙÛ | ð´ ØºÛØ±ÙØ¹Ø§Ù",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def admin_health_time_save(update, context):
     uid = update.effective_user.id
@@ -6331,13 +6310,13 @@ async def admin_health_time_save(update, context):
         return False
     value = update.message.text.strip()
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
-        await update.message.reply_text("❌ ساعت نامعتبر است. مثال صحیح: 14:30")
+        await update.message.reply_text("â Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙØ«Ø§Ù ØµØ­ÛØ­: 14:30")
         return True
     set_system_setting("health_check_time", value)
     set_system_setting("health_check_enabled", "1")
     context.user_data.pop("admin_health_time", None)
     await update.message.reply_text(
-        f"✅ زمان چکاپ روزانه روی <b>{html.escape(value)}</b> تنظیم شد.",
+        f"â Ø²ÙØ§Ù ÚÚ©Ø§Ù¾ Ø±ÙØ²Ø§ÙÙ Ø±ÙÛ <b>{html.escape(value)}</b> ØªÙØ¸ÛÙ Ø´Ø¯.",
         parse_mode="HTML", reply_markup=final_admin_keyboard()
     )
     return True
@@ -6351,83 +6330,83 @@ async def final_admin_text(update,context):
             ref=text.lstrip("@").strip().lower()
             c=db(); rows=c.execute("""SELECT user_id,first_name,username,COALESCE(xp,0) xp,blocked,warnings
                                       FROM users WHERE CAST(user_id AS TEXT) LIKE ? OR lower(COALESCE(username,'')) LIKE ? OR first_name LIKE ? LIMIT 20""",(f"%{ref}%",f"%{ref}%",f"%{text}%")).fetchall(); c.close()
-            kb=[[InlineKeyboardButton(f"👤 {r['first_name'] or 'بدون نام'} | @{r['username']}" if r['username'] else f"👤 {r['first_name'] or 'بدون نام'} | {r['user_id']}",callback_data=f"admu:{r['user_id']}")] for r in rows]
-            kb.append([InlineKeyboardButton("⬅️ کاربران",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")])
-            await update.message.reply_text("🔎 نتایج:\n\n"+"\n".join(f"{r['first_name'] or 'بدون نام'} | @{r['username'] if r['username'] else '—'} | {r['user_id']} | XP {r['xp']} | {'⛔' if r['blocked'] else '🟢'}" for r in rows) or "یافت نشد",reply_markup=InlineKeyboardMarkup(kb)); return True
+            kb=[[InlineKeyboardButton(f"ð¤ {r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù'} | @{r['username']}" if r['username'] else f"ð¤ {r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù'} | {r['user_id']}",callback_data=f"admu:{r['user_id']}")] for r in rows]
+            kb.append([InlineKeyboardButton("â¬ï¸ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data=f"adm:users:{context.user_data.get('admin_users_page',1)}")])
+            await update.message.reply_text("ð ÙØªØ§ÛØ¬:\n\n"+"\n".join(f"{r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù'} | @{r['username'] if r['username'] else 'â'} | {r['user_id']} | XP {r['xp']} | {'â' if r['blocked'] else 'ð¢'}" for r in rows) or "ÛØ§ÙØª ÙØ´Ø¯",reply_markup=InlineKeyboardMarkup(kb)); return True
         parts=text.split(":"); cmd=parts[0].upper(); target=int(parts[1]); c=db()
         if cmd=="BLOCK": c.execute("UPDATE users SET blocked=1 WHERE user_id=?",(target,)); action="block"
         elif cmd=="UNBLOCK": c.execute("UPDATE users SET blocked=0 WHERE user_id=?",(target,)); action="unblock"
         elif cmd=="WARN": c.execute("UPDATE users SET warnings=COALESCE(warnings,0)+1 WHERE user_id=?",(target,)); action="warn"
-        elif cmd=="XP": c.close(); add_xp(target,int(parts[2]),"admin_adjust"); admin_log(uid,"xp_adjust",target,parts[2]); await update.message.reply_text("✅ XP تغییر کرد",reply_markup=final_admin_keyboard()); return True
+        elif cmd=="XP": c.close(); add_xp(target,int(parts[2]),"admin_adjust"); admin_log(uid,"xp_adjust",target,parts[2]); await update.message.reply_text("â XP ØªØºÛÛØ± Ú©Ø±Ø¯",reply_markup=final_admin_keyboard()); return True
         elif cmd=="VIP": c.execute("UPDATE users SET vip_until=? WHERE user_id=?",((datetime.now(TZ)+timedelta(days=int(parts[2]))).isoformat(),target)); action="vip_adjust"
-        else: c.close(); await update.message.reply_text("❌ دستور نامعتبر"); return True
-        c.commit(); c.close(); admin_log(uid,action,target,text); await update.message.reply_text("✅ انجام شد",reply_markup=final_admin_keyboard()); return True
+        else: c.close(); await update.message.reply_text("â Ø¯Ø³ØªÙØ± ÙØ§ÙØ¹ØªØ¨Ø±"); return True
+        c.commit(); c.close(); admin_log(uid,action,target,text); await update.message.reply_text("â Ø§ÙØ¬Ø§Ù Ø´Ø¯",reply_markup=final_admin_keyboard()); return True
     except Exception as e:
-        await update.message.reply_text(f"❌ خطا: {html.escape(str(e))}", parse_mode="HTML"); return True
+        await update.message.reply_text(f"â Ø®Ø·Ø§: {html.escape(str(e))}", parse_mode="HTML"); return True
 
 
 def support_keyboard(uid):
     fa=lang(uid)=="fa"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("❓ سوالات متداول" if fa else "❓ FAQ", callback_data="support:faq")],
-        [InlineKeyboardButton("📝 ارسال تیکت" if fa else "📝 New Ticket", callback_data="support:new")],
-        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="support:main")],
+        [InlineKeyboardButton("â Ø³ÙØ§ÙØ§Øª ÙØªØ¯Ø§ÙÙ" if fa else "â FAQ", callback_data="support:faq")],
+        [InlineKeyboardButton("ð Ø§Ø±Ø³Ø§Ù ØªÛÚ©Øª" if fa else "ð New Ticket", callback_data="support:new")],
+        [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu", callback_data="support:main")],
     ])
 
 async def support_start(update,context):
     uid=update.effective_user.id; clear_flow(context);
     await hide_main_reply_keyboard(update)
-    await update.message.reply_text("🎫 پشتیبانی\n\nیک گزینه را انتخاب کن:" if lang(uid)=="fa" else "🎫 Support\n\nChoose an option:",reply_markup=support_keyboard(uid))
+    await update.message.reply_text("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ\n\nÛÚ© Ú¯Ø²ÛÙÙ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid)=="fa" else "ð« Support\n\nChoose an option:",reply_markup=support_keyboard(uid))
 
 async def support_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]
-    if action=="main": clear_flow(context); await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+    if action=="main": clear_flow(context); await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid)); return
     if action=="faq":
-        text=("❓ سوالات متداول\n\n• چطور هدف اضافه کنم؟ از «✏️ هدف خودم می‌نویسم» استفاده کن.\n• چطور زمان یادآوری را عوض کنم؟ از «✏️ ویرایش اهداف».\n• چطور AI را فعال کنم؟ اگر سرویس هوشمند در دسترس نباشد، مدیر می‌تواند اتصال سرویس‌های AI را از تنظیمات سرور بررسی کند.\n• چطور کانال را وصل کنم؟ مدیر ← مدیریت کانال ← تنظیم کانال.")
-        await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پشتیبانی",callback_data="support:main")],[main_menu_button(uid)]])); return
+        text=("â Ø³ÙØ§ÙØ§Øª ÙØªØ¯Ø§ÙÙ\n\nâ¢ ÚØ·ÙØ± ÙØ¯Ù Ø§Ø¶Ø§ÙÙ Ú©ÙÙØ Ø§Ø² Â«âï¸ ÙØ¯Ù Ø®ÙØ¯Ù ÙÛâÙÙÛØ³ÙÂ» Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.\nâ¢ ÚØ·ÙØ± Ø²ÙØ§Ù ÛØ§Ø¯Ø¢ÙØ±Û Ø±Ø§ Ø¹ÙØ¶ Ú©ÙÙØ Ø§Ø² Â«âï¸ ÙÛØ±Ø§ÛØ´ Ø§ÙØ¯Ø§ÙÂ».\nâ¢ ÚØ·ÙØ± AI Ø±Ø§ ÙØ¹Ø§Ù Ú©ÙÙØ Ø§Ú¯Ø± Ø³Ø±ÙÛØ³ ÙÙØ´ÙÙØ¯ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙØ¨Ø§Ø´Ø¯Ø ÙØ¯ÛØ± ÙÛâØªÙØ§ÙØ¯ Ø§ØªØµØ§Ù Ø³Ø±ÙÛØ³âÙØ§Û AI Ø±Ø§ Ø§Ø² ØªÙØ¸ÛÙØ§Øª Ø³Ø±ÙØ± Ø¨Ø±Ø±Ø³Û Ú©ÙØ¯.\nâ¢ ÚØ·ÙØ± Ú©Ø§ÙØ§Ù Ø±Ø§ ÙØµÙ Ú©ÙÙØ ÙØ¯ÛØ± â ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù â ØªÙØ¸ÛÙ Ú©Ø§ÙØ§Ù.")
+        await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ Ù¾Ø´ØªÛØ¨Ø§ÙÛ",callback_data="support:main")],[main_menu_button(uid)]])); return
     if action=="new":
-        context.user_data["support_new"]=True; await q.message.reply_text("📝 پیام پشتیبانی را بفرست. برای لغو «⬅️ برگشت» را بزن.",reply_markup=nav_keyboard(uid)); return
+        context.user_data["support_new"]=True; await q.message.reply_text("ð Ù¾ÛØ§Ù Ù¾Ø´ØªÛØ¨Ø§ÙÛ Ø±Ø§ Ø¨ÙØ±Ø³Øª. Ø¨Ø±Ø§Û ÙØºÙ Â«â¬ï¸ Ø¨Ø±Ú¯Ø´ØªÂ» Ø±Ø§ Ø¨Ø²Ù.",reply_markup=nav_keyboard(uid)); return
 
 async def support_text(update,context):
     if not context.user_data.get("support_new"): return False
     uid=update.effective_user.id; text=update.message.text.strip()
-    if text in ("⬅️ برگشت","⬅️ Back","🏠 منوی اصلی","🏠 Main Menu"):
-        clear_flow(context); await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return True
-    now=datetime.now(TZ).isoformat(); c=db(); cur=c.execute("INSERT INTO tickets(user_id,subject,created_at,updated_at) VALUES(?,?,?,?)",(uid,text[:80],now,now)); c.execute("INSERT INTO ticket_messages(ticket_id,sender_id,message,created_at) VALUES(?,?,?,?)",(cur.lastrowid,uid,text,now)); c.commit(); c.close(); context.user_data.pop("support_new",None); await update.message.reply_text(f"🎫 تیکت #{cur.lastrowid} ثبت شد.",reply_markup=keyboard(uid)); return True
+    if text in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª","â¬ï¸ Back","ð  ÙÙÙÛ Ø§ØµÙÛ","ð  Main Menu"):
+        clear_flow(context); await update.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid)); return True
+    now=datetime.now(TZ).isoformat(); c=db(); cur=c.execute("INSERT INTO tickets(user_id,subject,created_at,updated_at) VALUES(?,?,?,?)",(uid,text[:80],now,now)); c.execute("INSERT INTO ticket_messages(ticket_id,sender_id,message,created_at) VALUES(?,?,?,?)",(cur.lastrowid,uid,text,now)); c.commit(); c.close(); context.user_data.pop("support_new",None); await update.message.reply_text(f"ð« ØªÛÚ©Øª #{cur.lastrowid} Ø«Ø¨Øª Ø´Ø¯.",reply_markup=keyboard(uid)); return True
 
 def vip_keyboard(uid):
     fa=lang(uid)=="fa"
     rows=[]
     if feature_enabled("payments") and feature_enabled("vip"):
-        rows.append([InlineKeyboardButton("💎 خرید VIP — 100 ⭐ / 30 روز" if fa else "💎 Buy VIP — 100 ⭐ / 30 days",callback_data="vip:buy")])
-    rows.append([InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Referrals",callback_data="vip:ref")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="vip:main")])
+        rows.append([InlineKeyboardButton("ð Ø®Ø±ÛØ¯ VIP â 100 â­ / 30 Ø±ÙØ²" if fa else "ð Buy VIP â 100 â­ / 30 days",callback_data="vip:buy")])
+    rows.append([InlineKeyboardButton("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Referrals",callback_data="vip:ref")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",callback_data="vip:main")])
     return InlineKeyboardMarkup(rows)
 
 async def vip_center(update,context):
     uid=update.effective_user.id; xp,level,vip_until=xp_info(uid)
     fa=lang(uid)=="fa"
-    status="🟢 فعال" if is_vip(uid) else "⚪ رایگان"
-    text=(f"💎 VIP\n\nوضعیت: {status}\n⭐ سطح: {level}\n🕐 پایان VIP: {vip_until[:16] if vip_until else '—'}\n\nامکانات VIP: سهمیه بیشتر AI و قابلیت‌های پولی فعال‌شده توسط مدیر." if fa else f"💎 VIP\n\nStatus: {status}\n⭐ Level: {level}\n🕐 VIP until: {vip_until[:16] if vip_until else '—'}\n\nVIP includes higher AI quota and paid features enabled by the admin.")
+    status="ð¢ ÙØ¹Ø§Ù" if is_vip(uid) else "âª Ø±Ø§ÛÚ¯Ø§Ù"
+    text=(f"ð VIP\n\nÙØ¶Ø¹ÛØª: {status}\nâ­ Ø³Ø·Ø­: {level}\nð Ù¾Ø§ÛØ§Ù VIP: {vip_until[:16] if vip_until else 'â'}\n\nØ§ÙÚ©Ø§ÙØ§Øª VIP: Ø³ÙÙÛÙ Ø¨ÛØ´ØªØ± AI Ù ÙØ§Ø¨ÙÛØªâÙØ§Û Ù¾ÙÙÛ ÙØ¹Ø§ÙâØ´Ø¯Ù ØªÙØ³Ø· ÙØ¯ÛØ±." if fa else f"ð VIP\n\nStatus: {status}\nâ­ Level: {level}\nð VIP until: {vip_until[:16] if vip_until else 'â'}\n\nVIP includes higher AI quota and paid features enabled by the admin.")
     await update.message.reply_text(text,reply_markup=vip_keyboard(uid))
 
 async def vip_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); action=q.data.split(":",1)[1]
-    if action=="main": clear_flow(context); await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+    if action=="main": clear_flow(context); await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid)); return
     if action=="ref": await referral(update,context); return
     if action=="buy":
         if not (feature_enabled("payments") and feature_enabled("vip")):
-            await q.message.reply_text("💎 خرید VIP فعلاً توسط مدیر غیرفعال است.",reply_markup=vip_keyboard(uid)); return
+            await q.message.reply_text("ð Ø®Ø±ÛØ¯ VIP ÙØ¹ÙØ§Ù ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.",reply_markup=vip_keyboard(uid)); return
         payload=f"vip30:{uid}:{int(datetime.now(TZ).timestamp())}"
         try:
-            await context.bot.send_invoice(chat_id=uid,title="MyTasks VIP 30 روزه",description="فعال‌سازی VIP ربات MyTasks برای ۳۰ روز",payload=payload,provider_token="",currency="XTR",prices=[LabeledPrice("VIP 30 روزه",100)],start_parameter="mytasks-vip-30")
+            await context.bot.send_invoice(chat_id=uid,title="MyTasks VIP 30 Ø±ÙØ²Ù",description="ÙØ¹Ø§ÙâØ³Ø§Ø²Û VIP Ø±Ø¨Ø§Øª MyTasks Ø¨Ø±Ø§Û Û³Û° Ø±ÙØ²",payload=payload,provider_token="",currency="XTR",prices=[LabeledPrice("VIP 30 Ø±ÙØ²Ù",100)],start_parameter="mytasks-vip-30")
         except Exception as e:
-            logger.error("VIP invoice failed: %s",e); await q.message.reply_text("❌ ساخت فاکتور VIP انجام نشد. تنظیمات پرداخت را بررسی کن.",reply_markup=vip_keyboard(uid))
+            logger.error("VIP invoice failed: %s",e); await q.message.reply_text("â Ø³Ø§Ø®Øª ÙØ§Ú©ØªÙØ± VIP Ø§ÙØ¬Ø§Ù ÙØ´Ø¯. ØªÙØ¸ÛÙØ§Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.",reply_markup=vip_keyboard(uid))
 
 async def precheckout_callback(update,context):
     q=update.pre_checkout_query
     if not q.invoice_payload.startswith("vip30:") or not feature_enabled("payments"):
-        await q.answer(ok=False,error_message="این خرید در حال حاضر فعال نیست.")
+        await q.answer(ok=False,error_message="Ø§ÛÙ Ø®Ø±ÛØ¯ Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ÙØ¹Ø§Ù ÙÛØ³Øª.")
         return
     await q.answer(ok=True)
 
@@ -6435,14 +6414,14 @@ async def successful_payment_callback(update,context):
     payment=update.message.successful_payment; uid=update.effective_user.id
     charge_id=(payment.telegram_payment_charge_id or '').strip()
     if not charge_id:
-        await update.message.reply_text("❌ شناسه پرداخت معتبر نیست.",reply_markup=keyboard(uid)); return
+        await update.message.reply_text("â Ø´ÙØ§Ø³Ù Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.",reply_markup=keyboard(uid)); return
     c=db()
     try:
         c.execute("BEGIN IMMEDIATE")
         now_iso=datetime.now(TZ).isoformat()
         cur=c.execute("INSERT OR IGNORE INTO payments(user_id,payload,currency,total_amount,telegram_charge_id,created_at) VALUES(?,?,?,?,?,?)",(uid,payment.invoice_payload,payment.currency,payment.total_amount,charge_id,now_iso))
         if cur.rowcount != 1:
-            c.rollback(); c.close(); await update.message.reply_text("ℹ️ این پرداخت قبلاً ثبت شده است.",reply_markup=keyboard(uid)); return
+            c.rollback(); c.close(); await update.message.reply_text("â¹ï¸ Ø§ÛÙ Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ¨ÙØ§Ù Ø«Ø¨Øª Ø´Ø¯Ù Ø§Ø³Øª.",reply_markup=keyboard(uid)); return
         base=datetime.now(TZ); r=c.execute("SELECT vip_until FROM users WHERE user_id=?",(uid,)).fetchone()
         if r and r["vip_until"]:
             try: base=max(base,datetime.fromisoformat(r["vip_until"]))
@@ -6451,18 +6430,18 @@ async def successful_payment_callback(update,context):
         c.execute("UPDATE users SET vip_until=? WHERE user_id=?",(until.isoformat(),uid))
         c.execute("INSERT INTO subscription_history(user_id,plan,duration_days,source,amount,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)",(uid,"VIP",30,"telegram_stars",payment.total_amount,now_iso,until.isoformat(),now_iso))
         c.commit(); c.close(); add_xp(uid,20,"vip_purchase")
-        await update.message.reply_text(f"✅ پرداخت موفق بود. VIP تا {fa_datetime(until)} فعال شد.",reply_markup=keyboard(uid))
+        await update.message.reply_text(f"â Ù¾Ø±Ø¯Ø§Ø®Øª ÙÙÙÙ Ø¨ÙØ¯. VIP ØªØ§ {fa_datetime(until)} ÙØ¹Ø§Ù Ø´Ø¯.",reply_markup=keyboard(uid))
     except Exception:
         try: c.rollback(); c.close()
         except Exception: pass
         logger.exception("Successful payment handling failed")
-        await update.message.reply_text("❌ ثبت پرداخت انجام نشد.",reply_markup=keyboard(uid))
+        await update.message.reply_text("â Ø«Ø¨Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø§ÙØ¬Ø§Ù ÙØ´Ø¯.",reply_markup=keyboard(uid))
 
 # --- Pre-made invite text templates ---
 _INVITE_TEMPLATES_FA = [
-    {"id": 1, "text": "👋 سلام!\nمن از ربات MyTasks استفاده می‌کنم برای مدیریت کارها و اهدافم.\nخیلی کمکم کرده! تو هم امتحان کن:\n{invite_link}", "enabled": 1},
-    {"id": 2, "text": "🎯 یه ربات عالی برای مدیریت روزانه پیدا کردم!\nاگه دنبال یه ابزار ساده و قوی برای برنامه‌ریزی هستی، اینو امتحان کن:\n{invite_link}", "enabled": 1},
-    {"id": 3, "text": "🚀 با MyTasks زندگیت رو سازمان‌دهی کن!\nهدف بذار، یادآوری بگیر، پیشرفتت رو ببین.\nهمین الان شروع کن:\n{invite_link}", "enabled": 1},
+    {"id": 1, "text": "ð Ø³ÙØ§Ù!\nÙÙ Ø§Ø² Ø±Ø¨Ø§Øª MyTasks Ø§Ø³ØªÙØ§Ø¯Ù ÙÛâÚ©ÙÙ Ø¨Ø±Ø§Û ÙØ¯ÛØ±ÛØª Ú©Ø§Ø±ÙØ§ Ù Ø§ÙØ¯Ø§ÙÙ.\nØ®ÛÙÛ Ú©ÙÚ©Ù Ú©Ø±Ø¯Ù! ØªÙ ÙÙ Ø§ÙØªØ­Ø§Ù Ú©Ù:\n{invite_link}", "enabled": 1},
+    {"id": 2, "text": "ð¯ ÛÙ Ø±Ø¨Ø§Øª Ø¹Ø§ÙÛ Ø¨Ø±Ø§Û ÙØ¯ÛØ±ÛØª Ø±ÙØ²Ø§ÙÙ Ù¾ÛØ¯Ø§ Ú©Ø±Ø¯Ù!\nØ§Ú¯Ù Ø¯ÙØ¨Ø§Ù ÛÙ Ø§Ø¨Ø²Ø§Ø± Ø³Ø§Ø¯Ù Ù ÙÙÛ Ø¨Ø±Ø§Û Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û ÙØ³ØªÛØ Ø§ÛÙÙ Ø§ÙØªØ­Ø§Ù Ú©Ù:\n{invite_link}", "enabled": 1},
+    {"id": 3, "text": "ð Ø¨Ø§ MyTasks Ø²ÙØ¯Ú¯ÛØª Ø±Ù Ø³Ø§Ø²ÙØ§ÙâØ¯ÙÛ Ú©Ù!\nÙØ¯Ù Ø¨Ø°Ø§Ø±Ø ÛØ§Ø¯Ø¢ÙØ±Û Ø¨Ú¯ÛØ±Ø Ù¾ÛØ´Ø±ÙØªØª Ø±Ù Ø¨Ø¨ÛÙ.\nÙÙÛÙ Ø§ÙØ§Ù Ø´Ø±ÙØ¹ Ú©Ù:\n{invite_link}", "enabled": 1},
 ]
 
 def _get_invite_templates():
@@ -6481,13 +6460,13 @@ def _referral_user_kb(uid):
     """Build the user referral panel keyboard."""
     fa = lang(uid) == "fa"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 دعوت دوستان" if fa else "📤 Invite Friends", callback_data="ref:invite")],
-        [InlineKeyboardButton("🔗 لینک دعوت من" if fa else "🔗 My Invite Link", callback_data="ref:link"),
-         InlineKeyboardButton("🔑 کد دعوت من" if fa else "🔑 My Referral Code", callback_data="ref:code")],
-        [InlineKeyboardButton("👥 افراد دعوت‌شده" if fa else "👥 Invited Users", callback_data="ref:list")],
-        [InlineKeyboardButton("🎁 پاداش‌های من" if fa else "🎁 My Rewards", callback_data="ref:rewards")],
-        [InlineKeyboardButton("📊 آمار دعوت" if fa else "📊 Referral Stats", callback_data="ref:stats")],
-        [InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu", callback_data="nav:main")],
+        [InlineKeyboardButton("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Invite Friends", callback_data="ref:invite")],
+        [InlineKeyboardButton("ð ÙÛÙÚ© Ø¯Ø¹ÙØª ÙÙ" if fa else "ð My Invite Link", callback_data="ref:link"),
+         InlineKeyboardButton("ð Ú©Ø¯ Ø¯Ø¹ÙØª ÙÙ" if fa else "ð My Referral Code", callback_data="ref:code")],
+        [InlineKeyboardButton("ð¥ Ø§ÙØ±Ø§Ø¯ Ø¯Ø¹ÙØªâØ´Ø¯Ù" if fa else "ð¥ Invited Users", callback_data="ref:list")],
+        [InlineKeyboardButton("ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ" if fa else "ð My Rewards", callback_data="ref:rewards")],
+        [InlineKeyboardButton("ð Ø¢ÙØ§Ø± Ø¯Ø¹ÙØª" if fa else "ð Referral Stats", callback_data="ref:stats")],
+        [InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu", callback_data="nav:main")],
     ])
 
 async def referral(update, context):
@@ -6498,10 +6477,10 @@ async def referral(update, context):
     me = await context.bot.get_me()
     link = f"https://t.me/{me.username}?start=ref_{stats['code']}" if me.username else stats["code"]
     text = (
-        f"🤝 <b>دعوت دوستان</b>\n\n"
-        f"🔗 لینک اختصاصی تو:\n<code>{html.escape(link)}</code>\n\n"
-        f"👥 دعوت‌ها: <b>{stats['total']}</b> | موفق: <b>{stats['success']}</b> | در انتظار: <b>{stats['pending']}</b>\n"
-        f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن"
+        f"ð¤ <b>Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù</b>\n\n"
+        f"ð ÙÛÙÚ© Ø§Ø®ØªØµØ§ØµÛ ØªÙ:\n<code>{html.escape(link)}</code>\n\n"
+        f"ð¥ Ø¯Ø¹ÙØªâÙØ§: <b>{stats['total']}</b> | ÙÙÙÙ: <b>{stats['success']}</b> | Ø¯Ø± Ø§ÙØªØ¸Ø§Ø±: <b>{stats['pending']}</b>\n"
+        f"ð Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø±ÛØ§ÙØªâØ´Ø¯Ù: <b>{stats['tokens_earned']}</b> ØªÙÚ©Ù"
     )
     target = update.message or (update.callback_query.message if update.callback_query else None)
     await target.reply_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
@@ -6523,14 +6502,14 @@ async def referral_callback(update, context):
     if action == "invite":
         templates = _get_invite_templates()
         if not templates:
-            await q.message.edit_text("📤 متن آماده‌ای وجود ندارد.", reply_markup=_referral_user_kb(uid))
+            await q.message.edit_text("ð¤ ÙØªÙ Ø¢ÙØ§Ø¯ÙâØ§Û ÙØ¬ÙØ¯ ÙØ¯Ø§Ø±Ø¯.", reply_markup=_referral_user_kb(uid))
             return
         rows = []
         for t in templates[:6]:
             preview = t["text"][:60] + ("..." if len(t["text"]) > 60 else "")
-            rows.append([InlineKeyboardButton(f"📝 {preview}", callback_data=f"ref:tmpl:{t['id']}")])
-        rows.append([InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")])
-        await q.message.edit_text("📤 <b>یک متن آماده انتخاب کن:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
+            rows.append([InlineKeyboardButton(f"ð {preview}", callback_data=f"ref:tmpl:{t['id']}")])
+        rows.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="ref:home")])
+        await q.message.edit_text("ð¤ <b>ÛÚ© ÙØªÙ Ø¢ÙØ§Ø¯Ù Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
         return
 
     if action.startswith("tmpl:"):
@@ -6538,16 +6517,16 @@ async def referral_callback(update, context):
         templates = _get_invite_templates()
         tmpl = next((t for t in templates if t["id"] == tid), None)
         if not tmpl:
-            await q.message.edit_text("❌ متن پیدا نشد.", reply_markup=_referral_user_kb(uid))
+            await q.message.edit_text("â ÙØªÙ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.", reply_markup=_referral_user_kb(uid))
             return
-        text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+        text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "Ú©Ø§Ø±Ø¨Ø±"))
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📤 ارسال در Telegram" if fa else "📤 Share on Telegram", callback_data=f"ref:send:{tid}")],
-            [InlineKeyboardButton("📋 کپی متن" if fa else "📋 Copy Text", callback_data=f"ref:copy:{tid}")],
-            [InlineKeyboardButton("🔗 کپی لینک" if fa else "🔗 Copy Link", callback_data="ref:copylink")],
-            [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:invite")],
+            [InlineKeyboardButton("ð¤ Ø§Ø±Ø³Ø§Ù Ø¯Ø± Telegram" if fa else "ð¤ Share on Telegram", callback_data=f"ref:send:{tid}")],
+            [InlineKeyboardButton("ð Ú©Ù¾Û ÙØªÙ" if fa else "ð Copy Text", callback_data=f"ref:copy:{tid}")],
+            [InlineKeyboardButton("ð Ú©Ù¾Û ÙÛÙÚ©" if fa else "ð Copy Link", callback_data="ref:copylink")],
+            [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="ref:invite")],
         ])
-        await q.message.edit_text(f"📤 <b>متن دعوت:</b>\n\n{text}", parse_mode="HTML", reply_markup=kb)
+        await q.message.edit_text(f"ð¤ <b>ÙØªÙ Ø¯Ø¹ÙØª:</b>\n\n{text}", parse_mode="HTML", reply_markup=kb)
         return
 
     if action.startswith("send:"):
@@ -6555,12 +6534,12 @@ async def referral_callback(update, context):
         templates = _get_invite_templates()
         tmpl = next((t for t in templates if t["id"] == tid), None)
         if tmpl:
-            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "Ú©Ø§Ø±Ø¨Ø±"))
         else:
-            text = f"👋 از ربات MyTasks استفاده کن:\n{link}"
+            text = f"ð Ø§Ø² Ø±Ø¨Ø§Øª MyTasks Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù:\n{link}"
         # Use Telegram's forward sharing - user picks the recipient
         await q.message.delete()
-        await context.bot.send_message(uid, f"📤 <b>متن آماده ارسال:</b>\n\n{text}\n\n<i>متن را کپی کن و برای دوستت بفرست.</i>", parse_mode="HTML")
+        await context.bot.send_message(uid, f"ð¤ <b>ÙØªÙ Ø¢ÙØ§Ø¯Ù Ø§Ø±Ø³Ø§Ù:</b>\n\n{text}\n\n<i>ÙØªÙ Ø±Ø§ Ú©Ù¾Û Ú©Ù Ù Ø¨Ø±Ø§Û Ø¯ÙØ³ØªØª Ø¨ÙØ±Ø³Øª.</i>", parse_mode="HTML")
         await context.bot.send_message(uid, text)
         return
 
@@ -6569,34 +6548,34 @@ async def referral_callback(update, context):
         templates = _get_invite_templates()
         tmpl = next((t for t in templates if t["id"] == tid), None)
         if tmpl:
-            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "کاربر"))
+            text = tmpl["text"].replace("{invite_link}", link).replace("{invite_code}", stats["code"]).replace("{inviter_name}", html.escape(q.from_user.first_name or "Ú©Ø§Ø±Ø¨Ø±"))
         else:
             text = link
-        await q.answer("📋 متن کپی شد!", show_alert=True)
+        await q.answer("ð ÙØªÙ Ú©Ù¾Û Ø´Ø¯!", show_alert=True)
         return
 
     if action == "copylink":
-        await q.answer(f"🔗 {link}", show_alert=True)
+        await q.answer(f"ð {link}", show_alert=True)
         return
 
     if action == "link":
         await q.message.edit_text(
-            f"🔗 <b>لینک اختصاصی تو:</b>\n\n<code>{html.escape(link)}</code>",
+            f"ð <b>ÙÛÙÚ© Ø§Ø®ØªØµØ§ØµÛ ØªÙ:</b>\n\n<code>{html.escape(link)}</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📤 اشتراک‌گذاری" if fa else "📤 Share", callback_data="ref:invite")],
-                [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")],
+                [InlineKeyboardButton("ð¤ Ø§Ø´ØªØ±Ø§Ú©âÚ¯Ø°Ø§Ø±Û" if fa else "ð¤ Share", callback_data="ref:invite")],
+                [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="ref:home")],
             ])
         )
         return
 
     if action == "code":
         await q.message.edit_text(
-            f"🔑 <b>کد دعوت اختصاصی تو:</b>\n\n<code>{stats['code']}</code>",
+            f"ð <b>Ú©Ø¯ Ø¯Ø¹ÙØª Ø§Ø®ØªØµØ§ØµÛ ØªÙ:</b>\n\n<code>{stats['code']}</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📤 اشتراک‌گذاری" if fa else "📤 Share", callback_data="ref:invite")],
-                [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="ref:home")],
+                [InlineKeyboardButton("ð¤ Ø§Ø´ØªØ±Ø§Ú©âÚ¯Ø°Ø§Ø±Û" if fa else "ð¤ Share", callback_data="ref:invite")],
+                [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="ref:home")],
             ])
         )
         return
@@ -6604,14 +6583,14 @@ async def referral_callback(update, context):
     if action == "list":
         invited = stats["invited"]
         if not invited:
-            text = "👥 <b>هنوز کسی را دعوت نکرده‌ای.</b>\n\nبا لینک اختصاصیت دوستانت را دعوت کن!"
+            text = "ð¥ <b>ÙÙÙØ² Ú©Ø³Û Ø±Ø§ Ø¯Ø¹ÙØª ÙÚ©Ø±Ø¯ÙâØ§Û.</b>\n\nØ¨Ø§ ÙÛÙÚ© Ø§Ø®ØªØµØ§ØµÛØª Ø¯ÙØ³ØªØ§ÙØª Ø±Ø§ Ø¯Ø¹ÙØª Ú©Ù!"
         else:
-            lines = [f"👥 <b>افراد دعوت‌شده ({len(invited)} نفر):</b>", ""]
-            status_map = {"registered": "⏳ وارد شده", "success": "✅ موفق", "rewarded": "🎁 پاداش دریافت شده"}
+            lines = [f"ð¥ <b>Ø§ÙØ±Ø§Ø¯ Ø¯Ø¹ÙØªâØ´Ø¯Ù ({len(invited)} ÙÙØ±):</b>", ""]
+            status_map = {"registered": "â³ ÙØ§Ø±Ø¯ Ø´Ø¯Ù", "success": "â ÙÙÙÙ", "rewarded": "ð Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø±ÛØ§ÙØª Ø´Ø¯Ù"}
             for inv in invited[:20]:
-                name = html.escape(inv["first_name"] or "کاربر")
-                st = status_map.get(inv.get("status", ""), "⏳ در انتظار")
-                lines.append(f"• {name} — {st}")
+                name = html.escape(inv["first_name"] or "Ú©Ø§Ø±Ø¨Ø±")
+                st = status_map.get(inv.get("status", ""), "â³ Ø¯Ø± Ø§ÙØªØ¸Ø§Ø±")
+                lines.append(f"â¢ {name} â {st}")
             text = "\n".join(lines)
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
         return
@@ -6621,11 +6600,11 @@ async def referral_callback(update, context):
         rewards = c.execute("SELECT * FROM reward_log WHERE user_id=? AND reward_type LIKE 'referral_%' ORDER BY created_at DESC LIMIT 10", (uid,)).fetchall()
         c.close()
         if not rewards:
-            text = "🎁 <b>هنوز پاداشی دریافت نکرده‌ای.</b>"
+            text = "ð <b>ÙÙÙØ² Ù¾Ø§Ø¯Ø§Ø´Û Ø¯Ø±ÛØ§ÙØª ÙÚ©Ø±Ø¯ÙâØ§Û.</b>"
         else:
-            lines = [f"🎁 <b>پاداش‌های اخیر:</b>", ""]
+            lines = [f"ð <b>Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û Ø§Ø®ÛØ±:</b>", ""]
             for rw in rewards:
-                lines.append(f"• {rw['reward_type']}: <b>{rw['amount']}</b> — {rw['created_at'][:10]}")
+                lines.append(f"â¢ {rw['reward_type']}: <b>{rw['amount']}</b> â {rw['created_at'][:10]}")
             text = "\n".join(lines)
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
         return
@@ -6634,12 +6613,12 @@ async def referral_callback(update, context):
         next_milestone = int(ref_get("ref_vip_milestone", "10"))
         remaining = max(0, next_milestone - (stats["success"] % next_milestone))
         text = (
-            f"📊 <b>آمار دعوت تو:</b>\n\n"
-            f"👥 کل دعوت‌ها: <b>{stats['total']}</b>\n"
-            f"✅ دعوت‌های موفق: <b>{stats['success']}</b>\n"
-            f"⏳ در انتظار: <b>{stats['pending']}</b>\n"
-            f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن\n"
-            f"📈 تا پاداش بعدی: <b>{remaining}</b> دعوت موفق دیگر"
+            f"ð <b>Ø¢ÙØ§Ø± Ø¯Ø¹ÙØª ØªÙ:</b>\n\n"
+            f"ð¥ Ú©Ù Ø¯Ø¹ÙØªâÙØ§: <b>{stats['total']}</b>\n"
+            f"â Ø¯Ø¹ÙØªâÙØ§Û ÙÙÙÙ: <b>{stats['success']}</b>\n"
+            f"â³ Ø¯Ø± Ø§ÙØªØ¸Ø§Ø±: <b>{stats['pending']}</b>\n"
+            f"ð Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø±ÛØ§ÙØªâØ´Ø¯Ù: <b>{stats['tokens_earned']}</b> ØªÙÚ©Ù\n"
+            f"ð ØªØ§ Ù¾Ø§Ø¯Ø§Ø´ Ø¨Ø¹Ø¯Û: <b>{remaining}</b> Ø¯Ø¹ÙØª ÙÙÙÙ Ø¯ÛÚ¯Ø±"
         )
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
         return
@@ -6647,10 +6626,10 @@ async def referral_callback(update, context):
     if action == "home":
         link2 = f"https://t.me/{me.username}?start=ref_{stats['code']}" if me.username else stats["code"]
         text = (
-            f"🤝 <b>دعوت دوستان</b>\n\n"
-            f"🔗 لینک اختصاصی تو:\n<code>{html.escape(link2)}</code>\n\n"
-            f"👥 دعوت‌ها: <b>{stats['total']}</b> | موفق: <b>{stats['success']}</b> | در انتظار: <b>{stats['pending']}</b>\n"
-            f"🎁 پاداش دریافت‌شده: <b>{stats['tokens_earned']}</b> توکن"
+            f"ð¤ <b>Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù</b>\n\n"
+            f"ð ÙÛÙÚ© Ø§Ø®ØªØµØ§ØµÛ ØªÙ:\n<code>{html.escape(link2)}</code>\n\n"
+            f"ð¥ Ø¯Ø¹ÙØªâÙØ§: <b>{stats['total']}</b> | ÙÙÙÙ: <b>{stats['success']}</b> | Ø¯Ø± Ø§ÙØªØ¸Ø§Ø±: <b>{stats['pending']}</b>\n"
+            f"ð Ù¾Ø§Ø¯Ø§Ø´ Ø¯Ø±ÛØ§ÙØªâØ´Ø¯Ù: <b>{stats['tokens_earned']}</b> ØªÙÚ©Ù"
         )
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=_referral_user_kb(uid))
         return
@@ -6674,9 +6653,9 @@ def tgju_value(url):
     # Prefer the page's explicit current-price field; generic first-number scraping can hit unrelated values.
     plain=re.sub(r"<[^>]+>"," ",html)
     plain=re.sub(r"\s+"," ",plain)
-    current=re.search(r'(?:نرخ\s*فعلی|Last)\s*:?[\s:=]*([0-9][0-9,٫٬]*)',plain,re.I)
+    current=re.search(r'(?:ÙØ±Ø®\s*ÙØ¹ÙÛ|Last)\s*:?[\s:=]*([0-9][0-9,Ù«Ù¬]*)',plain,re.I)
     if current: return current.group(1)
-    vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,٫٬]+)',html,re.I)
+    vals=re.findall(r'<span[^>]*class=["\'][^"\']*(?:price|value)[^"\']*["\'][^>]*>\s*([0-9,Ù«Ù¬]+)',html,re.I)
     if not vals: vals=re.findall(r'([0-9]{1,3}(?:,[0-9]{3})+)',html)
     if not vals: raise ValueError("price not found")
     return vals[0]
@@ -6695,7 +6674,7 @@ async def fetch_price(asset):
             last_trade = data.get("lastTradePrice")
             if last_trade is None:
                 raise ValueError("lastTradePrice missing")
-            return f"{float(last_trade):,.0f} ریال"
+            return f"{float(last_trade):,.0f} Ø±ÛØ§Ù"
         except Exception as e:
             logger.warning("Nobitex v3 orderbook %s failed: %s", symbol, e)
         try:
@@ -6705,7 +6684,7 @@ async def fetch_price(asset):
             )
             trades = data.get("trades") or []
             if trades:
-                return f"{float(trades[0]['price']):,.0f} ریال"
+                return f"{float(trades[0]['price']):,.0f} Ø±ÛØ§Ù"
             raise ValueError("no trades")
         except Exception as e:
             logger.warning("Nobitex trades %s failed: %s", symbol, e)
@@ -6718,7 +6697,7 @@ async def fetch_price(asset):
             latest = data.get("stats", {}).get(f"{asset}-rls", {}).get("latest")
             if latest is None:
                 raise ValueError("latest price missing")
-            return f"{float(latest):,.0f} ریال"
+            return f"{float(latest):,.0f} Ø±ÛØ§Ù"
         except Exception as e:
             logger.warning("Nobitex stats %s failed: %s", symbol, e)
             raise
@@ -6728,8 +6707,8 @@ async def fetch_price(asset):
             data=await asyncio.to_thread(fetch_url_json,"https://api.coingecko.com/api/v3/simple/price?ids="+ids[asset]+"&vs_currencies=usd")
             usd=float(data[ids[asset]]["usd"])
             usd_raw=await asyncio.to_thread(tgju_value,"https://www.tgju.org/profile/price_dollar_rl")
-            irr=float(usd_raw.replace(",","").replace("٫",".").replace("٬",""))
-            return f"{usd*irr:,.0f} ریال"
+            irr=float(usd_raw.replace(",","").replace("Ù«",".").replace("Ù¬",""))
+            return f"{usd*irr:,.0f} Ø±ÛØ§Ù"
         except Exception as e:
             logger.warning("CoinGecko %s failed: %s",asset,e)
             raise
@@ -6739,7 +6718,7 @@ async def fetch_price(asset):
         meta=data["chart"]["result"][0]["meta"]
         return f"{meta.get('regularMarketPrice',0):,.2f} USD"
     urls={"usd":"https://www.tgju.org/profile/price_dollar_rl","eur":"https://www.tgju.org/profile/price_eur","gold18":"https://www.tgju.org/profile/geram18","coin":"https://www.tgju.org/profile/sekee"}
-    # بدون تبدیل عددی؛ فقط واحد نمایش داده می‌شود.
+    # Ø¨Ø¯ÙÙ ØªØ¨Ø¯ÛÙ Ø¹Ø¯Ø¯ÛØ ÙÙØ· ÙØ§Ø­Ø¯ ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯.
     try:
         raw = await asyncio.to_thread(tgju_value, urls[asset])
     except Exception as primary_error:
@@ -6747,29 +6726,29 @@ async def fetch_price(asset):
         if asset in ("usd", "eur"):
             secondary = await v25_bonbast_secondary(asset) if "v25_bonbast_secondary" in globals() else None
             if secondary is not None:
-                return f"{float(secondary):,.0f} ریال"
+                return f"{float(secondary):,.0f} Ø±ÛØ§Ù"
         raise primary_error
     if asset in ("usd", "eur"):
         try:
             secondary = await v25_bonbast_secondary(asset) if "v25_bonbast_secondary" in globals() else None
-            normalized = float(raw.replace(",", "").replace("٫", ".").replace("٬", ""))
+            normalized = float(raw.replace(",", "").replace("Ù«", ".").replace("Ù¬", ""))
             if secondary is not None and normalized:
                 # If sources are within 1%, average to reduce transient source noise.
                 if abs(float(secondary)-normalized)/max(abs(normalized),1) <= 0.01:
                     normalized=(normalized+float(secondary))/2
         except Exception:
-            normalized = float(raw.replace(",", "").replace("٫", ".").replace("٬", ""))
-        return f"{normalized:,.0f} ریال"
+            normalized = float(raw.replace(",", "").replace("Ù«", ".").replace("Ù¬", ""))
+        return f"{normalized:,.0f} Ø±ÛØ§Ù"
     if asset in ("gold18", "coin"):
-        normalized = raw.replace(",", "").replace("٫", ".").replace("٬", "")
-        return f"{float(normalized):,.0f} ریال"
+        normalized = raw.replace(",", "").replace("Ù«", ".").replace("Ù¬", "")
+        return f"{float(normalized):,.0f} Ø±ÛØ§Ù"
     return raw
 
 
 async def prices(update,context):
     uid=update.effective_user.id
     await hide_main_reply_keyboard(update)
-    await update.message.reply_text("📈 قیمت آنلاین\n\nیکی را انتخاب کن:",reply_markup=prices_keyboard(uid))
+    await update.message.reply_text("ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ\n\nÛÚ©Û Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",reply_markup=prices_keyboard(uid))
 
 def _record_service_event(service,status,details=""):
     try:
@@ -6813,7 +6792,6 @@ async def build_daily_report():
         "new":c.execute("SELECT COUNT(*) n FROM users WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "xp":c.execute("SELECT COALESCE(SUM(amount),0) n FROM xp_log WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "done":c.execute("SELECT COUNT(*) n FROM goal_days WHERE goal_date=? AND status='done'",(d,)).fetchone()["n"],
-        "likes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "dislikes":c.execute("SELECT COUNT(*) n FROM content_feedback WHERE rating=-1 AND substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "auto_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
         "published_posts":c.execute("SELECT COUNT(*) n FROM auto_post_history WHERE substr(created_at,1,10)=?",(d,)).fetchone()["n"],
@@ -6841,25 +6819,25 @@ async def build_daily_report():
 def get_daily_report_text():
     d=datetime.now(TZ).date().isoformat(); c=db(); r=c.execute("SELECT data FROM daily_reports WHERE report_date=?",(d,)).fetchone(); c.close(); x=json.loads(r["data"]) if r else {}
     top=x.get("top_usage") or []
-    top_text=" | ".join(f"{row.get('event')}: {row.get('count')}" for row in top[:6]) or "ثبت نشده"
-    return ("📋 گزارش پایان روز\n\n"
-            f"📢 پست‌های زمان‌بندی‌شده: {x.get('posts',0)}\n" + f"🤖 پست‌های خودکار منتشرشده: {x.get('published_posts',x.get('auto_posts',0))}\n"
-            f"👥 کاربران ثبت‌شده: {x.get('total_users',0)}\n"
-            f"🟢 کاربران فعال امروز: {x.get('active',0)}\n"
-            f"🆕 کاربران جدید: {x.get('new',0)}\n"
-            f"📈 رویدادهای استفاده از ربات: {x.get('usage_events',0)}\n"
-            f"👤 کاربران استفاده‌کننده: {x.get('usage_users',0)}\n"
-            f"🎯 اهداف ساخته‌شده: {x.get('goals_created',0)}\n"
-            f"✅ اهداف انجام‌شده: {x.get('done',0)}\n"
-            f"⭐ XP کسب‌شده: {x.get('xp',0)}\n"
-            f"🗳 مشارکت در نظرسنجی: {x.get('poll_participation',0)} نفر\n"
-            f"❤️ کاربران دارای واکنش کانال: {x.get('reaction_users',0)} نفر\n"
-            f"👍 مفید: {x.get('likes',0)}\n"
-            f"👎 نامناسب: {x.get('dislikes',0)}\n"
-            f"🎫 تیکت‌های جدید: {x.get('tickets_created',0)}\n"
-            f"✅ تیکت‌های بسته‌شده: {x.get('tickets_closed',0)}\n"
-            f"💬 پیام‌های پشتیبانی: {x.get('ticket_messages',0)}\n"
-            f"🔥 فعالیت‌های پرتکرار: {top_text}")
+    top_text=" | ".join(f"{row.get('event')}: {row.get('count')}" for row in top[:6]) or "Ø«Ø¨Øª ÙØ´Ø¯Ù"
+    return ("ð Ú¯Ø²Ø§Ø±Ø´ Ù¾Ø§ÛØ§Ù Ø±ÙØ²\n\n"
+            f"ð¢ Ù¾Ø³ØªâÙØ§Û Ø²ÙØ§ÙâØ¨ÙØ¯ÛâØ´Ø¯Ù: {x.get('posts',0)}\n" + f"ð¤ Ù¾Ø³ØªâÙØ§Û Ø®ÙØ¯Ú©Ø§Ø± ÙÙØªØ´Ø±Ø´Ø¯Ù: {x.get('published_posts',x.get('auto_posts',0))}\n"
+            f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø«Ø¨ØªâØ´Ø¯Ù: {x.get('total_users',0)}\n"
+            f"ð¢ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: {x.get('active',0)}\n"
+            f"ð Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¬Ø¯ÛØ¯: {x.get('new',0)}\n"
+            f"ð Ø±ÙÛØ¯Ø§Ø¯ÙØ§Û Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª: {x.get('usage_events',0)}\n"
+            f"ð¤ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø§Ø³ØªÙØ§Ø¯ÙâÚ©ÙÙØ¯Ù: {x.get('usage_users',0)}\n"
+            f"ð¯ Ø§ÙØ¯Ø§Ù Ø³Ø§Ø®ØªÙâØ´Ø¯Ù: {x.get('goals_created',0)}\n"
+            f"â Ø§ÙØ¯Ø§Ù Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {x.get('done',0)}\n"
+            f"â­ XP Ú©Ø³Ø¨âØ´Ø¯Ù: {x.get('xp',0)}\n"
+            f"ð³ ÙØ´Ø§Ø±Ú©Øª Ø¯Ø± ÙØ¸Ø±Ø³ÙØ¬Û: {x.get('poll_participation',0)} ÙÙØ±\n"
+            f"â¤ï¸ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¯Ø§Ø±Ø§Û ÙØ§Ú©ÙØ´ Ú©Ø§ÙØ§Ù: {x.get('reaction_users',0)} ÙÙØ±\n"
+            f"ð ÙÙÛØ¯: {x.get('likes',0)}\n"
+            f"ð ÙØ§ÙÙØ§Ø³Ø¨: {x.get('dislikes',0)}\n"
+            f"ð« ØªÛÚ©ØªâÙØ§Û Ø¬Ø¯ÛØ¯: {x.get('tickets_created',0)}\n"
+            f"â ØªÛÚ©ØªâÙØ§Û Ø¨Ø³ØªÙâØ´Ø¯Ù: {x.get('tickets_closed',0)}\n"
+            f"ð¬ Ù¾ÛØ§ÙâÙØ§Û Ù¾Ø´ØªÛØ¨Ø§ÙÛ: {x.get('ticket_messages',0)}\n"
+            f"ð¥ ÙØ¹Ø§ÙÛØªâÙØ§Û Ù¾Ø±ØªÚ©Ø±Ø§Ø±: {top_text}")
 
 async def build_weekly_admin_report():
     """Build a Friday-end operational/financial report for Owner/authorized admins."""
@@ -6893,20 +6871,20 @@ async def build_weekly_admin_report():
 
 def get_weekly_admin_report_text(data):
     return (
-        "📊 گزارش هفتگی ربات\n\n"
-        f"📅 بازه: {data.get('start','—')} تا {data.get('end','—')}\n"
-        f"🆕 کاربران جدید: {data.get('new_users',0)}\n"
-        f"🟢 کاربران فعال: {data.get('active_users',0)}\n"
-        f"💳 پرداخت‌ها: {data.get('payments',0)}\n"
-        f"👤 خریداران یکتا: {data.get('paying_users',0)}\n"
-        f"💰 مبلغ پرداخت‌های ثبت‌شده: {data.get('revenue',0):,}\n"
-        f"💎 VIP فعال: {data.get('vip_users',0)}\n"
-        f"👤 عادی: {data.get('normal_users',0)}\n"
-        f"⭐ XP کسب‌شده: {data.get('xp_earned',0)}\n"
-        f"⭐ XP مصرف‌شده: {data.get('xp_spent',0)}\n"
-        f"🎫 تیکت جدید: {data.get('tickets',0)}\n"
-        f"✅ تیکت بسته‌شده: {data.get('tickets_closed',0)}\n"
-        f"📢 پست خودکار: {data.get('posts',0)}"
+        "ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û Ø±Ø¨Ø§Øª\n\n"
+        f"ð Ø¨Ø§Ø²Ù: {data.get('start','â')} ØªØ§ {data.get('end','â')}\n"
+        f"ð Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¬Ø¯ÛØ¯: {data.get('new_users',0)}\n"
+        f"ð¢ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ¹Ø§Ù: {data.get('active_users',0)}\n"
+        f"ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§: {data.get('payments',0)}\n"
+        f"ð¤ Ø®Ø±ÛØ¯Ø§Ø±Ø§Ù ÛÚ©ØªØ§: {data.get('paying_users',0)}\n"
+        f"ð° ÙØ¨ÙØº Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§Û Ø«Ø¨ØªâØ´Ø¯Ù: {data.get('revenue',0):,}\n"
+        f"ð VIP ÙØ¹Ø§Ù: {data.get('vip_users',0)}\n"
+        f"ð¤ Ø¹Ø§Ø¯Û: {data.get('normal_users',0)}\n"
+        f"â­ XP Ú©Ø³Ø¨âØ´Ø¯Ù: {data.get('xp_earned',0)}\n"
+        f"â­ XP ÙØµØ±ÙâØ´Ø¯Ù: {data.get('xp_spent',0)}\n"
+        f"ð« ØªÛÚ©Øª Ø¬Ø¯ÛØ¯: {data.get('tickets',0)}\n"
+        f"â ØªÛÚ©Øª Ø¨Ø³ØªÙâØ´Ø¯Ù: {data.get('tickets_closed',0)}\n"
+        f"ð¢ Ù¾Ø³Øª Ø®ÙØ¯Ú©Ø§Ø±: {data.get('posts',0)}"
     )
 
 async def weekly_admin_report_job(context):
@@ -6930,25 +6908,25 @@ async def weekly_admin_report_job(context):
 
 async def run_health_checks(bot,admin_id=0):
     checks=[]
-    checks.append(("Bot","OK" if BOT_TOKEN else "ERROR","توکن BOT_TOKEN تنظیم شده است." if BOT_TOKEN else "BOT_TOKEN تنظیم نشده است."))
+    checks.append(("Bot","OK" if BOT_TOKEN else "ERROR","ØªÙÚ©Ù BOT_TOKEN ØªÙØ¸ÛÙ Ø´Ø¯Ù Ø§Ø³Øª." if BOT_TOKEN else "BOT_TOKEN ØªÙØ¸ÛÙ ÙØ´Ø¯Ù Ø§Ø³Øª."))
 
     try:
         c=db()
         c.execute("SELECT 1")
         integrity=c.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity=="ok":
-            checks.append(("Database","OK","SQLite و integrity_check سالم است."))
+            checks.append(("Database","OK","SQLite Ù integrity_check Ø³Ø§ÙÙ Ø§Ø³Øª."))
         else:
             checks.append(("Database","ERROR",f"integrity_check: {integrity}"))
         required_tables={"users","goals","channel_config","customers","appointments","business_profiles","feature_access"}
         existing={r["name"] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         missing=sorted(required_tables-existing)
-        checks.append(("Customer/Booking","ERROR",f"جدول‌های ناقص: {', '.join(missing)}") if missing
-                      else ("Customer/Booking","OK","جداول کاربران، مشتری، نوبت و رزرو آنلاین موجود هستند."))
+        checks.append(("Customer/Booking","ERROR",f"Ø¬Ø¯ÙÙâÙØ§Û ÙØ§ÙØµ: {', '.join(missing)}") if missing
+                      else ("Customer/Booking","OK","Ø¬Ø¯Ø§ÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ ÙØ´ØªØ±ÛØ ÙÙØ¨Øª Ù Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ ÙÙØ¬ÙØ¯ ÙØ³ØªÙØ¯."))
         c.close()
     except Exception as e:
-        checks.append(("Database","ERROR",f"اتصال یا integrity_check خطا دارد: {e}"))
-        checks.append(("Customer/Booking","ERROR","به دیتابیس دسترسی نشد."))
+        checks.append(("Database","ERROR",f"Ø§ØªØµØ§Ù ÛØ§ integrity_check Ø®Ø·Ø§ Ø¯Ø§Ø±Ø¯: {e}"))
+        checks.append(("Customer/Booking","ERROR","Ø¨Ù Ø¯ÛØªØ§Ø¨ÛØ³ Ø¯Ø³ØªØ±Ø³Û ÙØ´Ø¯."))
 
     cfg=get_channel_config()
     if cfg and cfg["channel_id"]:
@@ -6958,26 +6936,26 @@ async def run_health_checks(bot,admin_id=0):
             member=await bot.get_chat_member(cfg["channel_id"],me.id)
             allowed = member.status in {"administrator","creator"}
             if allowed:
-                checks.append(("Channel","OK",f"کانال {getattr(chat,'title',cfg['channel_id'])} قابل دسترسی و ربات ادمین است."))
+                checks.append(("Channel","OK",f"Ú©Ø§ÙØ§Ù {getattr(chat,'title',cfg['channel_id'])} ÙØ§Ø¨Ù Ø¯Ø³ØªØ±Ø³Û Ù Ø±Ø¨Ø§Øª Ø§Ø¯ÙÛÙ Ø§Ø³Øª."))
             else:
-                checks.append(("Channel","ERROR","ربات به کانال دسترسی مدیریتی ندارد؛ ارسال/مدیریت پست ممکن است متوقف شود."))
+                checks.append(("Channel","ERROR","Ø±Ø¨Ø§Øª Ø¨Ù Ú©Ø§ÙØ§Ù Ø¯Ø³ØªØ±Ø³Û ÙØ¯ÛØ±ÛØªÛ ÙØ¯Ø§Ø±Ø¯Ø Ø§Ø±Ø³Ø§Ù/ÙØ¯ÛØ±ÛØª Ù¾Ø³Øª ÙÙÚ©Ù Ø§Ø³Øª ÙØªÙÙÙ Ø´ÙØ¯."))
         except Exception as e:
-            checks.append(("Channel","ERROR",f"اتصال یا دسترسی کانال مشکل دارد: {e}"))
+            checks.append(("Channel","ERROR",f"Ø§ØªØµØ§Ù ÛØ§ Ø¯Ø³ØªØ±Ø³Û Ú©Ø§ÙØ§Ù ÙØ´Ú©Ù Ø¯Ø§Ø±Ø¯: {e}"))
     else:
-        checks.append(("Channel","WARN","کانال هنوز در تنظیمات مدیریت کانال متصل نشده است."))
+        checks.append(("Channel","WARN","Ú©Ø§ÙØ§Ù ÙÙÙØ² Ø¯Ø± ØªÙØ¸ÛÙØ§Øª ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù ÙØªØµÙ ÙØ´Ø¯Ù Ø§Ø³Øª."))
 
     scheduler_ok=bool(getattr(bot,"job_queue",None))
     checks.append(("Scheduler","OK" if scheduler_ok else "WARN",
-                   "زمان‌بندی ربات فعال است."
+                   "Ø²ÙØ§ÙâØ¨ÙØ¯Û Ø±Ø¨Ø§Øª ÙØ¹Ø§Ù Ø§Ø³Øª."
                    if scheduler_ok else
-                   "صف زمان‌بندی داخلی کتابخانه در دسترس نیست؛ fallback داخلی ربات استفاده می‌شود."))
+                   "ØµÙ Ø²ÙØ§ÙâØ¨ÙØ¯Û Ø¯Ø§Ø®ÙÛ Ú©ØªØ§Ø¨Ø®Ø§ÙÙ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³ØªØ fallback Ø¯Ø§Ø®ÙÛ Ø±Ø¨Ø§Øª Ø§Ø³ØªÙØ§Ø¯Ù ÙÛâØ´ÙØ¯."))
 
 
     price_enabled=feature_enabled("price_data")
     checks.append(("Price Sources","OK" if price_enabled else "OFF",
-                   "قیمت از منابع بازار دریافت می‌شود."
+                   "ÙÛÙØª Ø§Ø² ÙÙØ§Ø¨Ø¹ Ø¨Ø§Ø²Ø§Ø± Ø¯Ø±ÛØ§ÙØª ÙÛâØ´ÙØ¯."
                    if price_enabled else
-                   "قیمت آنلاین توسط مدیر غیرفعال شده است."))
+                   "ÙÛÙØª Ø¢ÙÙØ§ÛÙ ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù Ø§Ø³Øª."))
 
     try:
         c=db()
@@ -6995,21 +6973,21 @@ async def run_health_checks(bot,admin_id=0):
         c.close()
         isolation_bad=int(orphan_appointments or 0)+int(bad_customer_owners or 0)
         checks.append(("Data Isolation","OK" if isolation_bad==0 else "ERROR",
-                       "روابط مالکیت کاربران و مشتری/رزرو سازگار است."
+                       "Ø±ÙØ§Ø¨Ø· ÙØ§ÙÚ©ÛØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙØ´ØªØ±Û/Ø±Ø²Ø±Ù Ø³Ø§Ø²Ú¯Ø§Ø± Ø§Ø³Øª."
                        if isolation_bad==0 else
-                       f"{isolation_bad} رابطه ناسازگار پیدا شد؛ نیازمند بررسی مدیر است."))
+                       f"{isolation_bad} Ø±Ø§Ø¨Ø·Ù ÙØ§Ø³Ø§Ø²Ú¯Ø§Ø± Ù¾ÛØ¯Ø§ Ø´Ø¯Ø ÙÛØ§Ø²ÙÙØ¯ Ø¨Ø±Ø±Ø³Û ÙØ¯ÛØ± Ø§Ø³Øª."))
     except Exception:
-        checks.append(("Data Isolation","WARN","ممیزی مالکیت در این نوبت کامل نشد."))
+        checks.append(("Data Isolation","WARN","ÙÙÛØ²Û ÙØ§ÙÚ©ÛØª Ø¯Ø± Ø§ÛÙ ÙÙØ¨Øª Ú©Ø§ÙÙ ÙØ´Ø¯."))
 
     try:
         c=db()
         feature_count=c.execute("SELECT COUNT(*) n FROM feature_access").fetchone()["n"]
         c.close()
         checks.append(("Feature Access","OK" if feature_count else "ERROR",
-                       f"{feature_count} قابلیت در ماتریس دسترسی ثبت شده است."
-                       if feature_count else "ماتریس دسترسی قابلیت‌ها خالی است."))
+                       f"{feature_count} ÙØ§Ø¨ÙÛØª Ø¯Ø± ÙØ§ØªØ±ÛØ³ Ø¯Ø³ØªØ±Ø³Û Ø«Ø¨Øª Ø´Ø¯Ù Ø§Ø³Øª."
+                       if feature_count else "ÙØ§ØªØ±ÛØ³ Ø¯Ø³ØªØ±Ø³Û ÙØ§Ø¨ÙÛØªâÙØ§ Ø®Ø§ÙÛ Ø§Ø³Øª."))
     except Exception as e:
-        checks.append(("Feature Access","ERROR",f"خواندن تنظیمات قابلیت‌ها خطا دارد: {e}"))
+        checks.append(("Feature Access","ERROR",f"Ø®ÙØ§ÙØ¯Ù ØªÙØ¸ÛÙØ§Øª ÙØ§Ø¨ÙÛØªâÙØ§ Ø®Ø·Ø§ Ø¯Ø§Ø±Ø¯: {e}"))
 
     for name,ok,detail in _security_patch_audit():
         checks.append((name,"OK" if ok else "ERROR",detail))
@@ -7080,39 +7058,38 @@ def health_text():
     c.close()
 
     service_fa={
-        "Bot":"🤖 ربات",
-        "Database":"🗄️ پایگاه‌داده",
-        "Customer/Booking":"👥 مشتری و رزرو",
-        "Channel":"📢 کانال",
-        "Scheduler":"⏰ زمان‌بندی",
-        "n8n":"🔗 n8n",
-        "OmniRoute":"🔀 OmniRoute",
-        "Price Sources":"💹 منابع قیمت",
-        "Data Isolation":"🔐 جداسازی داده",
-        "Feature Access":"🧩 دسترسی قابلیت‌ها",
-        "SQLite Foreign Keys":"🔗 کلیدهای خارجی SQLite",
-        "SQLite Journal":"💾 ژورنال SQLite",
-        "SQLite Sync":"⚙️ همگام‌سازی SQLite",
-        "SQLite integrity":"🛡️ سلامت SQLite",
+        "Bot":"ð¤ Ø±Ø¨Ø§Øª",
+        "Database":"ðï¸ Ù¾Ø§ÛÚ¯Ø§ÙâØ¯Ø§Ø¯Ù",
+        "Customer/Booking":"ð¥ ÙØ´ØªØ±Û Ù Ø±Ø²Ø±Ù",
+        "Channel":"ð¢ Ú©Ø§ÙØ§Ù",
+        "Scheduler":"â° Ø²ÙØ§ÙâØ¨ÙØ¯Û",
+        "n8n":"ð n8n",
+        "Price Sources":"ð¹ ÙÙØ§Ø¨Ø¹ ÙÛÙØª",
+        "Data Isolation":"ð Ø¬Ø¯Ø§Ø³Ø§Ø²Û Ø¯Ø§Ø¯Ù",
+        "Feature Access":"ð§© Ø¯Ø³ØªØ±Ø³Û ÙØ§Ø¨ÙÛØªâÙØ§",
+        "SQLite Foreign Keys":"ð Ú©ÙÛØ¯ÙØ§Û Ø®Ø§Ø±Ø¬Û SQLite",
+        "SQLite Journal":"ð¾ ÚÙØ±ÙØ§Ù SQLite",
+        "SQLite Sync":"âï¸ ÙÙÚ¯Ø§ÙâØ³Ø§Ø²Û SQLite",
+        "SQLite integrity":"ð¡ï¸ Ø³ÙØ§ÙØª SQLite",
     }
     status_fa={
-        "OK":"سالم", "ERROR":"خطا", "WARN":"هشدار", "OFF":"خاموش"
+        "OK":"Ø³Ø§ÙÙ", "ERROR":"Ø®Ø·Ø§", "WARN":"ÙØ´Ø¯Ø§Ø±", "OFF":"Ø®Ø§ÙÙØ´"
     }
-    icon={"OK":"🟢","ERROR":"🔴","WARN":"🟡","OFF":"⚪"}
-    lines=["🩺 <b>چکاپ ربات</b>","<i>وضعیت سرویس‌ها و زیرساخت</i>",""]
+    icon={"OK":"ð¢","ERROR":"ð´","WARN":"ð¡","OFF":"âª"}
+    lines=["ð©º <b>ÚÚ©Ø§Ù¾ Ø±Ø¨Ø§Øª</b>","<i>ÙØ¶Ø¹ÛØª Ø³Ø±ÙÛØ³âÙØ§ Ù Ø²ÛØ±Ø³Ø§Ø®Øª</i>",""]
     for r in rows:
         raw_service=re.sub(r"<[^>]+>", "", str(r["service"] or "")).strip()
         status=str(r["status"] or "").upper()
         details=re.sub(r"<[^>]+>", "", str(r["details"] or "")).strip()
         label=service_fa.get(raw_service, raw_service)
         st=status_fa.get(status, status)
-        lines.append(f"{icon.get(status,'⚪')} <b>{html.escape(label)}</b> — {html.escape(st)}")
+        lines.append(f"{icon.get(status,'âª')} <b>{html.escape(label)}</b> â {html.escape(st)}")
         if details:
             # Keep long technical diagnostics readable on mobile.
             details=' '.join(details.split())
             if len(details)>260:
-                details=details[:257]+'…'
-            lines.append(f"   <i>↳ {html.escape(details)}</i>")
+                details=details[:257]+'â¦'
+            lines.append(f"   <i>â³ {html.escape(details)}</i>")
         lines.append("")
     return "\n".join(lines).rstrip()
 async def scheduled_health_check_job(context):
@@ -7124,9 +7101,9 @@ async def scheduled_health_check_job(context):
         if not enabled:
             return
         schedule = get_system_setting("health_check_time", "03:00")
-        # JobQueue هر 60 ثانیه از زمان شروع ربات اجرا می‌شود و الزاماً روی ثانیه 00
-        # قرار نمی‌گیرد؛ بنابراین فقط منتظر برابری دقیق HH:MM نمی‌مانیم.
-        # اگر از ساعت تعیین‌شده عبور کرده باشیم و امروز هنوز چکاپ نشده باشد، اجرا می‌شود.
+        # JobQueue ÙØ± 60 Ø«Ø§ÙÛÙ Ø§Ø² Ø²ÙØ§Ù Ø´Ø±ÙØ¹ Ø±Ø¨Ø§Øª Ø§Ø¬Ø±Ø§ ÙÛâØ´ÙØ¯ Ù Ø§ÙØ²Ø§ÙØ§Ù Ø±ÙÛ Ø«Ø§ÙÛÙ 00
+        # ÙØ±Ø§Ø± ÙÙÛâÚ¯ÛØ±Ø¯Ø Ø¨ÙØ§Ø¨Ø±Ø§ÛÙ ÙÙØ· ÙÙØªØ¸Ø± Ø¨Ø±Ø§Ø¨Ø±Û Ø¯ÙÛÙ HH:MM ÙÙÛâÙØ§ÙÛÙ.
+        # Ø§Ú¯Ø± Ø§Ø² Ø³Ø§Ø¹Øª ØªØ¹ÛÛÙâØ´Ø¯Ù Ø¹Ø¨ÙØ± Ú©Ø±Ø¯Ù Ø¨Ø§Ø´ÛÙ Ù Ø§ÙØ±ÙØ² ÙÙÙØ² ÚÚ©Ø§Ù¾ ÙØ´Ø¯Ù Ø¨Ø§Ø´Ø¯Ø Ø§Ø¬Ø±Ø§ ÙÛâØ´ÙØ¯.
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule):
             schedule = "03:00"
             set_system_setting("health_check_time", schedule)
@@ -7137,7 +7114,7 @@ async def scheduled_health_check_job(context):
         if get_system_setting("last_auto_health_check_date", "") == today:
             return
         await run_health_checks(context.bot, next(iter(ADMIN_IDS)))
-        report = health_text() + "\n\n🩺 چکاپ دوره‌ای خودکار انجام شد."
+        report = health_text() + "\n\nð©º ÚÚ©Ø§Ù¾ Ø¯ÙØ±ÙâØ§Û Ø®ÙØ¯Ú©Ø§Ø± Ø§ÙØ¬Ø§Ù Ø´Ø¯."
         for admin_id in ADMIN_IDS:
             try:
                 await context.bot.send_message(admin_id, report)
@@ -7158,8 +7135,8 @@ async def daily_report_job(context):
             try:
                 await context.bot.send_poll(
                     chat_id=channel,
-                    question="🌙 ارزیابی امشب: از محتوای امروز راضی بودی؟",
-                    options=["😍 خیلی خوب بود", "👍 خوب بود", "🔄 بهترش کنیم"],
+                    question="ð Ø§Ø±Ø²ÛØ§Ø¨Û Ø§ÙØ´Ø¨: Ø§Ø² ÙØ­ØªÙØ§Û Ø§ÙØ±ÙØ² Ø±Ø§Ø¶Û Ø¨ÙØ¯ÛØ",
+                    options=["ð Ø®ÛÙÛ Ø®ÙØ¨ Ø¨ÙØ¯", "ð Ø®ÙØ¨ Ø¨ÙØ¯", "ð Ø¨ÙØªØ±Ø´ Ú©ÙÛÙ"],
                     is_anonymous=False,
                 )
                 set_auto_setting("night_poll_date", now.date().isoformat())
@@ -7253,7 +7230,7 @@ async def send_channel_morning_message(context):
     if not channel or get_auto_setting("channel_morning_date", "") == now.date().isoformat():
         return
     try:
-        text="☀️ صبح بخیر همراهان MyTasks!\n\nیک روز تازه، یک فرصت تازه برای یک قدم بهتر. 🌱\nامروز هم با هم یک موضوع کاربردی و مفید را بررسی می‌کنیم. 🎯"
+        text="âï¸ ØµØ¨Ø­ Ø¨Ø®ÛØ± ÙÙØ±Ø§ÙØ§Ù MyTasks!\n\nÛÚ© Ø±ÙØ² ØªØ§Ø²ÙØ ÛÚ© ÙØ±ØµØª ØªØ§Ø²Ù Ø¨Ø±Ø§Û ÛÚ© ÙØ¯Ù Ø¨ÙØªØ±. ð±\nØ§ÙØ±ÙØ² ÙÙ Ø¨Ø§ ÙÙ ÛÚ© ÙÙØ¶ÙØ¹ Ú©Ø§Ø±Ø¨Ø±Ø¯Û Ù ÙÙÛØ¯ Ø±Ø§ Ø¨Ø±Ø±Ø³Û ÙÛâÚ©ÙÛÙ. ð¯"
         text=add_channel_username_footer(text, await channel_post_footer(context.bot, channel), 4096)
         await context.bot.send_message(chat_id=channel, text=text)
         set_auto_setting("channel_morning_date", now.date().isoformat())
@@ -7270,14 +7247,14 @@ async def send_night_channel_feedback(context):
         return
     try:
         # Night greeting is deliberately separate from both polls.
-        text="🌙 شب بخیر همراهان MyTasks!\n\nممنون که امروز هم همراه ما بودید. ❤️\nقبل از پایان روز، نظرتان درباره محتوای امروز را با ما در میان بگذارید."
+        text="ð Ø´Ø¨ Ø¨Ø®ÛØ± ÙÙØ±Ø§ÙØ§Ù MyTasks!\n\nÙÙÙÙÙ Ú©Ù Ø§ÙØ±ÙØ² ÙÙ ÙÙØ±Ø§Ù ÙØ§ Ø¨ÙØ¯ÛØ¯. â¤ï¸\nÙØ¨Ù Ø§Ø² Ù¾Ø§ÛØ§Ù Ø±ÙØ²Ø ÙØ¸Ø±ØªØ§Ù Ø¯Ø±Ø¨Ø§Ø±Ù ÙØ­ØªÙØ§Û Ø§ÙØ±ÙØ² Ø±Ø§ Ø¨Ø§ ÙØ§ Ø¯Ø± ÙÛØ§Ù Ø¨Ú¯Ø°Ø§Ø±ÛØ¯."
         text=add_channel_username_footer(text, await channel_post_footer(context.bot, channel), 4096)
         await context.bot.send_message(chat_id=channel, text=text)
-        msg = await context.bot.send_poll(chat_id=channel, question="📊 محتوای امروز چقدر برایت مفید بود؟", options=["😍 خیلی مفید بود", "👍 مفید بود", "😐 معمولی بود", "👎 مفید نبود"], is_anonymous=False)
+        msg = await context.bot.send_poll(chat_id=channel, question="ð ÙØ­ØªÙØ§Û Ø§ÙØ±ÙØ² ÚÙØ¯Ø± Ø¨Ø±Ø§ÛØª ÙÙÛØ¯ Ø¨ÙØ¯Ø", options=["ð Ø®ÛÙÛ ÙÙÛØ¯ Ø¨ÙØ¯", "ð ÙÙÛØ¯ Ø¨ÙØ¯", "ð ÙØ¹ÙÙÙÛ Ø¨ÙØ¯", "ð ÙÙÛØ¯ ÙØ¨ÙØ¯"], is_anonymous=False)
         c=db(); c.execute("INSERT OR REPLACE INTO channel_polls(poll_id,channel_id,poll_type,question,options,created_at,report_date) VALUES(?,?,?,?,?,?,?)", (str(msg.poll.id),str(channel),"usefulness",msg.poll.question,json.dumps(msg.poll.options,ensure_ascii=False,default=lambda o:o.text),datetime.now(TZ).isoformat(),date_iso))
         c.commit(); c.close()
-        topics = ["🏃 ورزش و سلامتی", "🧠 تمرکز و یادگیری", "😴 خواب و سبک زندگی", "💰 مدیریت مالی", "📚 مطالعه و رشد فردی"]
-        msg2 = await context.bot.send_poll(chat_id=channel, question="🎯 فردا بیشتر درباره کدام موضوع صحبت کنیم؟", options=topics, is_anonymous=False)
+        topics = ["ð ÙØ±Ø²Ø´ Ù Ø³ÙØ§ÙØªÛ", "ð§  ØªÙØ±Ú©Ø² Ù ÛØ§Ø¯Ú¯ÛØ±Û", "ð´ Ø®ÙØ§Ø¨ Ù Ø³Ø¨Ú© Ø²ÙØ¯Ú¯Û", "ð° ÙØ¯ÛØ±ÛØª ÙØ§ÙÛ", "ð ÙØ·Ø§ÙØ¹Ù Ù Ø±Ø´Ø¯ ÙØ±Ø¯Û"]
+        msg2 = await context.bot.send_poll(chat_id=channel, question="ð¯ ÙØ±Ø¯Ø§ Ø¨ÛØ´ØªØ± Ø¯Ø±Ø¨Ø§Ø±Ù Ú©Ø¯Ø§Ù ÙÙØ¶ÙØ¹ ØµØ­Ø¨Øª Ú©ÙÛÙØ", options=topics, is_anonymous=False)
         c=db(); c.execute("INSERT OR REPLACE INTO channel_polls(poll_id,channel_id,poll_type,question,options,created_at,report_date) VALUES(?,?,?,?,?,?,?)", (str(msg2.poll.id),str(channel),"topic",msg2.poll.question,json.dumps(topics,ensure_ascii=False),datetime.now(TZ).isoformat(),date_iso))
         c.commit(); c.close()
         set_auto_setting("night_feedback_date", date_iso)
@@ -7310,9 +7287,9 @@ async def final_daily_report_job(context):
         data.update({"channel_reactions":reaction_total,"reaction_breakdown":dict(reactions),"tomorrow_topic":top_topic,"topic_votes":topic_votes})
         c.execute("INSERT OR REPLACE INTO daily_reports(report_date,data,created_at) VALUES(?,?,?)",(date_iso,json.dumps(data,ensure_ascii=False),datetime.now(TZ).isoformat())); c.commit(); c.close()
         if ADMIN_IDS:
-            report = get_daily_report_text()+f"\n\n📣 واکنش‌های کانال: {reaction_total}"
+            report = get_daily_report_text()+f"\n\nð£ ÙØ§Ú©ÙØ´âÙØ§Û Ú©Ø§ÙØ§Ù: {reaction_total}"
             if reactions: report += "\n" + " | ".join(f"{e}: {n}" for e,n in reactions[:8])
-            report += f"\n🎯 موضوع پیشنهادی فردا: {top_topic or 'رأی کافی ثبت نشده'}"
+            report += f"\nð¯ ÙÙØ¶ÙØ¹ Ù¾ÛØ´ÙÙØ§Ø¯Û ÙØ±Ø¯Ø§: {top_topic or 'Ø±Ø£Û Ú©Ø§ÙÛ Ø«Ø¨Øª ÙØ´Ø¯Ù'}"
             for admin_id in ADMIN_IDS:
                 try: await context.bot.send_message(chat_id=admin_id,text=report)
                 except Exception: logger.exception("Admin daily report delivery failed")
@@ -7334,18 +7311,18 @@ async def error_handler(update, context):
         if update.callback_query:
             q = update.callback_query
             try:
-                await q.answer("❌ خطا در همین بخش؛ وضعیتت حفظ شد.", show_alert=True)
+                await q.answer("â Ø®Ø·Ø§ Ø¯Ø± ÙÙÛÙ Ø¨Ø®Ø´Ø ÙØ¶Ø¹ÛØªØª Ø­ÙØ¸ Ø´Ø¯.", show_alert=True)
             except Exception:
                 pass
             data = q.data or ""
             retry = data if data else "v25:hub"
             recovery_markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 تلاش دوباره", callback_data=retry)],
-                [InlineKeyboardButton("⬅️ مرکز من", callback_data="v25:hub"), main_menu_button(uid)],
+                [InlineKeyboardButton("ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù", callback_data=retry)],
+                [InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙÙ", callback_data="v25:hub"), main_menu_button(uid)],
             ])
             recovery_text = (
-                f"⚠️ اجرای این بخش با خطا متوقف شد.\n\nکد خطا: <code>{err_name}</code>\n"
-                "صفحه فعلی پاک نشد؛ می‌توانی دوباره امتحان کنی."
+                f"â ï¸ Ø§Ø¬Ø±Ø§Û Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Ø®Ø·Ø§ ÙØªÙÙÙ Ø´Ø¯.\n\nÚ©Ø¯ Ø®Ø·Ø§: <code>{err_name}</code>\n"
+                "ØµÙØ­Ù ÙØ¹ÙÛ Ù¾Ø§Ú© ÙØ´Ø¯Ø ÙÛâØªÙØ§ÙÛ Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØªØ­Ø§Ù Ú©ÙÛ."
             )
             # CallbackQuery can be message-less for inline messages. Do not let
             # the recovery handler raise a second AttributeError.
@@ -7362,8 +7339,8 @@ async def error_handler(update, context):
                     logger.exception("Failed to recover inline callback error")
         elif update.message:
             await update.message.reply_text(
-                f"⚠️ اجرای این بخش با خطا متوقف شد.\nکد خطا: <code>{err_name}</code>\n"
-                "وضعیت فعلی حفظ شد؛ می‌توانی دوباره تلاش کنی.",
+                f"â ï¸ Ø§Ø¬Ø±Ø§Û Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Ø®Ø·Ø§ ÙØªÙÙÙ Ø´Ø¯.\nÚ©Ø¯ Ø®Ø·Ø§: <code>{err_name}</code>\n"
+                "ÙØ¶Ø¹ÛØª ÙØ¹ÙÛ Ø­ÙØ¸ Ø´Ø¯Ø ÙÛâØªÙØ§ÙÛ Ø¯ÙØ¨Ø§Ø±Ù ØªÙØ§Ø´ Ú©ÙÛ.",
                 parse_mode="HTML",
                 reply_markup=nav_keyboard(uid),
             )
@@ -7374,8 +7351,8 @@ async def error_handler(update, context):
 async def my_id(update, context):
     uid = update.effective_user.id
     await update.message.reply_text(
-        f"🆔 شناسه تلگرام شما: <code>{uid}</code>\n\n"
-        "این عدد را در Railway → Variables داخل ADMIN_IDS یا ADMIN_ID قرار بده و سرویس را Restart/Redeploy کن.",
+        f"ð Ø´ÙØ§Ø³Ù ØªÙÚ¯Ø±Ø§Ù Ø´ÙØ§: <code>{uid}</code>\n\n"
+        "Ø§ÛÙ Ø¹Ø¯Ø¯ Ø±Ø§ Ø¯Ø± Railway â Variables Ø¯Ø§Ø®Ù ADMIN_IDS ÛØ§ ADMIN_ID ÙØ±Ø§Ø± Ø¨Ø¯Ù Ù Ø³Ø±ÙÛØ³ Ø±Ø§ Restart/Redeploy Ú©Ù.",
         parse_mode="HTML",
     )
 
@@ -7400,41 +7377,41 @@ def _feature_flag_exists(key):
         return False
 
 V25_FEATURE_LABELS = {
-    'unified_hub':'🧠 مرکز فرمان هوشمند',
-    'important_reminders':'🔔 یادآوری‌های مهم',
-    'calendar_hub':'📅 تقویم یکپارچه',
-    'profile_sharing':'👤 اطلاعات من',
-    'portfolio':'💰 سرمایه‌های من',
-    'installments':'💳 اقساط و تسهیلات',
-    'business_services':'🛠️ خدمات کسب‌وکار',
-    'business_finance':'📒 مالی مشتریان',
-    'booking_payments':'💳 پرداخت رزرو',
-    'card_to_card':'💵 کارت‌به‌کارت',
-    'surveys':'⭐ نظرسنجی مشتری',
-    'sms':'📱 پیامک',
-    'vip_plans':'💎 پلن‌های VIP',
-    'market_prices_v25':'📈 قیمت بازار'
+    'unified_hub':'ð§  ÙØ±Ú©Ø² ÙØ±ÙØ§Ù ÙÙØ´ÙÙØ¯',
+    'important_reminders':'ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙÙ',
+    'calendar_hub':'ð ØªÙÙÛÙ ÛÚ©Ù¾Ø§Ø±ÚÙ',
+    'profile_sharing':'ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ',
+    'portfolio':'ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ',
+    'installments':'ð³ Ø§ÙØ³Ø§Ø· Ù ØªØ³ÙÛÙØ§Øª',
+    'business_services':'ð ï¸ Ø®Ø¯ÙØ§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±',
+    'business_finance':'ð ÙØ§ÙÛ ÙØ´ØªØ±ÛØ§Ù',
+    'booking_payments':'ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø²Ø±Ù',
+    'card_to_card':'ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',
+    'surveys':'â­ ÙØ¸Ø±Ø³ÙØ¬Û ÙØ´ØªØ±Û',
+    'sms':'ð± Ù¾ÛØ§ÙÚ©',
+    'vip_plans':'ð Ù¾ÙÙâÙØ§Û VIP',
+    'market_prices_v25':'ð ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±'
 }
 
 V25_DEFAULT_QUESTIONS = [
-    ('space','🏪 فضای مجموعه چطور بود؟'),
-    ('clean','🧹 تمیزی و نظم محیط چطور بود؟'),
-    ('staff','👥 برخورد کارکنان چطور بود؟'),
-    ('speed','⚡ سرعت پاسخگویی چطور بود؟'),
-    ('quality','🛠️ کیفیت خدمت چطور بود؟'),
-    ('value','💰 ارزش خدمت نسبت به هزینه چطور بود؟'),
-    ('booking','📅 رزرو آنلاین چقدر راحت بود؟'),
+    ('space','ðª ÙØ¶Ø§Û ÙØ¬ÙÙØ¹Ù ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('clean','ð§¹ ØªÙÛØ²Û Ù ÙØ¸Ù ÙØ­ÛØ· ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('staff','ð¥ Ø¨Ø±Ø®ÙØ±Ø¯ Ú©Ø§Ø±Ú©ÙØ§Ù ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('speed','â¡ Ø³Ø±Ø¹Øª Ù¾Ø§Ø³Ø®Ú¯ÙÛÛ ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('quality','ð ï¸ Ú©ÛÙÛØª Ø®Ø¯ÙØª ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('value','ð° Ø§Ø±Ø²Ø´ Ø®Ø¯ÙØª ÙØ³Ø¨Øª Ø¨Ù ÙØ²ÛÙÙ ÚØ·ÙØ± Ø¨ÙØ¯Ø'),
+    ('booking','ð Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ ÚÙØ¯Ø± Ø±Ø§Ø­Øª Ø¨ÙØ¯Ø'),
 ]
 
 V25_PLAN_SEEDS = [
-    ('one_hour','⏱️ یک ساعته',1,0),
-    ('one_day','📅 یک روزه',1,0),
-    ('one_week','📆 یک هفته‌ای',7,0),
-    ('one_month','🗓️ یک ماهه',30,0),
-    ('two_months','🗓️ دو ماهه',60,0),
-    ('three_months','🗓️ سه ماهه',90,0),
-    ('six_months','🗓️ شش ماهه',180,0),
-    ('one_year','🎉 یک ساله',365,0),
+    ('one_hour','â±ï¸ ÛÚ© Ø³Ø§Ø¹ØªÙ',1,0),
+    ('one_day','ð ÛÚ© Ø±ÙØ²Ù',1,0),
+    ('one_week','ð ÛÚ© ÙÙØªÙâØ§Û',7,0),
+    ('one_month','ðï¸ ÛÚ© ÙØ§ÙÙ',30,0),
+    ('two_months','ðï¸ Ø¯Ù ÙØ§ÙÙ',60,0),
+    ('three_months','ðï¸ Ø³Ù ÙØ§ÙÙ',90,0),
+    ('six_months','ðï¸ Ø´Ø´ ÙØ§ÙÙ',180,0),
+    ('one_year','ð ÛÚ© Ø³Ø§ÙÙ',365,0),
 ]
 
 def _v25_now():
@@ -7687,19 +7664,19 @@ def v25_allowed(uid,key):
 
 def v25_back(uid, cb='v25:hub'):
     fa=lang(uid)=='fa'
-    return InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data=cb),InlineKeyboardButton('🏠 منوی اصلی' if fa else '🏠 Main Menu',callback_data='nav:main')]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data=cb),InlineKeyboardButton('ð  ÙÙÙÛ Ø§ØµÙÛ' if fa else 'ð  Main Menu',callback_data='nav:main')]])
 
 def v25_hub_keyboard(uid):
     fa=lang(uid)=='fa'; rows=[]
     labels=[
-        ('v25:today','🧠 امروز من','🧠 My Day','unified_hub'),
-        ('v25:reminders','🔔 یادآوری‌های مهم','🔔 Important Reminders','important_reminders'),
-        ('v25:calendar','📅 تقویم من','📅 My Calendar','calendar_hub'),
-        ('v25:portfolio','💰 سرمایه‌های من','💰 My Portfolio','portfolio'),
-        ('v25:installments','💳 اقساط و تسهیلات','💳 Installments','installments'),
-        ('v25:profile','👤 اطلاعات من','👤 My Profile','profile_sharing'),
-        ('v25:vip','💎 VIP و اشتراک','💎 VIP & Subscription','vip_plans'),
-        ('v25:business','🏪 پنل کسب‌وکار','🏪 Business Panel','business_services'),
+        ('v25:today','ð§  Ø§ÙØ±ÙØ² ÙÙ','ð§  My Day','unified_hub'),
+        ('v25:reminders','ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙÙ','ð Important Reminders','important_reminders'),
+        ('v25:calendar','ð ØªÙÙÛÙ ÙÙ','ð My Calendar','calendar_hub'),
+        ('v25:portfolio','ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ','ð° My Portfolio','portfolio'),
+        ('v25:installments','ð³ Ø§ÙØ³Ø§Ø· Ù ØªØ³ÙÛÙØ§Øª','ð³ Installments','installments'),
+        ('v25:profile','ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ','ð¤ My Profile','profile_sharing'),
+        ('v25:vip','ð VIP Ù Ø§Ø´ØªØ±Ø§Ú©','ð VIP & Subscription','vip_plans'),
+        ('v25:business','ðª Ù¾ÙÙ Ú©Ø³Ø¨âÙÚ©Ø§Ø±','ðª Business Panel','business_services'),
     ]
     row=[]
     for cb,fa_text,en_text,key in labels:
@@ -7711,7 +7688,7 @@ def v25_hub_keyboard(uid):
     # This uses the existing customer access gate so VIP/off settings are respected.
     try:
         if customer_feature_allowed(uid):
-            rows.append([InlineKeyboardButton('👥 مدیریت مشتری و نوبت‌دهی' if fa else '👥 Customer & Appointments', callback_data='v25:customers')])
+            rows.append([InlineKeyboardButton('ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ' if fa else 'ð¥ Customer & Appointments', callback_data='v25:customers')])
     except Exception:
         logger.exception('Customer menu feature check failed')
     rows.append([main_menu_button(uid)])
@@ -7721,8 +7698,8 @@ def v25_hub_text(uid):
     fa=lang(uid)=='fa'; p=v25_profile(uid); goals=get_goals(uid)
     d=datetime.now(TZ).date().isoformat(); c=db(); done=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND goal_date=? AND status='done'",(uid,d)).fetchone()['n']; events=c.execute("SELECT COUNT(*) n FROM important_reminders WHERE user_id=? AND enabled=1 AND substr(remind_at,1,10)=?",(uid,d)).fetchone()['n']; appts=c.execute("SELECT COUNT(*) n FROM appointments WHERE owner_user_id=? AND appointment_date=? AND status='booked'",(uid,d)).fetchone()['n']; c.close()
     if fa:
-        return f"☀️ <b>امروزت</b>\n\n🎯 هدف‌ها: {len(goals)}\n✅ انجام‌شده: {done}\n🔔 یادآوری امروز: {events}\n📅 نوبت امروز: {appts}\n\n👤 {html.escape(p['full_name'] or 'دوست من')}\n\nاز همین‌جا هر کاری لازم داری با چند کلیک انجام بده."
-    return f"☀️ <b>My Day</b>\n\n🎯 Goals: {len(goals)}\n✅ Completed: {done}\n🔔 Reminders today: {events}\n📅 Appointments today: {appts}\n\n👤 {html.escape(p['full_name'] or 'Friend')}\n\nEverything you need is one tap away."
+        return f"âï¸ <b>Ø§ÙØ±ÙØ²Øª</b>\n\nð¯ ÙØ¯ÙâÙØ§: {len(goals)}\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {done}\nð ÛØ§Ø¯Ø¢ÙØ±Û Ø§ÙØ±ÙØ²: {events}\nð ÙÙØ¨Øª Ø§ÙØ±ÙØ²: {appts}\n\nð¤ {html.escape(p['full_name'] or 'Ø¯ÙØ³Øª ÙÙ')}\n\nØ§Ø² ÙÙÛÙâØ¬Ø§ ÙØ± Ú©Ø§Ø±Û ÙØ§Ø²Ù Ø¯Ø§Ø±Û Ø¨Ø§ ÚÙØ¯ Ú©ÙÛÚ© Ø§ÙØ¬Ø§Ù Ø¨Ø¯Ù."
+    return f"âï¸ <b>My Day</b>\n\nð¯ Goals: {len(goals)}\nâ Completed: {done}\nð Reminders today: {events}\nð Appointments today: {appts}\n\nð¤ {html.escape(p['full_name'] or 'Friend')}\n\nEverything you need is one tap away."
 
 async def v25_hub(update,context):
     uid=update.effective_user.id
@@ -7739,56 +7716,56 @@ async def v25_hub(update,context):
 async def v25_reminders_menu(update,context):
     uid=update.effective_user.id; fa=lang(uid)=="fa"
     c=db(); rows=c.execute("SELECT * FROM important_reminders WHERE user_id=? AND enabled=1 ORDER BY remind_at LIMIT 30",(uid,)).fetchall(); c.close()
-    kb=[[InlineKeyboardButton(f"🔔 {r['title']} — {r['remind_at'].replace('T',' ')}",callback_data=f"v25:remview:{r['id']}")] for r in rows]
-    kb.append([InlineKeyboardButton("➕ یادآوری جدید" if fa else "➕ New Reminder",callback_data="v25:remadd")])
-    kb.append([InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back",callback_data="v25:hub"),main_menu_button(uid)])
+    kb=[[InlineKeyboardButton(f"ð {r['title']} â {r['remind_at'].replace('T',' ')}",callback_data=f"v25:remview:{r['id']}")] for r in rows]
+    kb.append([InlineKeyboardButton("â ÛØ§Ø¯Ø¢ÙØ±Û Ø¬Ø¯ÛØ¯" if fa else "â New Reminder",callback_data="v25:remadd")])
+    kb.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back",callback_data="v25:hub"),main_menu_button(uid)])
     if rows:
-        listing="\n".join(f"• {r['title']} — {r['remind_at'].replace('T',' ')}" for r in rows)
+        listing="\n".join(f"â¢ {r['title']} â {r['remind_at'].replace('T',' ')}" for r in rows)
     else:
-        listing="هنوز یادآوری مهمی نداری." if fa else "No important reminders yet."
-    heading="🔔 <b>یادآوری‌های مهم</b>" if fa else "🔔 <b>Important Reminders</b>"
+        listing="ÙÙÙØ² ÛØ§Ø¯Ø¢ÙØ±Û ÙÙÙÛ ÙØ¯Ø§Ø±Û." if fa else "No important reminders yet."
+    heading="ð <b>ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙÙ</b>" if fa else "ð <b>Important Reminders</b>"
     target = update.callback_query.message if update.callback_query else update.message
     await target.reply_text(heading+"\n\n"+listing,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_profile_menu(update,context,edit=False):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; p=v25_profile(uid); c=db(); perms=c.execute("SELECT scope,field,enabled FROM profile_share WHERE user_id=? ORDER BY scope,field",(uid,)).fetchall(); c.close()
-    text=(f"👤 <b>اطلاعات من</b>\n\nنام: {html.escape(p['full_name'] or '—')}\n📱 تلفن: {html.escape(p['phone'] or '—')}\n📧 ایمیل: {html.escape(p['email'] or '—')}\n🆔 Telegram ID: {p['telegram_id'] or uid}\n\nبرای هر قابلیت مشخص کن چه اطلاعاتی مجاز است. هیچ فیلدی اجباری نیست.") if fa else (f"👤 <b>My Profile</b>\n\nName: {html.escape(p['full_name'] or '—')}\n📱 Phone: {html.escape(p['phone'] or '—')}\n📧 Email: {html.escape(p['email'] or '—')}\n🆔 Telegram ID: {p['telegram_id'] or uid}\n\nChoose which fields may be shared with each feature. Nothing is mandatory.")
-    kb=[[InlineKeyboardButton('✏️ نام' if fa else '✏️ Name',callback_data='v25:profile_edit:name')],[InlineKeyboardButton('📱 تلفن' if fa else '📱 Phone',callback_data='v25:profile_edit:phone')],[InlineKeyboardButton('📧 ایمیل' if fa else '📧 Email',callback_data='v25:profile_edit:email')],[InlineKeyboardButton('🔐 مجوز استفاده از اطلاعات' if fa else '🔐 Data sharing',callback_data='v25:profile_share')],[InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)]]
+    text=(f"ð¤ <b>Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ</b>\n\nÙØ§Ù: {html.escape(p['full_name'] or 'â')}\nð± ØªÙÙÙ: {html.escape(p['phone'] or 'â')}\nð§ Ø§ÛÙÛÙ: {html.escape(p['email'] or 'â')}\nð Telegram ID: {p['telegram_id'] or uid}\n\nØ¨Ø±Ø§Û ÙØ± ÙØ§Ø¨ÙÛØª ÙØ´Ø®Øµ Ú©Ù ÚÙ Ø§Ø·ÙØ§Ø¹Ø§ØªÛ ÙØ¬Ø§Ø² Ø§Ø³Øª. ÙÛÚ ÙÛÙØ¯Û Ø§Ø¬Ø¨Ø§Ø±Û ÙÛØ³Øª.") if fa else (f"ð¤ <b>My Profile</b>\n\nName: {html.escape(p['full_name'] or 'â')}\nð± Phone: {html.escape(p['phone'] or 'â')}\nð§ Email: {html.escape(p['email'] or 'â')}\nð Telegram ID: {p['telegram_id'] or uid}\n\nChoose which fields may be shared with each feature. Nothing is mandatory.")
+    kb=[[InlineKeyboardButton('âï¸ ÙØ§Ù' if fa else 'âï¸ Name',callback_data='v25:profile_edit:name')],[InlineKeyboardButton('ð± ØªÙÙÙ' if fa else 'ð± Phone',callback_data='v25:profile_edit:phone')],[InlineKeyboardButton('ð§ Ø§ÛÙÛÙ' if fa else 'ð§ Email',callback_data='v25:profile_edit:email')],[InlineKeyboardButton('ð ÙØ¬ÙØ² Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø§Ø·ÙØ§Ø¹Ø§Øª' if fa else 'ð Data sharing',callback_data='v25:profile_share')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:hub'),main_menu_button(uid)]]
     await (update.callback_query.message if update.callback_query else update.message).reply_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_profile_share_menu(update,context):
-    uid=update.effective_user.id; fa=lang(uid)=='fa'; scopes=[('booking','🔗 رزرو'),('payment','💳 پرداخت'),('survey','⭐ نظرسنجی'),('crm','👥 مشتری')]; fields=['full_name','phone','email']
+    uid=update.effective_user.id; fa=lang(uid)=='fa'; scopes=[('booking','ð Ø±Ø²Ø±Ù'),('payment','ð³ Ù¾Ø±Ø¯Ø§Ø®Øª'),('survey','â­ ÙØ¸Ø±Ø³ÙØ¬Û'),('crm','ð¥ ÙØ´ØªØ±Û')]; fields=['full_name','phone','email']
     kb=[]
     for scope, label in scopes:
         for field in fields:
             r=_v25_exec("SELECT enabled FROM profile_share WHERE user_id=? AND scope=? AND field=?",(uid,scope,field),fetchone=True)
             enabled=1 if r is None else int(r['enabled'])
-            fl={'full_name':'نام','phone':'تلفن','email':'ایمیل'}[field] if fa else {'full_name':'Name','phone':'Phone','email':'Email'}[field]
+            fl={'full_name':'ÙØ§Ù','phone':'ØªÙÙÙ','email':'Ø§ÛÙÛÙ'}[field] if fa else {'full_name':'Name','phone':'Phone','email':'Email'}[field]
             sl=label if fa else scope.title()
-            kb.append([InlineKeyboardButton(f"{'🟢' if enabled else '🔴'} {sl} — {fl}",callback_data=f"v25:share:{scope}:{field}")])
-    kb.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:profile'),main_menu_button(uid)])
-    await update.callback_query.message.edit_text('🔐 <b>مجوز استفاده از اطلاعات</b>\n\nسبز یعنی اجازه استفاده؛ قرمز یعنی استفاده نشود.' if fa else '🔐 <b>Data Sharing</b>\n\nGreen means allowed; red means not shared.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
+            kb.append([InlineKeyboardButton(f"{'ð¢' if enabled else 'ð´'} {sl} â {fl}",callback_data=f"v25:share:{scope}:{field}")])
+    kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:profile'),main_menu_button(uid)])
+    await update.callback_query.message.edit_text('ð <b>ÙØ¬ÙØ² Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø§Ø·ÙØ§Ø¹Ø§Øª</b>\n\nØ³Ø¨Ø² ÛØ¹ÙÛ Ø§Ø¬Ø§Ø²Ù Ø§Ø³ØªÙØ§Ø¯ÙØ ÙØ±ÙØ² ÛØ¹ÙÛ Ø§Ø³ØªÙØ§Ø¯Ù ÙØ´ÙØ¯.' if fa else 'ð <b>Data Sharing</b>\n\nGreen means allowed; red means not shared.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 def v25_portfolio_menu_keyboard(uid):
-    fa=lang(uid)=='fa'; return InlineKeyboardMarkup([[InlineKeyboardButton('➕ افزودن سرمایه' if fa else '➕ Add Asset',callback_data='v25:portadd')],[InlineKeyboardButton('📊 خلاصه سرمایه' if fa else '📊 Portfolio Summary',callback_data='v25:portsummary')],[InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)]])
+    fa=lang(uid)=='fa'; return InlineKeyboardMarkup([[InlineKeyboardButton('â Ø§ÙØ²ÙØ¯Ù Ø³Ø±ÙØ§ÛÙ' if fa else 'â Add Asset',callback_data='v25:portadd')],[InlineKeyboardButton('ð Ø®ÙØ§ØµÙ Ø³Ø±ÙØ§ÛÙ' if fa else 'ð Portfolio Summary',callback_data='v25:portsummary')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:hub'),main_menu_button(uid)]])
 
 async def v25_portfolio_menu(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM portfolio_assets WHERE user_id=? AND enabled=1 ORDER BY id DESC",(uid,)).fetchall(); c.close(); lines=['💰 <b>سرمایه‌های من</b>','']
+    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM portfolio_assets WHERE user_id=? AND enabled=1 ORDER BY id DESC",(uid,)).fetchall(); c.close(); lines=['ð° <b>Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ</b>','']
     if rows:
-        for r in rows: lines.append(f"• {html.escape(r['title'])} — مقدار {r['quantity']:g} | قیمت خرید {r['buy_price_rial']:,.0f} ریال")
-    else: lines.append('هنوز سرمایه‌ای ثبت نکرده‌ای.')
+        for r in rows: lines.append(f"â¢ {html.escape(r['title'])} â ÙÙØ¯Ø§Ø± {r['quantity']:g} | ÙÛÙØª Ø®Ø±ÛØ¯ {r['buy_price_rial']:,.0f} Ø±ÛØ§Ù")
+    else: lines.append('ÙÙÙØ² Ø³Ø±ÙØ§ÛÙâØ§Û Ø«Ø¨Øª ÙÚ©Ø±Ø¯ÙâØ§Û.')
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=v25_portfolio_menu_keyboard(uid))
 
 
 async def v25_installments_menu(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM installment_plans WHERE user_id=? AND enabled=1 ORDER BY first_due_date",(uid,)).fetchall(); c.close(); lines=['💳 <b>اقساط و تسهیلات</b>','']
+    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM installment_plans WHERE user_id=? AND enabled=1 ORDER BY first_due_date",(uid,)).fetchall(); c.close(); lines=['ð³ <b>Ø§ÙØ³Ø§Ø· Ù ØªØ³ÙÛÙØ§Øª</b>','']
     if rows:
-        for r in rows: lines.append(f"🏦 {html.escape(r['bank_name'])} — {html.escape(r['title'])} — قسط: {r['monthly_rial']:,.0f} ریال")
-    else: lines.append('تسهیلاتی ثبت نشده.')
+        for r in rows: lines.append(f"ð¦ {html.escape(r['bank_name'])} â {html.escape(r['title'])} â ÙØ³Ø·: {r['monthly_rial']:,.0f} Ø±ÛØ§Ù")
+    else: lines.append('ØªØ³ÙÛÙØ§ØªÛ Ø«Ø¨Øª ÙØ´Ø¯Ù.')
     kb=[]
-    for r in rows: kb.append([InlineKeyboardButton(f"🏦 {r['bank_name']} — {r['title']}",callback_data=f"v25:instview:{r['id']}")])
-    kb.append([InlineKeyboardButton('➕ ثبت تسهیلات' if lang(uid)=='fa' else '➕ Add Loan',callback_data='v25:instadd')])
-    kb.append([InlineKeyboardButton('⬅️ بازگشت' if lang(uid)=='fa' else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)])
+    for r in rows: kb.append([InlineKeyboardButton(f"ð¦ {r['bank_name']} â {r['title']}",callback_data=f"v25:instview:{r['id']}")])
+    kb.append([InlineKeyboardButton('â Ø«Ø¨Øª ØªØ³ÙÛÙØ§Øª' if lang(uid)=='fa' else 'â Add Loan',callback_data='v25:instadd')])
+    kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if lang(uid)=='fa' else 'â¬ï¸ Back',callback_data='v25:hub'),main_menu_button(uid)])
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 def v25_calc_installment(principal, annual_interest, months):
@@ -7800,42 +7777,42 @@ def v25_calc_installment(principal, annual_interest, months):
 
 
 def v25_bank_keyboard(uid):
-    fa=lang(uid)=='fa'; rows=[[InlineKeyboardButton('🏦 '+b,callback_data=f'v25:instbank:{i}')] for i,b in enumerate(v25_banks())]; rows.append([InlineKeyboardButton('✏️ بانک دلخواه' if fa else '✏️ Custom Bank',callback_data='v25:instbank_custom')]); rows.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:installments'),main_menu_button(uid)]); return InlineKeyboardMarkup(rows)
+    fa=lang(uid)=='fa'; rows=[[InlineKeyboardButton('ð¦ '+b,callback_data=f'v25:instbank:{i}')] for i,b in enumerate(v25_banks())]; rows.append([InlineKeyboardButton('âï¸ Ø¨Ø§ÙÚ© Ø¯ÙØ®ÙØ§Ù' if fa else 'âï¸ Custom Bank',callback_data='v25:instbank_custom')]); rows.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:installments'),main_menu_button(uid)]); return InlineKeyboardMarkup(rows)
 
 
 async def v25_business_menu(update,context):
     uid=update.effective_user.id; fa=lang(uid)=='fa'; ensure_business_profile(uid)
     rows=[]
-    items=[('v25:bizprofile','🏪 اطلاعات کسب‌وکار','🏪 Business Info','customer_business_settings'),('v25:customers','👥 مدیریت مشتری و نوبت‌دهی','👥 Customer & Appointments','customers'),('v25:services','🛠️ خدمات','🛠️ Services','business_services'),('v25:bizfinance','📒 مالی مشتریان','📒 Customer Finance','business_finance'),('v25:bizpay','💳 پرداخت‌ها','💳 Payments','booking_payments'),('v25:surveyadmin','⭐ نظرسنجی','⭐ Surveys','surveys'),('v25:plans','💎 پلن‌های VIP','💎 VIP Plans','vip_plans'),('v25:sms','📱 پیامک','📱 SMS','sms'),('v25:customermsg','📩 پیام به مشتریان','📩 Message Customers','customer_customers'),('v25:bookinglink','🔗 لینک رزرو','🔗 Booking Link','customer_booking_link')]
+    items=[('v25:bizprofile','ðª Ø§Ø·ÙØ§Ø¹Ø§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±','ðª Business Info','customer_business_settings'),('v25:customers','ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ','ð¥ Customer & Appointments','customers'),('v25:services','ð ï¸ Ø®Ø¯ÙØ§Øª','ð ï¸ Services','business_services'),('v25:bizfinance','ð ÙØ§ÙÛ ÙØ´ØªØ±ÛØ§Ù','ð Customer Finance','business_finance'),('v25:bizpay','ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§','ð³ Payments','booking_payments'),('v25:surveyadmin','â­ ÙØ¸Ø±Ø³ÙØ¬Û','â­ Surveys','surveys'),('v25:plans','ð Ù¾ÙÙâÙØ§Û VIP','ð VIP Plans','vip_plans'),('v25:sms','ð± Ù¾ÛØ§ÙÚ©','ð± SMS','sms'),('v25:customermsg','ð© Ù¾ÛØ§Ù Ø¨Ù ÙØ´ØªØ±ÛØ§Ù','ð© Message Customers','customer_customers'),('v25:bookinglink','ð ÙÛÙÚ© Ø±Ø²Ø±Ù','ð Booking Link','customer_booking_link')]
     for cb,ft,et,key in items:
         if v25_allowed(uid,key): rows.append([InlineKeyboardButton(ft if fa else et,callback_data=cb)])
-    rows.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)])
-    text='🏪 <b>پنل کسب‌وکار</b>\n\nهمه بخش‌ها قابل فعال/غیرفعال شدن هستند.' if fa else '🏪 <b>Business Panel</b>\n\nEvery module can be enabled or disabled.'
+    rows.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:hub'),main_menu_button(uid)])
+    text='ðª <b>Ù¾ÙÙ Ú©Ø³Ø¨âÙÚ©Ø§Ø±</b>\n\nÙÙÙ Ø¨Ø®Ø´âÙØ§ ÙØ§Ø¨Ù ÙØ¹Ø§Ù/ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù ÙØ³ØªÙØ¯.' if fa else 'ðª <b>Business Panel</b>\n\nEvery module can be enabled or disabled.'
     await (update.callback_query.message if update.callback_query else update.message).reply_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 async def v25_services_menu(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM business_services WHERE owner_user_id=? ORDER BY id DESC",(uid,)).fetchall(); c.close(); lines=['🛠️ <b>خدمات</b>','']
-    lines += [f"• {html.escape(r['name'])} | ⏱ {r['duration_minutes']} دقیقه | 💰 {r['price_rial']:,.0f} ریال | {'🟢' if r['enabled'] else '🔴'}" for r in rows] or ['هنوز خدمتی ثبت نشده.']
-    kb=[[InlineKeyboardButton(f"{'🟢' if r['enabled'] else '🔴'} {r['name']}",callback_data=f"v25:service_toggle:{r['id']}")] for r in rows]
-    kb.append([InlineKeyboardButton('➕ افزودن خدمت' if lang(uid)=='fa' else '➕ Add Service',callback_data='v25:serviceadd')]); kb.append([InlineKeyboardButton('⬅️ بازگشت' if lang(uid)=='fa' else '⬅️ Back',callback_data='v25:business'),main_menu_button(uid)])
+    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM business_services WHERE owner_user_id=? ORDER BY id DESC",(uid,)).fetchall(); c.close(); lines=['ð ï¸ <b>Ø®Ø¯ÙØ§Øª</b>','']
+    lines += [f"â¢ {html.escape(r['name'])} | â± {r['duration_minutes']} Ø¯ÙÛÙÙ | ð° {r['price_rial']:,.0f} Ø±ÛØ§Ù | {'ð¢' if r['enabled'] else 'ð´'}" for r in rows] or ['ÙÙÙØ² Ø®Ø¯ÙØªÛ Ø«Ø¨Øª ÙØ´Ø¯Ù.']
+    kb=[[InlineKeyboardButton(f"{'ð¢' if r['enabled'] else 'ð´'} {r['name']}",callback_data=f"v25:service_toggle:{r['id']}")] for r in rows]
+    kb.append([InlineKeyboardButton('â Ø§ÙØ²ÙØ¯Ù Ø®Ø¯ÙØª' if lang(uid)=='fa' else 'â Add Service',callback_data='v25:serviceadd')]); kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if lang(uid)=='fa' else 'â¬ï¸ Back',callback_data='v25:business'),main_menu_button(uid)])
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_payment_methods_menu(update,context):
     uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM payment_methods WHERE owner_user_id=? ORDER BY method_type",(uid,)).fetchall(); g=c.execute("SELECT * FROM gateway_configs WHERE owner_user_id=?",(uid,)).fetchone(); c.close(); card=next((r for r in rows if r['method_type']=='card'),None); online=next((r for r in rows if r['method_type']=='online'),None)
-    text='💳 <b>روش‌های پرداخت</b>\n\n'+f"💵 کارت‌به‌کارت: {'🟢' if card and card['enabled'] else '🔴'}\n💳 پرداخت آنلاین: {'🟢' if g and g['enabled'] else '🔴'}\n"
-    kb=[[InlineKeyboardButton('💵 تنظیم کارت‌به‌کارت',callback_data='v25:card')],[InlineKeyboardButton('💳 تنظیم درگاه',callback_data='v25:gateway')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]]
+    text='ð³ <b>Ø±ÙØ´âÙØ§Û Ù¾Ø±Ø¯Ø§Ø®Øª</b>\n\n'+f"ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª: {'ð¢' if card and card['enabled'] else 'ð´'}\nð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ: {'ð¢' if g and g['enabled'] else 'ð´'}\n"
+    kb=[[InlineKeyboardButton('ðµ ØªÙØ¸ÛÙ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data='v25:card')],[InlineKeyboardButton('ð³ ØªÙØ¸ÛÙ Ø¯Ø±Ú¯Ø§Ù',callback_data='v25:gateway')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]]
     await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_survey_admin(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM survey_questions WHERE owner_user_id=? ORDER BY id",(uid,)).fetchall(); c.close(); text='⭐ <b>نظرسنجی مشتری</b>\n\n'+('\n'.join(f"{'🟢' if r['enabled'] else '🔴'} {r['question']}" for r in rows) if rows else 'سؤال پیش‌فرض هنگام ثبت اولین نظرسنجی ساخته می‌شود.')
-    kb=[[InlineKeyboardButton('➕ سؤال سفارشی',callback_data='v25:surveyadd')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]]
+    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM survey_questions WHERE owner_user_id=? ORDER BY id",(uid,)).fetchall(); c.close(); text='â­ <b>ÙØ¸Ø±Ø³ÙØ¬Û ÙØ´ØªØ±Û</b>\n\n'+('\n'.join(f"{'ð¢' if r['enabled'] else 'ð´'} {r['question']}" for r in rows) if rows else 'Ø³Ø¤Ø§Ù Ù¾ÛØ´âÙØ±Ø¶ ÙÙÚ¯Ø§Ù Ø«Ø¨Øª Ø§ÙÙÛÙ ÙØ¸Ø±Ø³ÙØ¬Û Ø³Ø§Ø®ØªÙ ÙÛâØ´ÙØ¯.')
+    kb=[[InlineKeyboardButton('â Ø³Ø¤Ø§Ù Ø³ÙØ§Ø±Ø´Û',callback_data='v25:surveyadd')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]]
     await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_vip_plans(update,context):
-    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM subscription_plans_v25 WHERE enabled=1 ORDER BY duration_minutes",()).fetchall(); c.close(); lines=['💎 <b>پلن‌های VIP</b>','']
-    lines += [f"• {r['name']} — {r['price_rial']:,.0f} ریال" for r in rows]
+    uid=update.effective_user.id; c=db(); rows=c.execute("SELECT * FROM subscription_plans_v25 WHERE enabled=1 ORDER BY duration_minutes",()).fetchall(); c.close(); lines=['ð <b>Ù¾ÙÙâÙØ§Û VIP</b>','']
+    lines += [f"â¢ {r['name']} â {r['price_rial']:,.0f} Ø±ÛØ§Ù" for r in rows]
     kb=[[InlineKeyboardButton(r['name'],callback_data=f"v25:buyplan:{r['id']}")] for r in rows]
-    kb.append([InlineKeyboardButton('⬅️ بازگشت' if lang(uid)=='fa' else '⬅️ Back',callback_data='v25:business'),main_menu_button(uid)])
+    kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if lang(uid)=='fa' else 'â¬ï¸ Back',callback_data='v25:business'),main_menu_button(uid)])
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 
@@ -7853,96 +7830,96 @@ async def v25_add_reminder_save(update,context):
     dt=None
     try: dt=parse_user_datetime(raw)
     except Exception: dt=None
-    if not dt: await update.message.reply_text('❌ فرمت تاریخ/ساعت نامعتبر است. نمونه: ۱۴۰۵/۰۶/۰۳ ۱۲:۰۰'); return True
+    if not dt: await update.message.reply_text('â ÙØ±ÙØª ØªØ§Ø±ÛØ®/Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙÙÙÙÙ: Û±Û´Û°Ûµ/Û°Û¶/Û°Û³ Û±Û²:Û°Û°'); return True
     dt=dt.replace(tzinfo=TZ) if dt.tzinfo is None else dt
     _v25_exec('INSERT OR IGNORE INTO important_reminders(user_id,title,remind_at,created_at,updated_at) VALUES(?,?,?,?,?)',(uid,title,dt.isoformat(),_v25_now(),_v25_now()))
-    clear_flow(context); await update.message.reply_text('✅ یادآوری ثبت شد.',reply_markup=v25_hub_keyboard(uid)); return True
+    clear_flow(context); await update.message.reply_text('â ÛØ§Ø¯Ø¢ÙØ±Û Ø«Ø¨Øª Ø´Ø¯.',reply_markup=v25_hub_keyboard(uid)); return True
 
 async def v25_installment_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get('v25_mode'); text=normalize_digits(update.message.text.strip())
-    if mode=='inst_bank': context.user_data['inst_bank']=text; context.user_data['v25_mode']='inst_title'; await update.message.reply_text('📝 عنوان تسهیلات را بفرست یا «قسط» بنویس:'); return True
-    if mode=='inst_title': context.user_data['inst_title']=text or 'قسط'; context.user_data['v25_mode']='inst_principal'; await update.message.reply_text('💰 مبلغ اصل وام را به ریال وارد کن:'); return True
+    if mode=='inst_bank': context.user_data['inst_bank']=text; context.user_data['v25_mode']='inst_title'; await update.message.reply_text('ð Ø¹ÙÙØ§Ù ØªØ³ÙÛÙØ§Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ Â«ÙØ³Ø·Â» Ø¨ÙÙÛØ³:'); return True
+    if mode=='inst_title': context.user_data['inst_title']=text or 'ÙØ³Ø·'; context.user_data['v25_mode']='inst_principal'; await update.message.reply_text('ð° ÙØ¨ÙØº Ø§ØµÙ ÙØ§Ù Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù ÙØ§Ø±Ø¯ Ú©Ù:'); return True
     if mode=='inst_principal':
         try: principal=int(float(text.replace(',','')))
-        except Exception: await update.message.reply_text('❌ مبلغ نامعتبر است.'); return True
+        except Exception: await update.message.reply_text('â ÙØ¨ÙØº ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
         if principal <= 0 or principal > 10**15:
-            await update.message.reply_text('❌ مبلغ باید بیشتر از صفر و در محدوده مجاز باشد.'); return True
-        context.user_data['inst_principal']=principal; context.user_data['v25_mode']='inst_rate'; await update.message.reply_text('📈 نرخ سود را انتخاب کن:',reply_markup=v25_rates_keyboard(uid)); return True
+            await update.message.reply_text('â ÙØ¨ÙØº Ø¨Ø§ÛØ¯ Ø¨ÛØ´ØªØ± Ø§Ø² ØµÙØ± Ù Ø¯Ø± ÙØ­Ø¯ÙØ¯Ù ÙØ¬Ø§Ø² Ø¨Ø§Ø´Ø¯.'); return True
+        context.user_data['inst_principal']=principal; context.user_data['v25_mode']='inst_rate'; await update.message.reply_text('ð ÙØ±Ø® Ø³ÙØ¯ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:',reply_markup=v25_rates_keyboard(uid)); return True
     if mode=='inst_rate_custom':
         try: rate=float(text.replace('%',''))
-        except Exception: await update.message.reply_text('❌ نرخ نامعتبر است.'); return True
-        context.user_data['inst_rate']=rate; context.user_data['v25_mode']='inst_months'; await update.message.reply_text('🔢 تعداد ماه بازپرداخت را بفرست:'); return True
+        except Exception: await update.message.reply_text('â ÙØ±Ø® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        context.user_data['inst_rate']=rate; context.user_data['v25_mode']='inst_months'; await update.message.reply_text('ð¢ ØªØ¹Ø¯Ø§Ø¯ ÙØ§Ù Ø¨Ø§Ø²Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='inst_months':
         try: months=int(text)
-        except Exception: await update.message.reply_text('❌ تعداد ماه نامعتبر است.'); return True
+        except Exception: await update.message.reply_text('â ØªØ¹Ø¯Ø§Ø¯ ÙØ§Ù ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
         if not 1 <= months <= 600:
-            await update.message.reply_text('❌ تعداد ماه باید بین ۱ تا ۶۰۰ باشد.'); return True
-        context.user_data['inst_months']=months; context.user_data['v25_mode']='inst_first_date'; await update.message.reply_text('📅 تاریخ اولین قسط را بفرست. نمونه: ۱۴۰۵/۰۶/۰۳'); return True
+            await update.message.reply_text('â ØªØ¹Ø¯Ø§Ø¯ ÙØ§Ù Ø¨Ø§ÛØ¯ Ø¨ÛÙ Û± ØªØ§ Û¶Û°Û° Ø¨Ø§Ø´Ø¯.'); return True
+        context.user_data['inst_months']=months; context.user_data['v25_mode']='inst_first_date'; await update.message.reply_text('ð ØªØ§Ø±ÛØ® Ø§ÙÙÛÙ ÙØ³Ø· Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙÙÙÙÙ: Û±Û´Û°Ûµ/Û°Û¶/Û°Û³'); return True
     if mode=='inst_first_date':
         try: d=parse_user_date(text)
-        except Exception: await update.message.reply_text('❌ تاریخ نامعتبر است.'); return True
+        except Exception: await update.message.reply_text('â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
         context.user_data['inst_first_date']=d; principal=context.user_data['inst_principal']; rate=context.user_data['inst_rate']; months=context.user_data['inst_months']; monthly,interest,total=v25_calc_installment(principal,rate,months); context.user_data.update(inst_monthly=monthly,inst_interest=interest,inst_total=total)
-        kb=InlineKeyboardMarkup([[InlineKeyboardButton('✅ ذخیره',callback_data='v25:instsave'),InlineKeyboardButton('✏️ ویرایش',callback_data='v25:instedit')],[main_menu_button(uid)]])
-        await update.message.reply_text(f'🧮 <b>محاسبه تقریبی</b>\n\nاصل: {principal:,.0f} ریال\nسود سالانه: {rate:g}%\nمدت: {months} ماه\n\n💵 قسط ماهانه: {monthly:,.0f} ریال\n💰 سود کل: {interest:,.0f} ریال\n💳 مجموع بازپرداخت: {total:,.0f} ریال',parse_mode='HTML',reply_markup=kb); return True
+        kb=InlineKeyboardMarkup([[InlineKeyboardButton('â Ø°Ø®ÛØ±Ù',callback_data='v25:instsave'),InlineKeyboardButton('âï¸ ÙÛØ±Ø§ÛØ´',callback_data='v25:instedit')],[main_menu_button(uid)]])
+        await update.message.reply_text(f'ð§® <b>ÙØ­Ø§Ø³Ø¨Ù ØªÙØ±ÛØ¨Û</b>\n\nØ§ØµÙ: {principal:,.0f} Ø±ÛØ§Ù\nØ³ÙØ¯ Ø³Ø§ÙØ§ÙÙ: {rate:g}%\nÙØ¯Øª: {months} ÙØ§Ù\n\nðµ ÙØ³Ø· ÙØ§ÙØ§ÙÙ: {monthly:,.0f} Ø±ÛØ§Ù\nð° Ø³ÙØ¯ Ú©Ù: {interest:,.0f} Ø±ÛØ§Ù\nð³ ÙØ¬ÙÙØ¹ Ø¨Ø§Ø²Ù¾Ø±Ø¯Ø§Ø®Øª: {total:,.0f} Ø±ÛØ§Ù',parse_mode='HTML',reply_markup=kb); return True
     if mode=='booking_name':
-        context.user_data['public_name']='' if text=='-' else text; context.user_data['v25_mode']='booking_phone'; await update.message.reply_text('📱 شماره تلفن را بفرست یا «-» بزن. این هم اختیاری است:'); return True
+        context.user_data['public_name']='' if text=='-' else text; context.user_data['v25_mode']='booking_phone'; await update.message.reply_text('ð± Ø´ÙØ§Ø±Ù ØªÙÙÙ Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ Â«-Â» Ø¨Ø²Ù. Ø§ÛÙ ÙÙ Ø§Ø®ØªÛØ§Ø±Û Ø§Ø³Øª:'); return True
     if mode=='booking_phone':
         context.user_data['public_phone']='' if text=='-' else text; context.user_data.pop('v25_mode',None); owner=context.user_data.get('booking_owner'); sid=int(context.user_data.get('booking_service_id') or 0);
-        try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"🎉 <b>رزرو جدید ثبت شد!</b>\n\n🏪 {html.escape(prof['business_name'] or 'کسب‌وکار')}\n👤 {html.escape(name)}\n📅 {jalali_pretty_date(context.user_data['booking_date'])}\n⏰ {context.user_data['booking_time']}",parse_mode='HTML');
-        except ValueError: await update.message.reply_text('❌ این زمان دیگر آزاد نیست.'); return True
+        try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"ð <b>Ø±Ø²Ø±Ù Ø¬Ø¯ÛØ¯ Ø«Ø¨Øª Ø´Ø¯!</b>\n\nðª {html.escape(prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±')}\nð¤ {html.escape(name)}\nð {jalali_pretty_date(context.user_data['booking_date'])}\nâ° {context.user_data['booking_time']}",parse_mode='HTML');
+        except ValueError: await update.message.reply_text('â Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª.'); return True
         # Reuse a small confirmation message with inline buttons.
         g=_v25_exec('SELECT * FROM gateway_configs WHERE owner_user_id=?',(owner,),fetchone=True); pm=_v25_exec("SELECT * FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(owner,),fetchone=True); kb=[]
-        if amount and g and g['enabled'] and g['payment_link']: kb.append([InlineKeyboardButton('💳 پرداخت آنلاین',url=g['payment_link'])])
-        if amount and pm: kb.append([InlineKeyboardButton('💵 کارت‌به‌کارت',callback_data=f'v25:bookingcard:{aid}')])
-        kb.append([InlineKeyboardButton('📅 رزروهای من',callback_data='cust:mybookings'),main_menu_button(uid)]); await update.message.reply_text(f"✅ <b>رزرو شما با موفقیت ثبت شد.</b>\n\n🏪 {html.escape(prof['business_name'] or 'کسب‌وکار')}\n📅 {jalali_pretty_date(context.user_data.get('booking_date'))}\n⏰ {context.user_data.get('booking_time')}"+(f"\n💰 هزینه: {amount:,.0f} ریال" if amount else ''),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb)); clear_flow(context); return True
+        if amount and g and g['enabled'] and g['payment_link']: kb.append([InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ',url=g['payment_link'])])
+        if amount and pm: kb.append([InlineKeyboardButton('ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data=f'v25:bookingcard:{aid}')])
+        kb.append([InlineKeyboardButton('ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ',callback_data='cust:mybookings'),main_menu_button(uid)]); await update.message.reply_text(f"â <b>Ø±Ø²Ø±Ù Ø´ÙØ§ Ø¨Ø§ ÙÙÙÙÛØª Ø«Ø¨Øª Ø´Ø¯.</b>\n\nðª {html.escape(prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±')}\nð {jalali_pretty_date(context.user_data.get('booking_date'))}\nâ° {context.user_data.get('booking_time')}"+(f"\nð° ÙØ²ÛÙÙ: {amount:,.0f} Ø±ÛØ§Ù" if amount else ''),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb)); clear_flow(context); return True
     if mode=='survey_comment':
         aid=int(context.user_data.get('survey_appointment_id')); c=db(); c.execute('UPDATE survey_responses SET comment=? WHERE appointment_id=?',(text,aid)); owner=c.execute('SELECT owner_user_id FROM appointments WHERE id=?',(aid,)).fetchone(); c.commit(); c.close();
         if owner:
-            try: await context.bot.send_message(owner,f'💡 پیشنهاد مشتری برای رزرو #{aid}:\n{text}')
+            try: await context.bot.send_message(owner,f'ð¡ Ù¾ÛØ´ÙÙØ§Ø¯ ÙØ´ØªØ±Û Ø¨Ø±Ø§Û Ø±Ø²Ø±Ù #{aid}:\n{text}')
             except Exception: pass
-        clear_flow(context); await update.message.reply_text('✅ پیشنهادت ثبت شد. ممنون که کمک می‌کنی بهتر شویم.',reply_markup=keyboard(uid)); return True
+        clear_flow(context); await update.message.reply_text('â Ù¾ÛØ´ÙÙØ§Ø¯Øª Ø«Ø¨Øª Ø´Ø¯. ÙÙÙÙÙ Ú©Ù Ú©ÙÚ© ÙÛâÚ©ÙÛ Ø¨ÙØªØ± Ø´ÙÛÙ.',reply_markup=keyboard(uid)); return True
     if mode=='port_asset':
-        context.user_data['port_title']=text; context.user_data['v25_mode']='port_quantity'; await update.message.reply_text('📦 مقدار را بفرست. مثال: 10'); return True
+        context.user_data['port_title']=text; context.user_data['v25_mode']='port_quantity'; await update.message.reply_text('ð¦ ÙÙØ¯Ø§Ø± Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: 10'); return True
     if mode=='port_quantity':
-        context.user_data['port_qty']=float(text.replace(',','')); context.user_data['v25_mode']='port_buyprice'; await update.message.reply_text('💰 قیمت خرید هر واحد را به ریال بفرست:'); return True
+        context.user_data['port_qty']=float(text.replace(',','')); context.user_data['v25_mode']='port_buyprice'; await update.message.reply_text('ð° ÙÛÙØª Ø®Ø±ÛØ¯ ÙØ± ÙØ§Ø­Ø¯ Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='port_buyprice':
-        context.user_data['port_price']=float(text.replace(',','')); context.user_data['v25_mode']='port_date'; await update.message.reply_text('📅 تاریخ خرید را بفرست. مثال: ۱۴۰۵/۰۵/۳۰'); return True
+        context.user_data['port_price']=float(text.replace(',','')); context.user_data['v25_mode']='port_date'; await update.message.reply_text('ð ØªØ§Ø±ÛØ® Ø®Ø±ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: Û±Û´Û°Ûµ/Û°Ûµ/Û³Û°'); return True
     if mode=='port_date':
         try: d=parse_user_date(text)
-        except Exception: await update.message.reply_text('❌ تاریخ نامعتبر است.'); return True
-        s=context.user_data; _v25_exec('INSERT INTO portfolio_assets(user_id,asset_code,title,quantity,buy_price_rial,buy_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',(uid,'custom',s['port_title'],s['port_qty'],s['port_price'],d,_v25_now(),_v25_now())); clear_flow(context); await update.message.reply_text('✅ سرمایه ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💰 سرمایه‌های من',callback_data='v25:portfolio')],[main_menu_button(uid)]])); return True
+        except Exception: await update.message.reply_text('â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        s=context.user_data; _v25_exec('INSERT INTO portfolio_assets(user_id,asset_code,title,quantity,buy_price_rial,buy_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',(uid,'custom',s['port_title'],s['port_qty'],s['port_price'],d,_v25_now(),_v25_now())); clear_flow(context); await update.message.reply_text('â Ø³Ø±ÙØ§ÛÙ Ø«Ø¨Øª Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ',callback_data='v25:portfolio')],[main_menu_button(uid)]])); return True
     if mode=='profile_edit:name':
-        _v25_exec('UPDATE user_profile SET full_name=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ نام به‌روزرسانی شد.',reply_markup=keyboard(uid)); return True
+        _v25_exec('UPDATE user_profile SET full_name=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('â ÙØ§Ù Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ Ø´Ø¯.',reply_markup=keyboard(uid)); return True
     if mode=='profile_edit:phone':
-        _v25_exec('UPDATE user_profile SET phone=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ شماره تلفن به‌روزرسانی شد.',reply_markup=keyboard(uid)); return True
+        _v25_exec('UPDATE user_profile SET phone=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('â Ø´ÙØ§Ø±Ù ØªÙÙÙ Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ Ø´Ø¯.',reply_markup=keyboard(uid)); return True
     if mode=='profile_edit:email':
-        _v25_exec('UPDATE user_profile SET email=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ ایمیل به‌روزرسانی شد.',reply_markup=keyboard(uid)); return True
+        _v25_exec('UPDATE user_profile SET email=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('â Ø§ÛÙÛÙ Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ Ø´Ø¯.',reply_markup=keyboard(uid)); return True
     if mode=='v25_sms_test':
-        await update.message.reply_text('📱 تست SMS در نسخه تمیز به تنظیمات سرویس پیامکی نیاز دارد. ابتدا endpoint و API key را در پنل کسب‌وکار ثبت کن.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ پیامک',callback_data='v25:sms')],[main_menu_button(uid)]])); clear_flow(context); return True
+        await update.message.reply_text('ð± ØªØ³Øª SMS Ø¯Ø± ÙØ³Ø®Ù ØªÙÛØ² Ø¨Ù ØªÙØ¸ÛÙØ§Øª Ø³Ø±ÙÛØ³ Ù¾ÛØ§ÙÚ©Û ÙÛØ§Ø² Ø¯Ø§Ø±Ø¯. Ø§Ø¨ØªØ¯Ø§ endpoint Ù API key Ø±Ø§ Ø¯Ø± Ù¾ÙÙ Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø«Ø¨Øª Ú©Ù.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â¬ï¸ Ù¾ÛØ§ÙÚ©',callback_data='v25:sms')],[main_menu_button(uid)]])); clear_flow(context); return True
     return False
 
 async def v25_business_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get('v25_mode'); text=update.message.text.strip()
-    if mode=='service_name': context.user_data['service_name']=text; context.user_data['v25_mode']='service_duration'; await update.message.reply_text('⏱ مدت خدمت را به دقیقه بفرست:'); return True
+    if mode=='service_name': context.user_data['service_name']=text; context.user_data['v25_mode']='service_duration'; await update.message.reply_text('â± ÙØ¯Øª Ø®Ø¯ÙØª Ø±Ø§ Ø¨Ù Ø¯ÙÛÙÙ Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='service_duration':
         try: duration=int(normalize_digits(text))
-        except Exception: await update.message.reply_text('❌ مدت نامعتبر است.'); return True
-        if not 1 <= duration <= 1440: await update.message.reply_text('❌ مدت خدمت باید بین ۱ تا ۱۴۴۰ دقیقه باشد.'); return True
-        context.user_data['service_duration']=duration; context.user_data['v25_mode']='service_price'; await update.message.reply_text('💰 قیمت خدمت را به ریال بفرست:'); return True
+        except Exception: await update.message.reply_text('â ÙØ¯Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        if not 1 <= duration <= 1440: await update.message.reply_text('â ÙØ¯Øª Ø®Ø¯ÙØª Ø¨Ø§ÛØ¯ Ø¨ÛÙ Û± ØªØ§ Û±Û´Û´Û° Ø¯ÙÛÙÙ Ø¨Ø§Ø´Ø¯.'); return True
+        context.user_data['service_duration']=duration; context.user_data['v25_mode']='service_price'; await update.message.reply_text('ð° ÙÛÙØª Ø®Ø¯ÙØª Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='service_price':
         try: price=int(float(normalize_digits(text).replace(',','')))
-        except Exception: await update.message.reply_text('❌ قیمت نامعتبر است.'); return True
-        if price < 0 or price > 10**15: await update.message.reply_text('❌ قیمت باید در محدوده مجاز باشد.'); return True
-        s=context.user_data; now=_v25_now(); _v25_exec('INSERT INTO business_services(owner_user_id,name,duration_minutes,price_rial,created_at,updated_at) VALUES(?,?,?,?,?,?)',(uid,s['service_name'][:200],s['service_duration'],price,now,now)); clear_flow(context); await update.message.reply_text('✅ خدمت ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🛠️ خدمات',callback_data='v25:services')],[main_menu_button(uid)]])); return True
-    if mode=='card_number': context.user_data['card_number']=text; context.user_data['v25_mode']='card_name'; await update.message.reply_text('👤 نام صاحب کارت را بفرست یا - بزن:'); return True
+        except Exception: await update.message.reply_text('â ÙÛÙØª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        if price < 0 or price > 10**15: await update.message.reply_text('â ÙÛÙØª Ø¨Ø§ÛØ¯ Ø¯Ø± ÙØ­Ø¯ÙØ¯Ù ÙØ¬Ø§Ø² Ø¨Ø§Ø´Ø¯.'); return True
+        s=context.user_data; now=_v25_now(); _v25_exec('INSERT INTO business_services(owner_user_id,name,duration_minutes,price_rial,created_at,updated_at) VALUES(?,?,?,?,?,?)',(uid,s['service_name'][:200],s['service_duration'],price,now,now)); clear_flow(context); await update.message.reply_text('â Ø®Ø¯ÙØª Ø«Ø¨Øª Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð ï¸ Ø®Ø¯ÙØ§Øª',callback_data='v25:services')],[main_menu_button(uid)]])); return True
+    if mode=='card_number': context.user_data['card_number']=text; context.user_data['v25_mode']='card_name'; await update.message.reply_text('ð¤ ÙØ§Ù ØµØ§Ø­Ø¨ Ú©Ø§Ø±Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:'); return True
     if mode=='card_name':
-        title='' if text=='-' else text; details=f"شماره کارت: {context.user_data['card_number']}\nبه نام: {title}"; now=_v25_now(); _v25_exec('INSERT INTO payment_methods(owner_user_id,method_type,enabled,title,details,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(owner_user_id,method_type) DO UPDATE SET enabled=1,title=excluded.title,details=excluded.details,updated_at=excluded.updated_at',(uid,'card',1,'کارت‌به‌کارت',details,now)); clear_flow(context); await update.message.reply_text('✅ کارت‌به‌کارت فعال شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💳 پرداخت‌ها',callback_data='v25:bizpay')],[main_menu_button(uid)]])); return True
+        title='' if text=='-' else text; details=f"Ø´ÙØ§Ø±Ù Ú©Ø§Ø±Øª: {context.user_data['card_number']}\nØ¨Ù ÙØ§Ù: {title}"; now=_v25_now(); _v25_exec('INSERT INTO payment_methods(owner_user_id,method_type,enabled,title,details,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(owner_user_id,method_type) DO UPDATE SET enabled=1,title=excluded.title,details=excluded.details,updated_at=excluded.updated_at',(uid,'card',1,'Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',details,now)); clear_flow(context); await update.message.reply_text('â Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª ÙØ¹Ø§Ù Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§',callback_data='v25:bizpay')],[main_menu_button(uid)]])); return True
     if mode=='gateway_link':
-        now=_v25_now(); _v25_exec('INSERT INTO gateway_configs(owner_user_id,provider,enabled,payment_link,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET enabled=1,payment_link=excluded.payment_link,updated_at=excluded.updated_at',(uid,'custom',1,text,now)); clear_flow(context); await update.message.reply_text('✅ لینک درگاه ذخیره شد. تا وقتی کلید درگاه در پنل فعال باشد، پرداخت آنلاین نمایش داده می‌شود.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💳 پرداخت‌ها',callback_data='v25:bizpay')],[main_menu_button(uid)]])); return True
+        now=_v25_now(); _v25_exec('INSERT INTO gateway_configs(owner_user_id,provider,enabled,payment_link,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET enabled=1,payment_link=excluded.payment_link,updated_at=excluded.updated_at',(uid,'custom',1,text,now)); clear_flow(context); await update.message.reply_text('â ÙÛÙÚ© Ø¯Ø±Ú¯Ø§Ù Ø°Ø®ÛØ±Ù Ø´Ø¯. ØªØ§ ÙÙØªÛ Ú©ÙÛØ¯ Ø¯Ø±Ú¯Ø§Ù Ø¯Ø± Ù¾ÙÙ ÙØ¹Ø§Ù Ø¨Ø§Ø´Ø¯Ø Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§',callback_data='v25:bizpay')],[main_menu_button(uid)]])); return True
     if mode=='survey_question':
-        now=_v25_now(); code=hashlib.sha256(text.encode()).hexdigest()[:10]; _v25_exec('INSERT OR IGNORE INTO survey_questions(owner_user_id,code,question,created_at) VALUES(?,?,?,?)',(uid,code,text,now)); clear_flow(context); await update.message.reply_text('✅ سؤال نظرسنجی اضافه شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⭐ نظرسنجی',callback_data='v25:surveyadmin')],[main_menu_button(uid)]])); return True
+        now=_v25_now(); code=hashlib.sha256(text.encode()).hexdigest()[:10]; _v25_exec('INSERT OR IGNORE INTO survey_questions(owner_user_id,code,question,created_at) VALUES(?,?,?,?)',(uid,code,text,now)); clear_flow(context); await update.message.reply_text('â Ø³Ø¤Ø§Ù ÙØ¸Ø±Ø³ÙØ¬Û Ø§Ø¶Ø§ÙÙ Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â­ ÙØ¸Ø±Ø³ÙØ¬Û',callback_data='v25:surveyadmin')],[main_menu_button(uid)]])); return True
     if mode=='bizname_v25':
-        _v25_exec('UPDATE business_profiles SET business_name=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ نام کسب‌وکار به‌روزرسانی شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏪 پنل کسب‌وکار',callback_data='v25:business')],[main_menu_button(uid)]])); return True
+        _v25_exec('UPDATE business_profiles SET business_name=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('â ÙØ§Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ðª Ù¾ÙÙ Ú©Ø³Ø¨âÙÚ©Ø§Ø±',callback_data='v25:business')],[main_menu_button(uid)]])); return True
     return False
 
 async def v25_installment_text_dispatch(update,context):
@@ -7955,14 +7932,14 @@ async def v25_send_survey(bot, owner, appointment_id):
     if not qs:
         c.executemany("INSERT OR IGNORE INTO survey_questions(owner_user_id,code,question,created_at) VALUES(?,?,?,?)",[(owner,code,q,_v25_now()) for code,q in V25_DEFAULT_QUESTIONS]); c.commit(); qs=c.execute("SELECT * FROM survey_questions WHERE owner_user_id=? AND enabled=1 ORDER BY id LIMIT 10",(owner,)).fetchall()
     c.close()
-    kb=[[InlineKeyboardButton('😍 5',callback_data=f'v25:survey_rate:{appointment_id}:5'),InlineKeyboardButton('🙂 4',callback_data=f'v25:survey_rate:{appointment_id}:4'),InlineKeyboardButton('😐 3',callback_data=f'v25:survey_rate:{appointment_id}:3')],[InlineKeyboardButton('🙁 2',callback_data=f'v25:survey_rate:{appointment_id}:2'),InlineKeyboardButton('😡 1',callback_data=f'v25:survey_rate:{appointment_id}:1')]]
-    await bot.send_message(r['telegram_user_id'],'🌷 ممنون که ما را انتخاب کردی!\n\n⭐ تجربه کلی‌ات چطور بود؟',reply_markup=InlineKeyboardMarkup(kb))
+    kb=[[InlineKeyboardButton('ð 5',callback_data=f'v25:survey_rate:{appointment_id}:5'),InlineKeyboardButton('ð 4',callback_data=f'v25:survey_rate:{appointment_id}:4'),InlineKeyboardButton('ð 3',callback_data=f'v25:survey_rate:{appointment_id}:3')],[InlineKeyboardButton('ð 2',callback_data=f'v25:survey_rate:{appointment_id}:2'),InlineKeyboardButton('ð¡ 1',callback_data=f'v25:survey_rate:{appointment_id}:1')]]
+    await bot.send_message(r['telegram_user_id'],'ð· ÙÙÙÙÙ Ú©Ù ÙØ§ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ø±Ø¯Û!\n\nâ­ ØªØ¬Ø±Ø¨Ù Ú©ÙÛâØ§Øª ÚØ·ÙØ± Ø¨ÙØ¯Ø',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_reminder_job(context):
     now=datetime.now(TZ).replace(second=0,microsecond=0); c=db(); rows=c.execute("SELECT * FROM important_reminders WHERE enabled=1 AND remind_at<=? AND remind_at>=?",(now.isoformat(),(now-timedelta(minutes=1)).isoformat())).fetchall(); c.close()
     for r in rows:
         try:
-            await context.bot.send_message(r['user_id'],f"🔔 {r['title']}\n\n⏰ زمان یادآوری رسید.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ انجام شد',callback_data='v25:remdone:%s'%r['id'])],[main_menu_button(r['user_id'])]]))
+            await context.bot.send_message(r['user_id'],f"ð {r['title']}\n\nâ° Ø²ÙØ§Ù ÛØ§Ø¯Ø¢ÙØ±Û Ø±Ø³ÛØ¯.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â Ø§ÙØ¬Ø§Ù Ø´Ø¯',callback_data='v25:remdone:%s'%r['id'])],[main_menu_button(r['user_id'])]]))
             _v25_exec('UPDATE important_reminders SET enabled=0,updated_at=? WHERE id=?',( _v25_now(),r['id']))
         except Exception: logger.exception('v25 reminder delivery failed')
 
@@ -7988,13 +7965,13 @@ async def v25_receipt_handler(update,context):
         plan_id=int(context.user_data.get('vip_plan_id') or 0)
         plan=_v25_exec('SELECT id,name,price_rial,duration_minutes,enabled FROM subscription_plans_v25 WHERE id=? AND enabled=1',(plan_id,),fetchone=True)
         if not plan:
-            clear_flow(context); await update.message.reply_text('❌ پلن VIP معتبر نیست.',reply_markup=keyboard(uid)); return
+            clear_flow(context); await update.message.reply_text('â Ù¾ÙÙ VIP ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.',reply_markup=keyboard(uid)); return
         rid=_v25_exec('INSERT INTO vip_receipts(user_id,plan_id,amount_rial,receipt_file_id,status,created_at) VALUES(?,?,?,?,?,?)',(uid,plan_id,int(plan['price_rial'] or 0),file_id,'pending',_v25_now()),commit=True)
         clear_flow(context)
-        await update.message.reply_text('📎 رسید VIP دریافت شد و برای بررسی مدیر ارسال شد. بعد از تأیید، اشتراک فعال می‌شود.',reply_markup=keyboard(uid))
+        await update.message.reply_text('ð Ø±Ø³ÛØ¯ VIP Ø¯Ø±ÛØ§ÙØª Ø´Ø¯ Ù Ø¨Ø±Ø§Û Ø¨Ø±Ø±Ø³Û ÙØ¯ÛØ± Ø§Ø±Ø³Ø§Ù Ø´Ø¯. Ø¨Ø¹Ø¯ Ø§Ø² ØªØ£ÛÛØ¯Ø Ø§Ø´ØªØ±Ø§Ú© ÙØ¹Ø§Ù ÙÛâØ´ÙØ¯.',reply_markup=keyboard(uid))
         for admin_id in ADMIN_IDS:
             try:
-                await context.bot.send_message(admin_id,f'💎 <b>رسید VIP جدید</b>\n\n👤 کاربر: <code>{uid}</code>\n📦 پلن: {html.escape(plan["name"])}\n💰 مبلغ: {irr(plan["price_rial"])}\n🧾 رسید: #{rid}',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ تأیید',callback_data=f'v25:vip_receipt:approve:{rid}'),InlineKeyboardButton('❌ رد',callback_data=f'v25:vip_receipt:reject:{rid}')]]))
+                await context.bot.send_message(admin_id,f'ð <b>Ø±Ø³ÛØ¯ VIP Ø¬Ø¯ÛØ¯</b>\n\nð¤ Ú©Ø§Ø±Ø¨Ø±: <code>{uid}</code>\nð¦ Ù¾ÙÙ: {html.escape(plan["name"])}\nð° ÙØ¨ÙØº: {irr(plan["price_rial"])}\nð§¾ Ø±Ø³ÛØ¯: #{rid}',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â ØªØ£ÛÛØ¯',callback_data=f'v25:vip_receipt:approve:{rid}'),InlineKeyboardButton('â Ø±Ø¯',callback_data=f'v25:vip_receipt:reject:{rid}')]]))
                 if hasattr(context.bot,'send_document') and doc:
                     await context.bot.send_document(admin_id,document=file_id)
                 elif hasattr(context.bot,'send_photo') and photo:
@@ -8009,9 +7986,9 @@ async def v25_receipt_handler(update,context):
     c=db(); a=c.execute('SELECT owner_user_id,customer_id FROM appointments WHERE id=?',(aid,)).fetchone()
     if a:
         c.execute('INSERT INTO booking_payments(owner_user_id,appointment_id,customer_id,amount_rial,method,status,receipt_file_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',(owner,aid,a['customer_id'],amount,'card','pending',file_id,now,now)); c.commit()
-        try: await context.bot.send_message(owner,f'📎 <b>رسید جدید دریافت شد</b>\n\n👤 مشتری\n💰 مبلغ: {amount:,.0f} ریال\n🧾 وضعیت: 🟡 در انتظار تأیید',parse_mode='HTML')
+        try: await context.bot.send_message(owner,f'ð <b>Ø±Ø³ÛØ¯ Ø¬Ø¯ÛØ¯ Ø¯Ø±ÛØ§ÙØª Ø´Ø¯</b>\n\nð¤ ÙØ´ØªØ±Û\nð° ÙØ¨ÙØº: {amount:,.0f} Ø±ÛØ§Ù\nð§¾ ÙØ¶Ø¹ÛØª: ð¡ Ø¯Ø± Ø§ÙØªØ¸Ø§Ø± ØªØ£ÛÛØ¯',parse_mode='HTML')
         except Exception: pass
-    c.close(); clear_flow(context); await update.message.reply_text('✅ رسیدت دریافت شد و برای صاحب کسب‌وکار ارسال شد. بعد از بررسی، وضعیت پرداخت بهت اطلاع داده می‌شود.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📅 رزروهای من',callback_data='cust:mybookings')],[main_menu_button(uid)]]))
+    c.close(); clear_flow(context); await update.message.reply_text('â Ø±Ø³ÛØ¯Øª Ø¯Ø±ÛØ§ÙØª Ø´Ø¯ Ù Ø¨Ø±Ø§Û ØµØ§Ø­Ø¨ Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø§Ø±Ø³Ø§Ù Ø´Ø¯. Ø¨Ø¹Ø¯ Ø§Ø² Ø¨Ø±Ø±Ø³ÛØ ÙØ¶Ø¹ÛØª Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨ÙØª Ø§Ø·ÙØ§Ø¹ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ',callback_data='cust:mybookings')],[main_menu_button(uid)]]))
 
 async def v25_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; await q.answer(); p=q.data.split(':'); action=p[1] if len(p)>1 else 'hub'
@@ -8022,29 +7999,29 @@ async def v25_callback(update,context):
             if not customer_feature_allowed(uid):
                 await q.message.edit_text(customer_feature_message(uid), reply_markup=v25_back(uid)); return
             ensure_business_profile(uid)
-            await q.message.edit_text('👥 <b>مدیریت مشتری و نوبت‌دهی</b>\n\nپنل مستقل مشتریان، نوبت‌ها، تقویم و یادآوری‌ها.', parse_mode='HTML', reply_markup=customer_keyboard(uid))
+            await q.message.edit_text('ð¥ <b>ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ</b>\n\nÙ¾ÙÙ ÙØ³ØªÙÙ ÙØ´ØªØ±ÛØ§ÙØ ÙÙØ¨ØªâÙØ§Ø ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§.', parse_mode='HTML', reply_markup=customer_keyboard(uid))
             return
         if action=='reminders': await v25_reminders_menu(update,context); return
-        if action=='remadd': context.user_data['v25_mode']='rem_title'; await q.message.edit_text('✏️ عنوان یادآوری را بفرست:',reply_markup=v25_back(uid)); return
+        if action=='remadd': context.user_data['v25_mode']='rem_title'; await q.message.edit_text('âï¸ Ø¹ÙÙØ§Ù ÛØ§Ø¯Ø¢ÙØ±Û Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid)); return
         if action=='remview':
-            rid=int(p[2]); r=_v25_exec('SELECT * FROM important_reminders WHERE id=? AND user_id=?',(rid,uid),fetchone=True); await q.message.edit_text(f"🔔 {html.escape(r['title'])}\n⏰ {r['remind_at'].replace('T',' ')}",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🗑 حذف',callback_data=f'v25:remdel:{rid}')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:reminders'),main_menu_button(uid)]])); return
-        if action=='remdel': _v25_exec('DELETE FROM important_reminders WHERE id=? AND user_id=?',(int(p[2]),uid)); await q.message.edit_text('✅ حذف شد.',reply_markup=v25_back(uid)); return
-        if action=='remdone': _v25_exec('UPDATE important_reminders SET enabled=0 WHERE id=? AND user_id=?',(int(p[2]),uid)); await q.message.edit_text('✅ انجام شد.',reply_markup=v25_hub_keyboard(uid)); return
-        if action=='calendar': await q.message.edit_text('📅 <b>تقویم من</b>\n\nنوبت‌ها و یادآوری‌های مهم در این تقویم یکپارچه نگهداری می‌شوند. برای مشاهده سریع، از «امروز من» یا «یادآوری‌های مهم» استفاده کن.',parse_mode='HTML',reply_markup=v25_back(uid)); return
+            rid=int(p[2]); r=_v25_exec('SELECT * FROM important_reminders WHERE id=? AND user_id=?',(rid,uid),fetchone=True); await q.message.edit_text(f"ð {html.escape(r['title'])}\nâ° {r['remind_at'].replace('T',' ')}",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ø­Ø°Ù',callback_data=f'v25:remdel:{rid}')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:reminders'),main_menu_button(uid)]])); return
+        if action=='remdel': _v25_exec('DELETE FROM important_reminders WHERE id=? AND user_id=?',(int(p[2]),uid)); await q.message.edit_text('â Ø­Ø°Ù Ø´Ø¯.',reply_markup=v25_back(uid)); return
+        if action=='remdone': _v25_exec('UPDATE important_reminders SET enabled=0 WHERE id=? AND user_id=?',(int(p[2]),uid)); await q.message.edit_text('â Ø§ÙØ¬Ø§Ù Ø´Ø¯.',reply_markup=v25_hub_keyboard(uid)); return
+        if action=='calendar': await q.message.edit_text('ð <b>ØªÙÙÛÙ ÙÙ</b>\n\nÙÙØ¨ØªâÙØ§ Ù ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙÙ Ø¯Ø± Ø§ÛÙ ØªÙÙÛÙ ÛÚ©Ù¾Ø§Ø±ÚÙ ÙÚ¯ÙØ¯Ø§Ø±Û ÙÛâØ´ÙÙØ¯. Ø¨Ø±Ø§Û ÙØ´Ø§ÙØ¯Ù Ø³Ø±ÛØ¹Ø Ø§Ø² Â«Ø§ÙØ±ÙØ² ÙÙÂ» ÛØ§ Â«ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙÙÂ» Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.',parse_mode='HTML',reply_markup=v25_back(uid)); return
         if action=='profile': await v25_profile_menu(update,context); return
         if action=='profile_share': await v25_profile_share_menu(update,context); return
-        if action=='profile_edit': context.user_data['v25_mode']=f'profile_edit:{p[2]}'; await q.message.edit_text('✏️ مقدار جدید را بفرست. اگر نمی‌خواهی ذخیره شود «-» بزن.',reply_markup=v25_back(uid,'v25:profile')); return
+        if action=='profile_edit': context.user_data['v25_mode']=f'profile_edit:{p[2]}'; await q.message.edit_text('âï¸ ÙÙØ¯Ø§Ø± Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª. Ø§Ú¯Ø± ÙÙÛâØ®ÙØ§ÙÛ Ø°Ø®ÛØ±Ù Ø´ÙØ¯ Â«-Â» Ø¨Ø²Ù.',reply_markup=v25_back(uid,'v25:profile')); return
         if action=='share':
             scope,field=p[2],p[3]; cur=_v25_exec('SELECT enabled FROM profile_share WHERE user_id=? AND scope=? AND field=?',(uid,scope,field),fetchone=True); en=1 if cur is None else int(cur['enabled']); _v25_exec('INSERT INTO profile_share(user_id,scope,field,enabled,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,scope,field) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at',(uid,scope,field,0 if en else 1,_v25_now())); await v25_profile_share_menu(update,context); return
         if action=='portfolio': await v25_portfolio_menu(update,context); return
-        if action=='portadd': context.user_data['v25_mode']='port_asset'; await q.message.edit_text('💰 نام دارایی را بفرست. مثال: طلای ۱۸ عیار',reply_markup=v25_back(uid)); return
+        if action=='portadd': context.user_data['v25_mode']='port_asset'; await q.message.edit_text('ð° ÙØ§Ù Ø¯Ø§Ø±Ø§ÛÛ Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙØ«Ø§Ù: Ø·ÙØ§Û Û±Û¸ Ø¹ÛØ§Ø±',reply_markup=v25_back(uid)); return
         if action=='portsummary': await v25_portfolio_summary(update,context); return
         if action=='installments': await v25_installments_menu(update,context); return
-        if action=='instadd': context.user_data['v25_mode']='inst_bank'; await q.message.edit_text('🏦 بانک را انتخاب کن:',reply_markup=v25_bank_keyboard(uid)); return
-        if action=='instbank': context.user_data['inst_bank']=v25_banks()[int(p[2])]; context.user_data['v25_mode']='inst_title'; await q.message.edit_text('📝 عنوان تسهیلات را بفرست یا «قسط» بنویس:'); return
-        if action=='instbank_custom': context.user_data['v25_mode']='inst_bank'; await q.message.edit_text('🏦 نام بانک یا مؤسسه را بفرست:'); return
-        if action=='instrate': context.user_data['inst_rate']=float(p[2]); context.user_data['v25_mode']='inst_months'; await q.message.edit_text('🔢 تعداد ماه بازپرداخت را بفرست:'); return
-        if action=='instrate_custom': context.user_data['v25_mode']='inst_rate_custom'; await q.message.edit_text('📈 نرخ سود را به درصد بنویس. مثال: 23'); return
+        if action=='instadd': context.user_data['v25_mode']='inst_bank'; await q.message.edit_text('ð¦ Ø¨Ø§ÙÚ© Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:',reply_markup=v25_bank_keyboard(uid)); return
+        if action=='instbank': context.user_data['inst_bank']=v25_banks()[int(p[2])]; context.user_data['v25_mode']='inst_title'; await q.message.edit_text('ð Ø¹ÙÙØ§Ù ØªØ³ÙÛÙØ§Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ Â«ÙØ³Ø·Â» Ø¨ÙÙÛØ³:'); return
+        if action=='instbank_custom': context.user_data['v25_mode']='inst_bank'; await q.message.edit_text('ð¦ ÙØ§Ù Ø¨Ø§ÙÚ© ÛØ§ ÙØ¤Ø³Ø³Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
+        if action=='instrate': context.user_data['inst_rate']=float(p[2]); context.user_data['v25_mode']='inst_months'; await q.message.edit_text('ð¢ ØªØ¹Ø¯Ø§Ø¯ ÙØ§Ù Ø¨Ø§Ø²Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
+        if action=='instrate_custom': context.user_data['v25_mode']='inst_rate_custom'; await q.message.edit_text('ð ÙØ±Ø® Ø³ÙØ¯ Ø±Ø§ Ø¨Ù Ø¯Ø±ØµØ¯ Ø¨ÙÙÛØ³. ÙØ«Ø§Ù: 23'); return
         if action=='instsave':
             s=context.user_data; now=_v25_now(); c=db(); plan_id=c.execute('INSERT INTO installment_plans(user_id,bank_name,title,principal_rial,interest_pct,term_months,first_due_date,day_of_month,monthly_rial,total_interest_rial,total_payable_rial,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',(uid,s['inst_bank'],s['inst_title'],s['inst_principal'],s['inst_rate'],s['inst_months'],s['inst_first_date'],datetime.fromisoformat(s['inst_first_date']).day,s['inst_monthly'],s['inst_interest'],s['inst_total'],now,now)).lastrowid
             first=datetime.fromisoformat(s['inst_first_date']).date();
@@ -8052,95 +8029,95 @@ async def v25_callback(update,context):
                 # Month stepping without external dependency.
                 month=first.month-1+i; year=first.year+month//12; mon=month%12+1; day=min(first.day,[31,29 if year%4==0 else 28,31,30,31,30,31,31,30,31,30,31][mon-1]); due=f'{year:04d}-{mon:02d}-{day:02d}'
                 c.execute('INSERT OR IGNORE INTO installment_payments(plan_id,installment_no,due_date,amount_rial,status) VALUES(?,?,?,?,?)',(plan_id,i+1,due,s['inst_monthly'],'pending'))
-            c.commit(); c.close(); clear_flow(context); await q.message.edit_text('✅ تسهیلات ذخیره شد و اقساط ماهانه در تاریخچه ساخته شد.',reply_markup=v25_back(uid,'v25:installments')); return
+            c.commit(); c.close(); clear_flow(context); await q.message.edit_text('â ØªØ³ÙÛÙØ§Øª Ø°Ø®ÛØ±Ù Ø´Ø¯ Ù Ø§ÙØ³Ø§Ø· ÙØ§ÙØ§ÙÙ Ø¯Ø± ØªØ§Ø±ÛØ®ÚÙ Ø³Ø§Ø®ØªÙ Ø´Ø¯.',reply_markup=v25_back(uid,'v25:installments')); return
         if action=='instview':
-            pid=int(p[2]); c=db(); plan=c.execute('SELECT * FROM installment_plans WHERE id=? AND user_id=?',(pid,uid)).fetchone(); pays=c.execute('SELECT * FROM installment_payments WHERE plan_id=? ORDER BY installment_no LIMIT 24',(pid,)).fetchall(); c.close(); paid=sum(1 for x in pays if x['status']=='paid'); text=f"🏦 <b>{html.escape(plan['bank_name'])}</b>\n📝 {html.escape(plan['title'])}\n💵 قسط: {plan['monthly_rial']:,.0f} ریال\n📈 سود: {plan['interest_pct']:g}%\n📊 پرداخت‌شده: {paid}/{plan['term_months']}\n\n"+('\n'.join(f"{'✅' if x['status']=='paid' else '⏳'} {x['installment_no']} — {x['due_date']} — {x['amount_rial']:,.0f} ریال" for x in pays))
-            await q.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ اقساط',callback_data='v25:installments'),main_menu_button(uid)]])); return
+            pid=int(p[2]); c=db(); plan=c.execute('SELECT * FROM installment_plans WHERE id=? AND user_id=?',(pid,uid)).fetchone(); pays=c.execute('SELECT * FROM installment_payments WHERE plan_id=? ORDER BY installment_no LIMIT 24',(pid,)).fetchall(); c.close(); paid=sum(1 for x in pays if x['status']=='paid'); text=f"ð¦ <b>{html.escape(plan['bank_name'])}</b>\nð {html.escape(plan['title'])}\nðµ ÙØ³Ø·: {plan['monthly_rial']:,.0f} Ø±ÛØ§Ù\nð Ø³ÙØ¯: {plan['interest_pct']:g}%\nð Ù¾Ø±Ø¯Ø§Ø®ØªâØ´Ø¯Ù: {paid}/{plan['term_months']}\n\n"+('\n'.join(f"{'â' if x['status']=='paid' else 'â³'} {x['installment_no']} â {x['due_date']} â {x['amount_rial']:,.0f} Ø±ÛØ§Ù" for x in pays))
+            await q.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â¬ï¸ Ø§ÙØ³Ø§Ø·',callback_data='v25:installments'),main_menu_button(uid)]])); return
         if action=='business': await v25_business_menu(update,context); return
         if action=='bizprofile':
-            p=ensure_business_profile(uid); await q.message.edit_text(f"🏪 <b>اطلاعات کسب‌وکار</b>\n\nنام: {html.escape(p['business_name'] or '—')}\nنوع: {html.escape(p['business_type'] or '—')}\n📞 {html.escape(p['contact_phone'] or '—')}\n\nاطلاعات خالی اختیاری است.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✏️ نام کسب‌وکار',callback_data='v25:bizname')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]])); return
-        if action=='bizname': context.user_data['v25_mode']='bizname_v25'; await q.message.edit_text('🏪 نام جدید کسب‌وکار را بفرست:',reply_markup=v25_back(uid,'v25:business')); return
+            p=ensure_business_profile(uid); await q.message.edit_text(f"ðª <b>Ø§Ø·ÙØ§Ø¹Ø§Øª Ú©Ø³Ø¨âÙÚ©Ø§Ø±</b>\n\nÙØ§Ù: {html.escape(p['business_name'] or 'â')}\nÙÙØ¹: {html.escape(p['business_type'] or 'â')}\nð {html.escape(p['contact_phone'] or 'â')}\n\nØ§Ø·ÙØ§Ø¹Ø§Øª Ø®Ø§ÙÛ Ø§Ø®ØªÛØ§Ø±Û Ø§Ø³Øª.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('âï¸ ÙØ§Ù Ú©Ø³Ø¨âÙÚ©Ø§Ø±',callback_data='v25:bizname')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]])); return
+        if action=='bizname': context.user_data['v25_mode']='bizname_v25'; await q.message.edit_text('ðª ÙØ§Ù Ø¬Ø¯ÛØ¯ Ú©Ø³Ø¨âÙÚ©Ø§Ø± Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:business')); return
         if action=='bizfinance':
             c=db(); rows=c.execute("SELECT c.id,c.name,COALESCE(SUM(f.amount_rial),0) total,COALESCE(SUM(f.paid_rial),0) paid FROM customers c LEFT JOIN customer_finance f ON f.customer_id=c.id WHERE c.owner_user_id=? GROUP BY c.id ORDER BY c.name LIMIT 50",(uid,)).fetchall(); c.close();
-            text='📒 <b>مالی مشتریان</b>\n\n'+('\n'.join(f"👤 {html.escape(r['name'])} | 💰 {r['total']:,.0f} ریال | ✅ {r['paid']:,.0f} ریال | ⏳ {(r['total']-r['paid']):,.0f} ریال" for r in rows) if rows else 'هنوز تراکنشی ثبت نشده.'); await q.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]])); return
+            text='ð <b>ÙØ§ÙÛ ÙØ´ØªØ±ÛØ§Ù</b>\n\n'+('\n'.join(f"ð¤ {html.escape(r['name'])} | ð° {r['total']:,.0f} Ø±ÛØ§Ù | â {r['paid']:,.0f} Ø±ÛØ§Ù | â³ {(r['total']-r['paid']):,.0f} Ø±ÛØ§Ù" for r in rows) if rows else 'ÙÙÙØ² ØªØ±Ø§Ú©ÙØ´Û Ø«Ø¨Øª ÙØ´Ø¯Ù.'); await q.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]])); return
         if action=='bookservice':
             sid=int(p[2]); context.user_data['booking_service_id']=sid; await v25_booking_profile_prompt(update,context); return
         if action=='bookuse':
             owner=context.user_data.get('booking_owner'); sid=int(context.user_data.get('booking_service_id') or 0);
-            try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"🎉 <b>رزرو جدید ثبت شد!</b>\n\n🏪 {html.escape(prof['business_name'] or 'کسب‌وکار')}\n👤 {html.escape(name)}\n📅 {jalali_pretty_date(context.user_data['booking_date'])}\n⏰ {context.user_data['booking_time']}"+ (f"\n🛠️ {html.escape(service)}\n💰 {amount:,.0f} ریال" if service else ''),parse_mode='HTML'); await v25_booking_payment_menu(update,context,aid,owner,amount,prof['business_name'] or 'کسب‌وکار');
-            except ValueError: await q.message.edit_text('❌ این زمان دیگر آزاد نیست. لطفاً زمان دیگری انتخاب کن.',reply_markup=v25_back(uid));
+            try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"ð <b>Ø±Ø²Ø±Ù Ø¬Ø¯ÛØ¯ Ø«Ø¨Øª Ø´Ø¯!</b>\n\nðª {html.escape(prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±')}\nð¤ {html.escape(name)}\nð {jalali_pretty_date(context.user_data['booking_date'])}\nâ° {context.user_data['booking_time']}"+ (f"\nð ï¸ {html.escape(service)}\nð° {amount:,.0f} Ø±ÛØ§Ù" if service else ''),parse_mode='HTML'); await v25_booking_payment_menu(update,context,aid,owner,amount,prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±');
+            except ValueError: await q.message.edit_text('â Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª. ÙØ·ÙØ§Ù Ø²ÙØ§Ù Ø¯ÛÚ¯Ø±Û Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.',reply_markup=v25_back(uid));
             return
         if action=='bookskip':
             owner=context.user_data.get('booking_owner'); sid=int(context.user_data.get('booking_service_id') or 0); context.user_data['public_name']=''; context.user_data['public_phone']='';
-            try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"🎉 <b>رزرو جدید ثبت شد!</b>\n\n🏪 {html.escape(prof['business_name'] or 'کسب‌وکار')}\n👤 مشتری بدون اطلاعات شخصی\n📅 {jalali_pretty_date(context.user_data['booking_date'])}\n⏰ {context.user_data['booking_time']}",parse_mode='HTML'); await v25_booking_payment_menu(update,context,aid,owner,amount,prof['business_name'] or 'کسب‌وکار');
-            except ValueError: await q.message.edit_text('❌ این زمان دیگر آزاد نیست.',reply_markup=v25_back(uid));
+            try: aid,service,amount,name,phone=await v25_create_booking(context,uid,owner,sid); prof=ensure_business_profile(owner); context.user_data['booking_appointment_id']=aid; context.user_data['booking_amount_rial']=amount; await context.bot.send_message(owner,f"ð <b>Ø±Ø²Ø±Ù Ø¬Ø¯ÛØ¯ Ø«Ø¨Øª Ø´Ø¯!</b>\n\nðª {html.escape(prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±')}\nð¤ ÙØ´ØªØ±Û Ø¨Ø¯ÙÙ Ø§Ø·ÙØ§Ø¹Ø§Øª Ø´Ø®ØµÛ\nð {jalali_pretty_date(context.user_data['booking_date'])}\nâ° {context.user_data['booking_time']}",parse_mode='HTML'); await v25_booking_payment_menu(update,context,aid,owner,amount,prof['business_name'] or 'Ú©Ø³Ø¨âÙÚ©Ø§Ø±');
+            except ValueError: await q.message.edit_text('â Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª.',reply_markup=v25_back(uid));
             return
         if action=='bookedit':
-            context.user_data['v25_mode']='booking_name'; await q.message.edit_text('👤 اگر دوست داری نامت را وارد کن؛ اختیاری است. برای رد کردن «-» بزن:',reply_markup=v25_back(uid)); return
+            context.user_data['v25_mode']='booking_name'; await q.message.edit_text('ð¤ Ø§Ú¯Ø± Ø¯ÙØ³Øª Ø¯Ø§Ø±Û ÙØ§ÙØª Ø±Ø§ ÙØ§Ø±Ø¯ Ú©ÙØ Ø§Ø®ØªÛØ§Ø±Û Ø§Ø³Øª. Ø¨Ø±Ø§Û Ø±Ø¯ Ú©Ø±Ø¯Ù Â«-Â» Ø¨Ø²Ù:',reply_markup=v25_back(uid)); return
         if action=='bookingcard':
             aid=int(p[2])
             # Authorization: only the booking customer (or the business owner) may
             # open card-payment instructions for this appointment.
             booking=_v25_exec("SELECT a.owner_user_id,c.telegram_user_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=?",(aid,),fetchone=True)
             if not booking or (int(booking['telegram_user_id'] or 0) != uid and int(booking['owner_user_id']) != uid):
-                await q.answer('⛔ دسترسی به این رزرو مجاز نیست.',show_alert=True); return
+                await q.answer('â Ø¯Ø³ØªØ±Ø³Û Ø¨Ù Ø§ÛÙ Ø±Ø²Ø±Ù ÙØ¬Ø§Ø² ÙÛØ³Øª.',show_alert=True); return
             owner=int(booking['owner_user_id'])
             pm=_v25_exec("SELECT details FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(owner,),fetchone=True);
-            if not pm: await q.message.edit_text('⚠️ کارت‌به‌کارت فعال نیست.',reply_markup=v25_back(uid)); return
+            if not pm: await q.message.edit_text('â ï¸ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª ÙØ¹Ø§Ù ÙÛØ³Øª.',reply_markup=v25_back(uid)); return
             amount=context.user_data.get('booking_amount_rial',0); context.user_data['v25_mode']='booking_receipt'; context.user_data['booking_appointment_id']=aid; context.user_data['booking_owner']=owner;
-            await q.message.edit_text(f"💵 <b>کارت‌به‌کارت</b>\n\n💰 مبلغ: {amount:,.0f} ریال\n\n{html.escape(pm['details'])}\n\n📎 بعد از واریز تصویر رسید را بفرست.",parse_mode='HTML',reply_markup=v25_back(uid)); return
+            await q.message.edit_text(f"ðµ <b>Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª</b>\n\nð° ÙØ¨ÙØº: {amount:,.0f} Ø±ÛØ§Ù\n\n{html.escape(pm['details'])}\n\nð Ø¨Ø¹Ø¯ Ø§Ø² ÙØ§Ø±ÛØ² ØªØµÙÛØ± Ø±Ø³ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª.",parse_mode='HTML',reply_markup=v25_back(uid)); return
         if action=='survey_rate':
             aid=int(p[2]); rating=int(p[3]); c=db(); r=c.execute("SELECT owner_user_id,customer_id FROM appointments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND c.telegram_user_id=?",(aid,uid)).fetchone();
-            if not r: c.close(); await q.message.edit_text('❌ این نظرسنجی برای شما پیدا نشد.',reply_markup=v25_back(uid)); return
+            if not r: c.close(); await q.message.edit_text('â Ø§ÛÙ ÙØ¸Ø±Ø³ÙØ¬Û Ø¨Ø±Ø§Û Ø´ÙØ§ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.',reply_markup=v25_back(uid)); return
             c.execute('INSERT OR IGNORE INTO survey_responses(owner_user_id,appointment_id,customer_id,rating,created_at) VALUES(?,?,?,?,?)',(r['owner_user_id'],aid,r['customer_id'],rating,_v25_now())); c.commit(); c.close();
-            try: await context.bot.send_message(r['owner_user_id'],f"⭐ امتیاز جدید مشتری: {rating}/5");
+            try: await context.bot.send_message(r['owner_user_id'],f"â­ Ø§ÙØªÛØ§Ø² Ø¬Ø¯ÛØ¯ ÙØ´ØªØ±Û: {rating}/5");
             except Exception: pass
-            await q.message.edit_text('🙏 ممنون! نظرت ثبت شد. اگر پیشنهادی داری می‌توانی در پیام بعدی بنویسی.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✍️ نوشتن پیشنهاد',callback_data=f'v25:surveycomment:{aid}')],[main_menu_button(uid)]])); return
-        if action=='surveycomment': context.user_data['v25_mode']='survey_comment'; context.user_data['survey_appointment_id']=int(p[2]); await q.message.edit_text('💬 پیشنهاد یا توضیح خودت را بنویس. این بخش اختیاری است.',reply_markup=v25_back(uid)); return
+            await q.message.edit_text('ð ÙÙÙÙÙ! ÙØ¸Ø±Øª Ø«Ø¨Øª Ø´Ø¯. Ø§Ú¯Ø± Ù¾ÛØ´ÙÙØ§Ø¯Û Ø¯Ø§Ø±Û ÙÛâØªÙØ§ÙÛ Ø¯Ø± Ù¾ÛØ§Ù Ø¨Ø¹Ø¯Û Ø¨ÙÙÛØ³Û.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('âï¸ ÙÙØ´ØªÙ Ù¾ÛØ´ÙÙØ§Ø¯',callback_data=f'v25:surveycomment:{aid}')],[main_menu_button(uid)]])); return
+        if action=='surveycomment': context.user_data['v25_mode']='survey_comment'; context.user_data['survey_appointment_id']=int(p[2]); await q.message.edit_text('ð¬ Ù¾ÛØ´ÙÙØ§Ø¯ ÛØ§ ØªÙØ¶ÛØ­ Ø®ÙØ¯Øª Ø±Ø§ Ø¨ÙÙÛØ³. Ø§ÛÙ Ø¨Ø®Ø´ Ø§Ø®ØªÛØ§Ø±Û Ø§Ø³Øª.',reply_markup=v25_back(uid)); return
         if action=='services': await v25_services_menu(update,context); return
-        if action=='serviceadd': context.user_data['v25_mode']='service_name'; await q.message.edit_text('🛠️ نام خدمت را بفرست:',reply_markup=v25_back(uid,'v25:services')); return
+        if action=='serviceadd': context.user_data['v25_mode']='service_name'; await q.message.edit_text('ð ï¸ ÙØ§Ù Ø®Ø¯ÙØª Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:services')); return
         if action=='service_toggle':
             sid=int(p[2]); _v25_exec('UPDATE business_services SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=? AND owner_user_id=?',(_v25_now(),sid,uid)); await v25_services_menu(update,context); return
         if action=='bizpay': await v25_payment_methods_menu(update,context); return
-        if action=='card': context.user_data['v25_mode']='card_number'; await q.message.edit_text('💳 شماره کارت را بفرست:',reply_markup=v25_back(uid,'v25:bizpay')); return
-        if action=='gateway': context.user_data['v25_mode']='gateway_link'; await q.message.edit_text('🔗 لینک پرداخت درگاه ایرانی را بفرست. این لینک می‌تواند لینک پرداخت سرویس موردنظر باشد. برای خاموش کردن، از پنل فعال/غیرفعال کن.',reply_markup=v25_back(uid,'v25:bizpay')); return
+        if action=='card': context.user_data['v25_mode']='card_number'; await q.message.edit_text('ð³ Ø´ÙØ§Ø±Ù Ú©Ø§Ø±Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:bizpay')); return
+        if action=='gateway': context.user_data['v25_mode']='gateway_link'; await q.message.edit_text('ð ÙÛÙÚ© Ù¾Ø±Ø¯Ø§Ø®Øª Ø¯Ø±Ú¯Ø§Ù Ø§ÛØ±Ø§ÙÛ Ø±Ø§ Ø¨ÙØ±Ø³Øª. Ø§ÛÙ ÙÛÙÚ© ÙÛâØªÙØ§ÙØ¯ ÙÛÙÚ© Ù¾Ø±Ø¯Ø§Ø®Øª Ø³Ø±ÙÛØ³ ÙÙØ±Ø¯ÙØ¸Ø± Ø¨Ø§Ø´Ø¯. Ø¨Ø±Ø§Û Ø®Ø§ÙÙØ´ Ú©Ø±Ø¯ÙØ Ø§Ø² Ù¾ÙÙ ÙØ¹Ø§Ù/ØºÛØ±ÙØ¹Ø§Ù Ú©Ù.',reply_markup=v25_back(uid,'v25:bizpay')); return
         if action=='surveyadmin': await v25_survey_admin(update,context); return
-        if action=='surveyadd': context.user_data['v25_mode']='survey_question'; await q.message.edit_text('✏️ سؤال جدید نظرسنجی را بفرست:',reply_markup=v25_back(uid,'v25:surveyadmin')); return
+        if action=='surveyadd': context.user_data['v25_mode']='survey_question'; await q.message.edit_text('âï¸ Ø³Ø¤Ø§Ù Ø¬Ø¯ÛØ¯ ÙØ¸Ø±Ø³ÙØ¬Û Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:surveyadmin')); return
         if action=='plans': await v25_vip_plans(update,context); return
         if action=='sms':
-            cfg=_v25_exec('SELECT * FROM sms_settings WHERE owner_user_id=?',(uid,),fetchone=True); await q.message.edit_text(f"📱 <b>پیامک</b>\n\nوضعیت: {'🟢' if cfg and cfg['enabled'] else '🔴'}\n\nبرای فعال‌سازی، endpoint و API key سرویس پیامکی در تنظیمات ذخیره شود.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🧪 تست',callback_data='v25:smstest')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]])); return
-        if action=='smstest': context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('📱 شماره‌ای که باید تست شود را بفرست:',reply_markup=v25_back(uid,'v25:sms')); return
+            cfg=_v25_exec('SELECT * FROM sms_settings WHERE owner_user_id=?',(uid,),fetchone=True); await q.message.edit_text(f"ð± <b>Ù¾ÛØ§ÙÚ©</b>\n\nÙØ¶Ø¹ÛØª: {'ð¢' if cfg and cfg['enabled'] else 'ð´'}\n\nØ¨Ø±Ø§Û ÙØ¹Ø§ÙâØ³Ø§Ø²ÛØ endpoint Ù API key Ø³Ø±ÙÛØ³ Ù¾ÛØ§ÙÚ©Û Ø¯Ø± ØªÙØ¸ÛÙØ§Øª Ø°Ø®ÛØ±Ù Ø´ÙØ¯.",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð§ª ØªØ³Øª',callback_data='v25:smstest')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]])); return
+        if action=='smstest': context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('ð± Ø´ÙØ§Ø±ÙâØ§Û Ú©Ù Ø¨Ø§ÛØ¯ ØªØ³Øª Ø´ÙØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:sms')); return
         if action=='bookinglink': await customer_booking_link(update,context); return
         if action=='buyplan':
             pid=int(p[2]); plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=? AND enabled=1',(pid,),fetchone=True)
-            if not plan: await q.message.edit_text('❌ پلن موجود نیست.',reply_markup=v25_back(uid,'v25:business')); return
+            if not plan: await q.message.edit_text('â Ù¾ÙÙ ÙÙØ¬ÙØ¯ ÙÛØ³Øª.',reply_markup=v25_back(uid,'v25:business')); return
             c=db(); card=c.execute("SELECT * FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(uid,)).fetchone(); c.close()
-            await q.message.edit_text(f"💎 {html.escape(plan['name'])}\n\n💰 {plan['price_rial']:,.0f} ریال\n\nروش پرداخت را انتخاب کن.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💳 پرداخت آنلاین',callback_data=f'v25:viponline:{pid}')],[InlineKeyboardButton('💵 کارت‌به‌کارت',callback_data=f'v25:vipcard:{pid}')],[InlineKeyboardButton('⬅️ برگشت',callback_data='v25:business'),main_menu_button(uid)]])); return
+            await q.message.edit_text(f"ð {html.escape(plan['name'])}\n\nð° {plan['price_rial']:,.0f} Ø±ÛØ§Ù\n\nØ±ÙØ´ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ',callback_data=f'v25:viponline:{pid}')],[InlineKeyboardButton('ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data=f'v25:vipcard:{pid}')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø±Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]])); return
         if action=='viponline':
             plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=?',(int(p[2]),),fetchone=True); cfg=_v25_exec('SELECT * FROM gateway_configs WHERE owner_user_id=?',(uid,),fetchone=True)
             url=cfg['payment_link'] if cfg and cfg['enabled'] else ''
             if url:
-                await q.message.edit_text('💳 برای پرداخت آنلاین از دکمه زیر استفاده کن.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💳 پرداخت آنلاین',url=url)],[main_menu_button(uid)]]))
-            else: await q.message.edit_text('⚠️ درگاه آنلاین هنوز در پنل مدیریت تنظیم نشده است.',reply_markup=v25_back(uid,'v25:business'))
+                await q.message.edit_text('ð³ Ø¨Ø±Ø§Û Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ Ø§Ø² Ø¯Ú©ÙÙ Ø²ÛØ± Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ',url=url)],[main_menu_button(uid)]]))
+            else: await q.message.edit_text('â ï¸ Ø¯Ø±Ú¯Ø§Ù Ø¢ÙÙØ§ÛÙ ÙÙÙØ² Ø¯Ø± Ù¾ÙÙ ÙØ¯ÛØ±ÛØª ØªÙØ¸ÛÙ ÙØ´Ø¯Ù Ø§Ø³Øª.',reply_markup=v25_back(uid,'v25:business'))
             return
         if action=='vipcard':
             plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=?',(int(p[2]),),fetchone=True); pm=_v25_exec("SELECT * FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(uid,),fetchone=True)
-            if pm: await q.message.edit_text(f"💵 <b>پرداخت کارت‌به‌کارت</b>\n\n💰 مبلغ: {plan['price_rial']:,.0f} ریال\n\n{html.escape(pm['details'])}\n\nبعد از واریز تصویر رسید را بفرست.",parse_mode='HTML',reply_markup=v25_back(uid,'v25:business')); context.user_data['v25_mode']='vip_receipt'; context.user_data['vip_plan_id']=plan['id']
-            else: await q.message.edit_text('⚠️ کارت‌به‌کارت فعال نشده است.',reply_markup=v25_back(uid,'v25:business'))
+            if pm: await q.message.edit_text(f"ðµ <b>Ù¾Ø±Ø¯Ø§Ø®Øª Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª</b>\n\nð° ÙØ¨ÙØº: {plan['price_rial']:,.0f} Ø±ÛØ§Ù\n\n{html.escape(pm['details'])}\n\nØ¨Ø¹Ø¯ Ø§Ø² ÙØ§Ø±ÛØ² ØªØµÙÛØ± Ø±Ø³ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª.",parse_mode='HTML',reply_markup=v25_back(uid,'v25:business')); context.user_data['v25_mode']='vip_receipt'; context.user_data['vip_plan_id']=plan['id']
+            else: await q.message.edit_text('â ï¸ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª ÙØ¹Ø§Ù ÙØ´Ø¯Ù Ø§Ø³Øª.',reply_markup=v25_back(uid,'v25:business'))
             return
         if action=='feat':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            if len(p) < 3 or not _feature_flag_exists(p[2]): await q.answer('قابلیت نامعتبر است.',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            if len(p) < 3 or not _feature_flag_exists(p[2]): await q.answer('ÙØ§Ø¨ÙÛØª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.',show_alert=True); return
             key=p[2]; cur=feature_enabled(key); set_feature(key,not cur,uid); mode='free' if not cur else 'off'; set_feature_access_mode(key,mode,uid); await v25_admin_feature_status(update,context); return
     except Exception as e:
         logger.exception('v25 callback error: %s',e)
         await q.message.reply_text(
-            f'⚠️ این بخش با خطا روبه‌رو شد.\n\nکد خطا: <code>{type(e).__name__}</code>\n'
-            'از گزینه «تلاش دوباره» استفاده کن؛ برای خروج هم منوی اصلی در دسترس است.',
+            f'â ï¸ Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Ø®Ø·Ø§ Ø±ÙØ¨ÙâØ±Ù Ø´Ø¯.\n\nÚ©Ø¯ Ø®Ø·Ø§: <code>{type(e).__name__}</code>\n'
+            'Ø§Ø² Ú¯Ø²ÛÙÙ Â«ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±ÙÂ» Ø§Ø³ØªÙØ§Ø¯Ù Ú©ÙØ Ø¨Ø±Ø§Û Ø®Ø±ÙØ¬ ÙÙ ÙÙÙÛ Ø§ØµÙÛ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø§Ø³Øª.',
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=q.data)],
-                [InlineKeyboardButton('⬅️ مرکز من',callback_data='v25:hub'),main_menu_button(uid)]
+                [InlineKeyboardButton('ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù',callback_data=q.data)],
+                [InlineKeyboardButton('â¬ï¸ ÙØ±Ú©Ø² ÙÙ',callback_data='v25:hub'),main_menu_button(uid)]
             ])
         )
 
@@ -8154,14 +8131,14 @@ def keyboard(uid):
     fa=lang(uid)=='fa'
     # Keep legacy rows first; append only the unified functions that are enabled.
     extra=[]
-    if v25_allowed(uid,'unified_hub'): extra.append('🧠 مرکز من' if fa else '🧠 My Center')
-    if v25_allowed(uid,'portfolio'): extra.append('💰 سرمایه‌های من' if fa else '💰 My Portfolio')
-    if v25_allowed(uid,'installments'): extra.append('💳 اقساط' if fa else '💳 Installments')
-    if v25_allowed(uid,'profile_sharing'): extra.append('👤 اطلاعات من' if fa else '👤 My Profile')
-    if v25_allowed(uid,'calendar_hub'): extra.append('📅 تقویم من' if fa else '📅 My Calendar')
+    if v25_allowed(uid,'unified_hub'): extra.append('ð§  ÙØ±Ú©Ø² ÙÙ' if fa else 'ð§  My Center')
+    if v25_allowed(uid,'portfolio'): extra.append('ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ' if fa else 'ð° My Portfolio')
+    if v25_allowed(uid,'installments'): extra.append('ð³ Ø§ÙØ³Ø§Ø·' if fa else 'ð³ Installments')
+    if v25_allowed(uid,'profile_sharing'): extra.append('ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ' if fa else 'ð¤ My Profile')
+    if v25_allowed(uid,'calendar_hub'): extra.append('ð ØªÙÙÛÙ ÙÙ' if fa else 'ð My Calendar')
     if extra:
         for i in range(0,len(extra),2): rows.append(extra[i:i+2])
-    if admin_is_allowed(uid): rows.append(['🛡 پنل مدیریت' if fa else '🛡 Admin Panel'])
+    if admin_is_allowed(uid): rows.append(['ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª' if fa else 'ð¡ Admin Panel'])
     return ReplyKeyboardMarkup(rows,resize_keyboard=True)
 
 
@@ -8169,7 +8146,7 @@ async def fetch_price_v25(asset):
     # Local Iran-market values from TGJU plus global-metal fallbacks converted via USD/Rial.
     urls={'usd':'https://www.tgju.org/profile/price_dollar_rl','eur':'https://www.tgju.org/profile/price_eur','gold18':'https://www.tgju.org/profile/geram18','coin':'https://www.tgju.org/profile/sekee'}
     if asset in urls:
-        raw=await asyncio.to_thread(tgju_value,urls[asset]); val=float(raw.replace(',','').replace('٫','.').replace('٬','')); return val,'ریال','single'
+        raw=await asyncio.to_thread(tgju_value,urls[asset]); val=float(raw.replace(',','').replace('Ù«','.').replace('Ù¬','')); return val,'Ø±ÛØ§Ù','single'
     if asset in ('silver','copper','aluminum','nickel','zinc','lead'):
         # Yahoo symbols provide global spot/futures indications; these are converted to Rial using USD/Irr.
         syms={'silver':'SI=F','copper':'HG=F','aluminum':'ALI=F','nickel':'NI=F','zinc':'ZNC=F','lead':'PB=F'}
@@ -8177,9 +8154,9 @@ async def fetch_price_v25(asset):
             y=await asyncio.to_thread(fetch_url_json,f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(syms[asset],safe='')}?range=1d&interval=1m")
             meta=y['chart']['result'][0]['meta']; usd=float(meta.get('regularMarketPrice') or meta.get('previousClose'))
             dollar,_u,_c=await fetch_price_v25('usd')
-            if asset=='silver': rial_per_unit=usd*dollar; unit='ریال/اونس جهانی'
-            elif asset=='copper': rial_per_unit=usd*dollar; unit='ریال/پوند جهانی'
-            else: rial_per_unit=usd*dollar; unit='ریال/واحد جهانی'
+            if asset=='silver': rial_per_unit=usd*dollar; unit='Ø±ÛØ§Ù/Ø§ÙÙØ³ Ø¬ÙØ§ÙÛ'
+            elif asset=='copper': rial_per_unit=usd*dollar; unit='Ø±ÛØ§Ù/Ù¾ÙÙØ¯ Ø¬ÙØ§ÙÛ'
+            else: rial_per_unit=usd*dollar; unit='Ø±ÛØ§Ù/ÙØ§Ø­Ø¯ Ø¬ÙØ§ÙÛ'
             return rial_per_unit,unit,'single'
         except Exception as e: raise RuntimeError(f'{asset}: {e}')
     raise KeyError(asset)
@@ -8190,16 +8167,16 @@ async def fetch_price_v25(asset):
 _LEGACY_BOOKING_SLOT_SELECT=booking_slot_select
 async def booking_slot_select(update,context,tm):
     q=update.callback_query; uid=q.from_user.id; owner=context.user_data.get('booking_owner'); d=context.user_data.get('booking_date'); tm=parse_time(tm)
-    if not owner or not d or not tm or tm not in available_slots(owner,d,30): await q.answer('این زمان دیگر آزاد نیست.',show_alert=True); return
+    if not owner or not d or not tm or tm not in available_slots(owner,d,30): await q.answer('Ø§ÛÙ Ø²ÙØ§Ù Ø¯ÛÚ¯Ø± Ø¢Ø²Ø§Ø¯ ÙÛØ³Øª.',show_alert=True); return
     if context.user_data.get('reschedule_appointment_id'):
         return await _LEGACY_BOOKING_SLOT_SELECT(update,context,tm)
     context.user_data['booking_time']=tm
     c=db(); services=c.execute('SELECT * FROM business_services WHERE owner_user_id=? AND enabled=1 ORDER BY id',(owner,)).fetchall(); c.close()
     if services:
-        kb=[[InlineKeyboardButton(f"🛠️ {s['name']} — {s['price_rial']:,.0f} ریال",callback_data=f'v25:bookservice:{s["id"]}') ] for s in services]
-        kb.append([InlineKeyboardButton('⏭️ بدون انتخاب خدمت',callback_data='v25:bookservice:0')])
-        kb.append([InlineKeyboardButton('⬅️ تاریخ دیگر',callback_data='cust:booklink'),main_menu_button(uid)])
-        await q.message.edit_text(f'📅 {jalali_pretty_date(d)}\n⏰ {tm}\n\n🛠️ خدمت را انتخاب کن:',reply_markup=InlineKeyboardMarkup(kb))
+        kb=[[InlineKeyboardButton(f"ð ï¸ {s['name']} â {s['price_rial']:,.0f} Ø±ÛØ§Ù",callback_data=f'v25:bookservice:{s["id"]}') ] for s in services]
+        kb.append([InlineKeyboardButton('â­ï¸ Ø¨Ø¯ÙÙ Ø§ÙØªØ®Ø§Ø¨ Ø®Ø¯ÙØª',callback_data='v25:bookservice:0')])
+        kb.append([InlineKeyboardButton('â¬ï¸ ØªØ§Ø±ÛØ® Ø¯ÛÚ¯Ø±',callback_data='cust:booklink'),main_menu_button(uid)])
+        await q.message.edit_text(f'ð {jalali_pretty_date(d)}\nâ° {tm}\n\nð ï¸ Ø®Ø¯ÙØª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:',reply_markup=InlineKeyboardMarkup(kb))
     else:
         await v25_booking_profile_prompt(update,context)
 
@@ -8211,9 +8188,9 @@ async def v25_booking_profile_prompt(update,context):
     name=p['full_name'] if use_name else ''; phone=p['phone'] if use_phone else ''
     context.user_data['public_name']=name; context.user_data['public_phone']=phone
     if name or phone:
-        await update.callback_query.message.edit_text(f"😊 اطلاعات ذخیره‌شده پیدا شد.\n\n👤 نام: {html.escape(name or '—')}\n📱 تلفن: {html.escape(phone or '—')}\n\nدرسته؟",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ استفاده از اطلاعات من',callback_data='v25:bookuse')],[InlineKeyboardButton('✏️ ویرایش',callback_data='v25:bookedit')],[InlineKeyboardButton('⏭️ بدون اطلاعات شخصی',callback_data='v25:bookskip')],[main_menu_button(uid)]]))
+        await update.callback_query.message.edit_text(f"ð Ø§Ø·ÙØ§Ø¹Ø§Øª Ø°Ø®ÛØ±ÙâØ´Ø¯Ù Ù¾ÛØ¯Ø§ Ø´Ø¯.\n\nð¤ ÙØ§Ù: {html.escape(name or 'â')}\nð± ØªÙÙÙ: {html.escape(phone or 'â')}\n\nØ¯Ø±Ø³ØªÙØ",parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ',callback_data='v25:bookuse')],[InlineKeyboardButton('âï¸ ÙÛØ±Ø§ÛØ´',callback_data='v25:bookedit')],[InlineKeyboardButton('â­ï¸ Ø¨Ø¯ÙÙ Ø§Ø·ÙØ§Ø¹Ø§Øª Ø´Ø®ØµÛ',callback_data='v25:bookskip')],[main_menu_button(uid)]]))
     else:
-        await update.callback_query.message.edit_text('😊 برای رزرو اگر دوست داشتی نام و شماره‌ات را وارد کن؛ هر دو اختیاری‌اند.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('👤 وارد کردن نام',callback_data='v25:bookedit')],[InlineKeyboardButton('⏭️ فعلاً بدون اطلاعات',callback_data='v25:bookskip')],[main_menu_button(uid)]]))
+        await update.callback_query.message.edit_text('ð Ø¨Ø±Ø§Û Ø±Ø²Ø±Ù Ø§Ú¯Ø± Ø¯ÙØ³Øª Ø¯Ø§Ø´ØªÛ ÙØ§Ù Ù Ø´ÙØ§Ø±ÙâØ§Øª Ø±Ø§ ÙØ§Ø±Ø¯ Ú©ÙØ ÙØ± Ø¯Ù Ø§Ø®ØªÛØ§Ø±ÛâØ§ÙØ¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð¤ ÙØ§Ø±Ø¯ Ú©Ø±Ø¯Ù ÙØ§Ù',callback_data='v25:bookedit')],[InlineKeyboardButton('â­ï¸ ÙØ¹ÙØ§Ù Ø¨Ø¯ÙÙ Ø§Ø·ÙØ§Ø¹Ø§Øª',callback_data='v25:bookskip')],[main_menu_button(uid)]]))
 
 async def v25_create_booking(context,uid,owner,service_id=0):
     d=context.user_data['booking_date']; tm=context.user_data['booking_time']; name=context.user_data.get('public_name') or ''; phone=context.user_data.get('public_phone') or ''
@@ -8230,7 +8207,7 @@ async def v25_create_booking(context,uid,owner,service_id=0):
         start=_mins(tm); end=start+duration
         if any(start < _mins(r['appointment_time'])+int(r['duration_minutes'] or 30) and _mins(r['appointment_time']) < end for r in rows):
             raise ValueError('slot-conflict')
-        aid=c.execute('INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(owner,cid,d,tm,duration,service,'رزرو آنلاین','30','booked','online',now,now)).lastrowid
+        aid=c.execute('INSERT INTO appointments(owner_user_id,customer_id,appointment_date,appointment_time,duration_minutes,service,notes,reminder_minutes,status,source,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(owner,cid,d,tm,duration,service,'Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ','30','booked','online',now,now)).lastrowid
         c.execute('INSERT INTO customer_events(owner_user_id,customer_id,appointment_id,event_type,details,created_at) VALUES(?,?,?,?,?,?)',(owner,cid,aid,'online_booking',service,now))
         c.commit(); c.close()
     except Exception:
@@ -8242,10 +8219,10 @@ async def v25_create_booking(context,uid,owner,service_id=0):
 async def v25_booking_payment_menu(update,context,aid,owner,amount,business_name):
     uid=update.effective_user.id; c=db(); g=c.execute('SELECT * FROM gateway_configs WHERE owner_user_id=?',(owner,)).fetchone(); card=c.execute("SELECT * FROM payment_methods WHERE owner_user_id=? AND method_type='card' AND enabled=1",(owner,)).fetchone(); c.close(); rows=[]
     if amount>0:
-        if g and g['enabled'] and g['payment_link']: rows.append([InlineKeyboardButton('💳 پرداخت آنلاین',url=g['payment_link'])])
-        if card: rows.append([InlineKeyboardButton('💵 پرداخت کارت‌به‌کارت',callback_data=f'v25:bookingcard:{aid}')])
-    rows.append([InlineKeyboardButton('📅 رزروهای من',callback_data='cust:mybookings'),main_menu_button(uid)])
-    await update.callback_query.message.edit_text(f'✅ <b>رزرو با موفقیت ثبت شد.</b>\n\n🏪 {html.escape(business_name)}\n📅 {jalali_pretty_date(context.user_data.get("booking_date"))}\n⏰ {context.user_data.get("booking_time")}\n'+(f'💰 هزینه: {amount:,.0f} ریال\n\n' if amount else '\n')+'می‌توانی از گزینه‌های زیر پرداخت و مدیریت رزرو را انجام بدهی.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
+        if g and g['enabled'] and g['payment_link']: rows.append([InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ',url=g['payment_link'])])
+        if card: rows.append([InlineKeyboardButton('ðµ Ù¾Ø±Ø¯Ø§Ø®Øª Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data=f'v25:bookingcard:{aid}')])
+    rows.append([InlineKeyboardButton('ð Ø±Ø²Ø±ÙÙØ§Û ÙÙ',callback_data='cust:mybookings'),main_menu_button(uid)])
+    await update.callback_query.message.edit_text(f'â <b>Ø±Ø²Ø±Ù Ø¨Ø§ ÙÙÙÙÛØª Ø«Ø¨Øª Ø´Ø¯.</b>\n\nðª {html.escape(business_name)}\nð {jalali_pretty_date(context.user_data.get("booking_date"))}\nâ° {context.user_data.get("booking_time")}\n'+(f'ð° ÙØ²ÛÙÙ: {amount:,.0f} Ø±ÛØ§Ù\n\n' if amount else '\n')+'ÙÛâØªÙØ§ÙÛ Ø§Ø² Ú¯Ø²ÛÙÙâÙØ§Û Ø²ÛØ± Ù¾Ø±Ø¯Ø§Ø®Øª Ù ÙØ¯ÛØ±ÛØª Ø±Ø²Ø±Ù Ø±Ø§ Ø§ÙØ¬Ø§Ù Ø¨Ø¯ÙÛ.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 # Extend callback cases for service/profile/payment without replacing the legacy customer router.
 _LEGACY_CUSTOMER_PANEL_CALLBACK=customer_panel_callback
@@ -8269,20 +8246,20 @@ async def text_router(update,context):
     if not update.message or not update.message.text: return await _LEGACY_TEXT_ROUTER(update,context)
     txt=update.message.text.strip()
     # Universal navigation labels.
-    if txt in ('⬅️ برگشت','⬅️ Back'):
+    if txt in ('â¬ï¸ Ø¨Ø±Ú¯Ø´Øª','â¬ï¸ Back'):
         clear_flow(context); await update.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
-    if txt in ('🏠 منوی اصلی','🏠 Main Menu'):
-        clear_flow(context); await update.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid)); return
-    if txt in ('🧠 مرکز من','🧠 My Center'):
+    if txt in ('ð  ÙÙÙÛ Ø§ØµÙÛ','ð  Main Menu'):
+        clear_flow(context); await update.message.reply_text('ð  ÙÙÙÛ Ø§ØµÙÛ',reply_markup=keyboard(uid)); return
+    if txt in ('ð§  ÙØ±Ú©Ø² ÙÙ','ð§  My Center'):
         clear_flow(context); await v25_hub(update,context); return
-    if txt in ('💰 سرمایه‌های من','💰 My Portfolio'):
+    if txt in ('ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ','ð° My Portfolio'):
         await v25_portfolio_menu(update,context); return
-    if txt in ('💳 اقساط','💳 Installments'):
+    if txt in ('ð³ Ø§ÙØ³Ø§Ø·','ð³ Installments'):
         await v25_installments_menu(update,context); return
-    if txt in ('👤 اطلاعات من','👤 My Profile'):
+    if txt in ('ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ','ð¤ My Profile'):
         await v25_profile_menu(update,context); return
     mode=context.user_data.get('v25_mode')
-    if mode=='rem_title': context.user_data['v25_rem_title']=txt; context.user_data['v25_mode']='rem_time'; await update.message.reply_text('📅 تاریخ و ساعت را بفرست. نمونه: ۱۴۰۵/۰۶/۰۳ ۱۲:۰۰'); return
+    if mode=='rem_title': context.user_data['v25_rem_title']=txt; context.user_data['v25_mode']='rem_time'; await update.message.reply_text('ð ØªØ§Ø±ÛØ® Ù Ø³Ø§Ø¹Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª. ÙÙÙÙÙ: Û±Û´Û°Ûµ/Û°Û¶/Û°Û³ Û±Û²:Û°Û°'); return
     if mode in ('rem_time','inst_bank','inst_title','inst_principal','inst_rate_custom','inst_months','inst_first_date','profile_edit:name','profile_edit:phone','profile_edit:email','service_name','service_duration','service_price','card_number','card_name','gateway_link','survey_question','bizname_v25'):
         if await v25_add_reminder_save(update,context) if mode=='rem_time' else False: return
         if await v25_installment_text_save(update,context): return
@@ -8308,7 +8285,7 @@ _LEGACY_FINAL_ADMIN_KEYBOARD=final_admin_keyboard
 def final_admin_keyboard():
     base=_LEGACY_FINAL_ADMIN_KEYBOARD().inline_keyboard
     rows=[list(r) for r in base]
-    rows.insert(-1,[InlineKeyboardButton('🔧 وضعیت همه قابلیت‌ها',callback_data='v25:adminfeatures'),InlineKeyboardButton('🧩 تنظیمات جدید',callback_data='v25:business')])
+    rows.insert(-1,[InlineKeyboardButton('ð§ ÙØ¶Ø¹ÛØª ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§',callback_data='v25:adminfeatures'),InlineKeyboardButton('ð§© ØªÙØ¸ÛÙØ§Øª Ø¬Ø¯ÛØ¯',callback_data='v25:business')])
     return InlineKeyboardMarkup(rows)
 
 # Preserve original final admin callback and add only the new entry points.
@@ -8346,84 +8323,84 @@ def init_db():
 
 # Expanded ready-goal catalog (user can still create a custom goal).
 GOALS_FA.update({
-    "🧠 تفکر و ذهن": [
-        "🧘 ۱۰ دقیقه مدیتیشن", "📖 مطالعه کتاب", "✍️ نوشتن افکار", "💭 مرور روزانه",
-        "🧠 تمرین تمرکز", "🔍 حل مسئله", "📝 نوشتن ایده‌ها", "🌱 تفکر مثبت",
-        "🎯 تعیین اولویت‌های روز", "📋 برنامه‌ریزی روز", "🔄 بررسی یک اشتباه و درس آن",
-        "💡 پیدا کردن یک ایده جدید", "📵 یک ساعت بدون موبایل", "🌙 مرور اتفاقات روز",
-        "🧩 حل یک معما", "🤔 ۱۰ دقیقه تفکر عمیق", "🧠 یادگیری یک مفهوم جدید",
+    "ð§  ØªÙÚ©Ø± Ù Ø°ÙÙ": [
+        "ð§ Û±Û° Ø¯ÙÛÙÙ ÙØ¯ÛØªÛØ´Ù", "ð ÙØ·Ø§ÙØ¹Ù Ú©ØªØ§Ø¨", "âï¸ ÙÙØ´ØªÙ Ø§ÙÚ©Ø§Ø±", "ð­ ÙØ±ÙØ± Ø±ÙØ²Ø§ÙÙ",
+        "ð§  ØªÙØ±ÛÙ ØªÙØ±Ú©Ø²", "ð Ø­Ù ÙØ³Ø¦ÙÙ", "ð ÙÙØ´ØªÙ Ø§ÛØ¯ÙâÙØ§", "ð± ØªÙÚ©Ø± ÙØ«Ø¨Øª",
+        "ð¯ ØªØ¹ÛÛÙ Ø§ÙÙÙÛØªâÙØ§Û Ø±ÙØ²", "ð Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û Ø±ÙØ²", "ð Ø¨Ø±Ø±Ø³Û ÛÚ© Ø§Ø´ØªØ¨Ø§Ù Ù Ø¯Ø±Ø³ Ø¢Ù",
+        "ð¡ Ù¾ÛØ¯Ø§ Ú©Ø±Ø¯Ù ÛÚ© Ø§ÛØ¯Ù Ø¬Ø¯ÛØ¯", "ðµ ÛÚ© Ø³Ø§Ø¹Øª Ø¨Ø¯ÙÙ ÙÙØ¨Ø§ÛÙ", "ð ÙØ±ÙØ± Ø§ØªÙØ§ÙØ§Øª Ø±ÙØ²",
+        "ð§© Ø­Ù ÛÚ© ÙØ¹ÙØ§", "ð¤ Û±Û° Ø¯ÙÛÙÙ ØªÙÚ©Ø± Ø¹ÙÛÙ", "ð§  ÛØ§Ø¯Ú¯ÛØ±Û ÛÚ© ÙÙÙÙÙ Ø¬Ø¯ÛØ¯",
     ],
-    "🚀 رشد فردی": [
-        "🎯 تعیین یک هدف مهم", "📈 بهتر شدن ۱٪ امروز", "📚 ۲۰ دقیقه یادگیری", "🗣️ تمرین ارتباط مؤثر",
-        "💪 انجام یک کار سخت", "🔥 غلبه بر یک تعلل", "📝 ثبت سه نکته مثبت", "🌱 ساخت یک عادت خوب",
-        "⏰ شروع به‌موقع کار", "🎯 تکمیل مهم‌ترین کار روز", "🧹 حذف یک حواس‌پرتی",
-        "💡 یادگیری از یک تجربه امروز", "🙏 قدردانی از سه چیز", "🪴 مراقبت از خود",
+    "ð Ø±Ø´Ø¯ ÙØ±Ø¯Û": [
+        "ð¯ ØªØ¹ÛÛÙ ÛÚ© ÙØ¯Ù ÙÙÙ", "ð Ø¨ÙØªØ± Ø´Ø¯Ù Û±Ùª Ø§ÙØ±ÙØ²", "ð Û²Û° Ø¯ÙÛÙÙ ÛØ§Ø¯Ú¯ÛØ±Û", "ð£ï¸ ØªÙØ±ÛÙ Ø§Ø±ØªØ¨Ø§Ø· ÙØ¤Ø«Ø±",
+        "ðª Ø§ÙØ¬Ø§Ù ÛÚ© Ú©Ø§Ø± Ø³Ø®Øª", "ð¥ ØºÙØ¨Ù Ø¨Ø± ÛÚ© ØªØ¹ÙÙ", "ð Ø«Ø¨Øª Ø³Ù ÙÚ©ØªÙ ÙØ«Ø¨Øª", "ð± Ø³Ø§Ø®Øª ÛÚ© Ø¹Ø§Ø¯Øª Ø®ÙØ¨",
+        "â° Ø´Ø±ÙØ¹ Ø¨ÙâÙÙÙØ¹ Ú©Ø§Ø±", "ð¯ ØªÚ©ÙÛÙ ÙÙÙâØªØ±ÛÙ Ú©Ø§Ø± Ø±ÙØ²", "ð§¹ Ø­Ø°Ù ÛÚ© Ø­ÙØ§Ø³âÙ¾Ø±ØªÛ",
+        "ð¡ ÛØ§Ø¯Ú¯ÛØ±Û Ø§Ø² ÛÚ© ØªØ¬Ø±Ø¨Ù Ø§ÙØ±ÙØ²", "ð ÙØ¯Ø±Ø¯Ø§ÙÛ Ø§Ø² Ø³Ù ÚÛØ²", "ðª´ ÙØ±Ø§ÙØ¨Øª Ø§Ø² Ø®ÙØ¯",
     ],
-    "👥 روابط و خانواده": [
-        "☎️ تماس با خانواده", "💬 احوال‌پرسی از یک دوست", "❤️ وقت با خانواده", "🤝 کمک به یک نفر",
-        "🙏 تشکر از یک نفر", "🎁 انجام یک کار خوب برای خانواده", "🗣️ گفت‌وگوی بدون موبایل",
-        "👨‍👩‍👧 برنامه خانوادگی", "💌 ارسال یک پیام محبت‌آمیز",
+    "ð¥ Ø±ÙØ§Ø¨Ø· Ù Ø®Ø§ÙÙØ§Ø¯Ù": [
+        "âï¸ ØªÙØ§Ø³ Ø¨Ø§ Ø®Ø§ÙÙØ§Ø¯Ù", "ð¬ Ø§Ø­ÙØ§ÙâÙ¾Ø±Ø³Û Ø§Ø² ÛÚ© Ø¯ÙØ³Øª", "â¤ï¸ ÙÙØª Ø¨Ø§ Ø®Ø§ÙÙØ§Ø¯Ù", "ð¤ Ú©ÙÚ© Ø¨Ù ÛÚ© ÙÙØ±",
+        "ð ØªØ´Ú©Ø± Ø§Ø² ÛÚ© ÙÙØ±", "ð Ø§ÙØ¬Ø§Ù ÛÚ© Ú©Ø§Ø± Ø®ÙØ¨ Ø¨Ø±Ø§Û Ø®Ø§ÙÙØ§Ø¯Ù", "ð£ï¸ Ú¯ÙØªâÙÚ¯ÙÛ Ø¨Ø¯ÙÙ ÙÙØ¨Ø§ÛÙ",
+        "ð¨âð©âð§ Ø¨Ø±ÙØ§ÙÙ Ø®Ø§ÙÙØ§Ø¯Ú¯Û", "ð Ø§Ø±Ø³Ø§Ù ÛÚ© Ù¾ÛØ§Ù ÙØ­Ø¨ØªâØ¢ÙÛØ²",
     ],
-    "🎨 خلاقیت": [
-        "✍️ نوشتن یک ایده", "🎨 طراحی یا نقاشی", "📸 ثبت یک عکس خلاقانه", "🎵 گوش دادن فعال به موسیقی",
-        "🧠 ساخت یک ایده جدید", "📝 نوشتن ۱۰ دقیقه آزاد", "🛠️ ساخت یک چیز ساده",
+    "ð¨ Ø®ÙØ§ÙÛØª": [
+        "âï¸ ÙÙØ´ØªÙ ÛÚ© Ø§ÛØ¯Ù", "ð¨ Ø·Ø±Ø§Ø­Û ÛØ§ ÙÙØ§Ø´Û", "ð¸ Ø«Ø¨Øª ÛÚ© Ø¹Ú©Ø³ Ø®ÙØ§ÙØ§ÙÙ", "ðµ Ú¯ÙØ´ Ø¯Ø§Ø¯Ù ÙØ¹Ø§Ù Ø¨Ù ÙÙØ³ÛÙÛ",
+        "ð§  Ø³Ø§Ø®Øª ÛÚ© Ø§ÛØ¯Ù Ø¬Ø¯ÛØ¯", "ð ÙÙØ´ØªÙ Û±Û° Ø¯ÙÛÙÙ Ø¢Ø²Ø§Ø¯", "ð ï¸ Ø³Ø§Ø®Øª ÛÚ© ÚÛØ² Ø³Ø§Ø¯Ù",
     ],
-    "🕌 معنوی": [
-        "🙏 دعا و نیایش", "📖 مطالعه کوتاه معنوی", "🧘 چند دقیقه سکوت", "❤️ انجام یک کار خیر",
-        "🌙 مرور یک نکته معنوی", "🤲 تشکر و قدردانی",
+    "ð ÙØ¹ÙÙÛ": [
+        "ð Ø¯Ø¹Ø§ Ù ÙÛØ§ÛØ´", "ð ÙØ·Ø§ÙØ¹Ù Ú©ÙØªØ§Ù ÙØ¹ÙÙÛ", "ð§ ÚÙØ¯ Ø¯ÙÛÙÙ Ø³Ú©ÙØª", "â¤ï¸ Ø§ÙØ¬Ø§Ù ÛÚ© Ú©Ø§Ø± Ø®ÛØ±",
+        "ð ÙØ±ÙØ± ÛÚ© ÙÚ©ØªÙ ÙØ¹ÙÙÛ", "ð¤² ØªØ´Ú©Ø± Ù ÙØ¯Ø±Ø¯Ø§ÙÛ",
     ],
-    "📱 دیجیتال": [
-        "📵 ۳۰ دقیقه بدون شبکه اجتماعی", "📱 پاک کردن اعلان‌های اضافی", "🧹 مرتب کردن فایل‌ها",
-        "📧 پاسخ به ایمیل‌های ضروری", "🔐 بررسی امنیت حساب‌ها", "💻 ۳۰ دقیقه کار متمرکز با رایانه",
+    "ð± Ø¯ÛØ¬ÛØªØ§Ù": [
+        "ðµ Û³Û° Ø¯ÙÛÙÙ Ø¨Ø¯ÙÙ Ø´Ø¨Ú©Ù Ø§Ø¬ØªÙØ§Ø¹Û", "ð± Ù¾Ø§Ú© Ú©Ø±Ø¯Ù Ø§Ø¹ÙØ§ÙâÙØ§Û Ø§Ø¶Ø§ÙÛ", "ð§¹ ÙØ±ØªØ¨ Ú©Ø±Ø¯Ù ÙØ§ÛÙâÙØ§",
+        "ð§ Ù¾Ø§Ø³Ø® Ø¨Ù Ø§ÛÙÛÙâÙØ§Û Ø¶Ø±ÙØ±Û", "ð Ø¨Ø±Ø±Ø³Û Ø§ÙÙÛØª Ø­Ø³Ø§Ø¨âÙØ§", "ð» Û³Û° Ø¯ÙÛÙÙ Ú©Ø§Ø± ÙØªÙØ±Ú©Ø² Ø¨Ø§ Ø±Ø§ÛØ§ÙÙ",
     ],
-    "✈️ سفر و برنامه‌ریزی": [
-        "🗺️ بررسی مسیر سفر", "🎒 آماده‌سازی وسایل", "🏨 بررسی محل اقامت", "💰 برنامه هزینه سفر",
-        "📅 برنامه‌ریزی روز سفر", "📸 ساخت لیست مکان‌های دیدنی",
+    "âï¸ Ø³ÙØ± Ù Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û": [
+        "ðºï¸ Ø¨Ø±Ø±Ø³Û ÙØ³ÛØ± Ø³ÙØ±", "ð Ø¢ÙØ§Ø¯ÙâØ³Ø§Ø²Û ÙØ³Ø§ÛÙ", "ð¨ Ø¨Ø±Ø±Ø³Û ÙØ­Ù Ø§ÙØ§ÙØª", "ð° Ø¨Ø±ÙØ§ÙÙ ÙØ²ÛÙÙ Ø³ÙØ±",
+        "ð Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û Ø±ÙØ² Ø³ÙØ±", "ð¸ Ø³Ø§Ø®Øª ÙÛØ³Øª ÙÚ©Ø§ÙâÙØ§Û Ø¯ÛØ¯ÙÛ",
     ],
 })
 GOALS_EN.update({
-    "🧠 Thinking & Mind": [
-        "🧘 10 minutes of meditation", "📖 Read a book", "✍️ Journal your thoughts", "💭 Review the day",
-        "🧠 Focus exercise", "🔍 Solve a problem", "📝 Write ideas", "🌱 Positive thinking",
-        "🎯 Set today's priorities", "📋 Plan the day", "🔄 Review one mistake and its lesson",
-        "💡 Find one new idea", "📵 One hour without phone", "🌙 Review the day",
-        "🧩 Solve a puzzle", "🤔 10 minutes of deep thinking", "🧠 Learn one new concept",
+    "ð§  Thinking & Mind": [
+        "ð§ 10 minutes of meditation", "ð Read a book", "âï¸ Journal your thoughts", "ð­ Review the day",
+        "ð§  Focus exercise", "ð Solve a problem", "ð Write ideas", "ð± Positive thinking",
+        "ð¯ Set today's priorities", "ð Plan the day", "ð Review one mistake and its lesson",
+        "ð¡ Find one new idea", "ðµ One hour without phone", "ð Review the day",
+        "ð§© Solve a puzzle", "ð¤ 10 minutes of deep thinking", "ð§  Learn one new concept",
     ],
-    "🚀 Personal Growth": [
-        "🎯 Set one important goal", "📈 Improve 1% today", "📚 20 minutes of learning", "🗣️ Practice communication",
-        "💪 Do one hard thing", "🔥 Beat one procrastination", "📝 Write three positives", "🌱 Build one good habit",
-        "⏰ Start on time", "🎯 Finish the most important task", "🧹 Remove one distraction",
-        "💡 Learn from today's experience", "🙏 Write three things you appreciate", "🪴 Take care of yourself",
+    "ð Personal Growth": [
+        "ð¯ Set one important goal", "ð Improve 1% today", "ð 20 minutes of learning", "ð£ï¸ Practice communication",
+        "ðª Do one hard thing", "ð¥ Beat one procrastination", "ð Write three positives", "ð± Build one good habit",
+        "â° Start on time", "ð¯ Finish the most important task", "ð§¹ Remove one distraction",
+        "ð¡ Learn from today's experience", "ð Write three things you appreciate", "ðª´ Take care of yourself",
     ],
-    "👥 Relationships & Family": [
-        "☎️ Call family", "💬 Check in with a friend", "❤️ Spend time with family", "🤝 Help someone",
-        "🙏 Thank someone", "🎁 Do something kind for family", "🗣️ Have a phone-free conversation",
-        "👨‍👩‍👧 Plan family time", "💌 Send a kind message",
+    "ð¥ Relationships & Family": [
+        "âï¸ Call family", "ð¬ Check in with a friend", "â¤ï¸ Spend time with family", "ð¤ Help someone",
+        "ð Thank someone", "ð Do something kind for family", "ð£ï¸ Have a phone-free conversation",
+        "ð¨âð©âð§ Plan family time", "ð Send a kind message",
     ],
-    "🎨 Creativity": [
-        "✍️ Write one idea", "🎨 Draw or design", "📸 Take a creative photo", "🎵 Listen to music mindfully",
-        "🧠 Build one new idea", "📝 Free-write for 10 minutes", "🛠️ Make something simple",
+    "ð¨ Creativity": [
+        "âï¸ Write one idea", "ð¨ Draw or design", "ð¸ Take a creative photo", "ðµ Listen to music mindfully",
+        "ð§  Build one new idea", "ð Free-write for 10 minutes", "ð ï¸ Make something simple",
     ],
-    "🕌 Spiritual": [
-        "🙏 Prayer or reflection", "📖 Read something spiritual", "🧘 A few minutes of silence", "❤️ Do a good deed",
-        "🌙 Reflect on one spiritual lesson", "🤲 Practice gratitude",
+    "ð Spiritual": [
+        "ð Prayer or reflection", "ð Read something spiritual", "ð§ A few minutes of silence", "â¤ï¸ Do a good deed",
+        "ð Reflect on one spiritual lesson", "ð¤² Practice gratitude",
     ],
-    "📱 Digital Life": [
-        "📵 30 minutes without social media", "📱 Remove unnecessary notifications", "🧹 Organize digital files",
-        "📧 Reply to important emails", "🔐 Review account security", "💻 30 minutes of focused computer work",
+    "ð± Digital Life": [
+        "ðµ 30 minutes without social media", "ð± Remove unnecessary notifications", "ð§¹ Organize digital files",
+        "ð§ Reply to important emails", "ð Review account security", "ð» 30 minutes of focused computer work",
     ],
-    "✈️ Travel & Planning": [
-        "🗺️ Check the route", "🎒 Prepare travel items", "🏨 Review accommodation", "💰 Plan travel budget",
-        "📅 Plan travel day", "📸 Make a sightseeing list",
+    "âï¸ Travel & Planning": [
+        "ðºï¸ Check the route", "ð Prepare travel items", "ð¨ Review accommodation", "ð° Plan travel budget",
+        "ð Plan travel day", "ð¸ Make a sightseeing list",
     ],
 })
 
 # Money is stored/displayed in Iranian Rials in this layer.
 def irr(amount):
     try:
-        return f"{float(amount):,.0f} ریال"
+        return f"{float(amount):,.0f} Ø±ÛØ§Ù"
     except Exception:
-        return "— ریال"
+        return "â Ø±ÛØ§Ù"
 
 def toman_to_irr(toman):
     return int(round(float(toman) * 10))
@@ -8434,101 +8411,101 @@ def v25_rates_keyboard(uid):
     vals = list(range(0,31))
     rows = []
     for i in range(0, len(vals), 3):
-        rows.append([InlineKeyboardButton(f'{x}٪', callback_data=f'v25:instrate:{x}') for x in vals[i:i+3]])
-    rows.append([InlineKeyboardButton('✏️ نرخ دلخواه' if fa else '✏️ Custom Rate', callback_data='v25:instrate_custom')])
-    rows.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back', callback_data='v25:instadd'), main_menu_button(uid)])
+        rows.append([InlineKeyboardButton(f'{x}Ùª', callback_data=f'v25:instrate:{x}') for x in vals[i:i+3]])
+    rows.append([InlineKeyboardButton('âï¸ ÙØ±Ø® Ø¯ÙØ®ÙØ§Ù' if fa else 'âï¸ Custom Rate', callback_data='v25:instrate_custom')])
+    rows.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back', callback_data='v25:instadd'), main_menu_button(uid)])
     return InlineKeyboardMarkup(rows)
 
 # A broader Iran-bank catalog. Kept configurable later from admin.
 def v25_banks():
     return [
-        'ملی ایران','سپه','کشاورزی','مسکن','صادرات ایران','تجارت','ملت','رفاه کارگران',
-        'پست بانک ایران','صنعت و معدن','توسعه صادرات ایران','توسعه تعاون','پارسـیان','پاسارگاد',
-        'سامان','اقتصاد نوین','کارآفرین','سینا','شهر','دی','آینده','گردشگری','ایران‌زمین',
-        'خاورمیانه','سرمایه','مهر اقتصاد','قرض‌الحسنه مهر ایران','قرض‌الحسنه رسالت','نور','ملل',
-        'تات','حکمت ایرانیان','انصار','قوامین','کوثر','مؤسسه/بانک دلخواه'
+        'ÙÙÛ Ø§ÛØ±Ø§Ù','Ø³Ù¾Ù','Ú©Ø´Ø§ÙØ±Ø²Û','ÙØ³Ú©Ù','ØµØ§Ø¯Ø±Ø§Øª Ø§ÛØ±Ø§Ù','ØªØ¬Ø§Ø±Øª','ÙÙØª','Ø±ÙØ§Ù Ú©Ø§Ø±Ú¯Ø±Ø§Ù',
+        'Ù¾Ø³Øª Ø¨Ø§ÙÚ© Ø§ÛØ±Ø§Ù','ØµÙØ¹Øª Ù ÙØ¹Ø¯Ù','ØªÙØ³Ø¹Ù ØµØ§Ø¯Ø±Ø§Øª Ø§ÛØ±Ø§Ù','ØªÙØ³Ø¹Ù ØªØ¹Ø§ÙÙ','Ù¾Ø§Ø±Ø³ÙÛØ§Ù','Ù¾Ø§Ø³Ø§Ø±Ú¯Ø§Ø¯',
+        'Ø³Ø§ÙØ§Ù','Ø§ÙØªØµØ§Ø¯ ÙÙÛÙ','Ú©Ø§Ø±Ø¢ÙØ±ÛÙ','Ø³ÛÙØ§','Ø´ÙØ±','Ø¯Û','Ø¢ÛÙØ¯Ù','Ú¯Ø±Ø¯Ø´Ú¯Ø±Û','Ø§ÛØ±Ø§ÙâØ²ÙÛÙ',
+        'Ø®Ø§ÙØ±ÙÛØ§ÙÙ','Ø³Ø±ÙØ§ÛÙ','ÙÙØ± Ø§ÙØªØµØ§Ø¯','ÙØ±Ø¶âØ§ÙØ­Ø³ÙÙ ÙÙØ± Ø§ÛØ±Ø§Ù','ÙØ±Ø¶âØ§ÙØ­Ø³ÙÙ Ø±Ø³Ø§ÙØª','ÙÙØ±','ÙÙÙ',
+        'ØªØ§Øª','Ø­Ú©ÙØª Ø§ÛØ±Ø§ÙÛØ§Ù','Ø§ÙØµØ§Ø±','ÙÙØ§ÙÛÙ','Ú©ÙØ«Ø±','ÙØ¤Ø³Ø³Ù/Ø¨Ø§ÙÚ© Ø¯ÙØ®ÙØ§Ù'
     ]
 
 # ------------------ Unified admin control ------------------
 async def v25_admin_menu(update, context):
     uid = update.effective_user.id
     if not admin_guard(uid):
-        await update.callback_query.answer('⛔ دسترسی ندارید.', show_alert=True); return
+        await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.', show_alert=True); return
     fa = lang(uid) == 'fa'
     items = [
-        ('v25:adminfeatures','🔧 وضعیت قابلیت‌ها','🔧 Feature Status'),
-        ('v25:adminplans','💎 مدیریت پلن‌های VIP','💎 VIP Plans'),
-        ('v25:adminpayment','💳 تنظیمات پرداخت','💳 Payment Settings'),
-        ('v25:adminvip','💎 پرداخت VIP','💎 VIP Payment'),
-        ('v25:adminsms','📱 تنظیمات پیامک','📱 SMS Settings'),
-        ('v25:adminsurvey','⭐ تنظیمات نظرسنجی','⭐ Survey Settings'),
-        ('v25:adminmorning','☀️ صبح/شب و جمعه','☀️ Morning/Night & Friday'),
-        ('v25:adminprices','📈 قیمت بازار','📈 Market Prices'),
+        ('v25:adminfeatures','ð§ ÙØ¶Ø¹ÛØª ÙØ§Ø¨ÙÛØªâÙØ§','ð§ Feature Status'),
+        ('v25:adminplans','ð ÙØ¯ÛØ±ÛØª Ù¾ÙÙâÙØ§Û VIP','ð VIP Plans'),
+        ('v25:adminpayment','ð³ ØªÙØ¸ÛÙØ§Øª Ù¾Ø±Ø¯Ø§Ø®Øª','ð³ Payment Settings'),
+        ('v25:adminvip','ð Ù¾Ø±Ø¯Ø§Ø®Øª VIP','ð VIP Payment'),
+        ('v25:adminsms','ð± ØªÙØ¸ÛÙØ§Øª Ù¾ÛØ§ÙÚ©','ð± SMS Settings'),
+        ('v25:adminsurvey','â­ ØªÙØ¸ÛÙØ§Øª ÙØ¸Ø±Ø³ÙØ¬Û','â­ Survey Settings'),
+        ('v25:adminmorning','âï¸ ØµØ¨Ø­/Ø´Ø¨ Ù Ø¬ÙØ¹Ù','âï¸ Morning/Night & Friday'),
+        ('v25:adminprices','ð ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±','ð Market Prices'),
     ]
     rows=[[InlineKeyboardButton(ft if fa else et, callback_data=cb)] for cb,ft,et in items]
-    rows.append([InlineKeyboardButton('⬅️ پنل مدیریت' if fa else '⬅️ Admin Panel', callback_data='adm:stats'), main_menu_button(uid)])
-    await update.callback_query.message.edit_text('🛡️ <b>مرکز مدیریت نسخه نهایی</b>\n\nتمام قابلیت‌های جدید از همین بخش کنترل می‌شوند.' if fa else '🛡️ <b>Final Admin Center</b>\n\nAll new modules are controlled here.', parse_mode='HTML', reply_markup=InlineKeyboardMarkup(rows))
+    rows.append([InlineKeyboardButton('â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª' if fa else 'â¬ï¸ Admin Panel', callback_data='adm:stats'), main_menu_button(uid)])
+    await update.callback_query.message.edit_text('ð¡ï¸ <b>ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª ÙØ³Ø®Ù ÙÙØ§ÛÛ</b>\n\nØªÙØ§Ù ÙØ§Ø¨ÙÛØªâÙØ§Û Ø¬Ø¯ÛØ¯ Ø§Ø² ÙÙÛÙ Ø¨Ø®Ø´ Ú©ÙØªØ±Ù ÙÛâØ´ÙÙØ¯.' if fa else 'ð¡ï¸ <b>Final Admin Center</b>\n\nAll new modules are controlled here.', parse_mode='HTML', reply_markup=InlineKeyboardMarkup(rows))
 
 
 async def v25_admin_plans(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     c=db(); rows=c.execute('SELECT * FROM subscription_plans_v25 ORDER BY duration_minutes').fetchall(); c.close()
     kb=[]
-    lines=['💎 <b>مدیریت پلن‌های VIP</b>','']
+    lines=['ð <b>ÙØ¯ÛØ±ÛØª Ù¾ÙÙâÙØ§Û VIP</b>','']
     for r in rows:
-        st='🟢' if r['enabled'] else '🔴'; lines.append(f'{st} {html.escape(r["name"])} — {irr(r["price_rial"])}')
+        st='ð¢' if r['enabled'] else 'ð´'; lines.append(f'{st} {html.escape(r["name"])} â {irr(r["price_rial"])}')
         kb.append([InlineKeyboardButton(f'{st} {r["name"]}',callback_data=f'v25:planedit:{r["id"]}')])
-    kb.append([InlineKeyboardButton('➕ پلن سفارشی',callback_data='v25:planadd'), InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')])
+    kb.append([InlineKeyboardButton('â Ù¾ÙÙ Ø³ÙØ§Ø±Ø´Û',callback_data='v25:planadd'), InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')])
     await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_payment(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     c=db(); rows=c.execute("SELECT * FROM feature_flags WHERE key IN ('payments','booking_payments','card_to_card','vip') ORDER BY key").fetchall(); c.close()
-    states='\n'.join((('🟢' if r['enabled'] else '🔴')+' '+r['key']) for r in rows)
-    kb=[[InlineKeyboardButton('💳 پیکربندی درگاه/لینک پرداخت',callback_data='v25:gateway')],[InlineKeyboardButton('💵 کارت‌به‌کارت',callback_data='v25:card')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu'),main_menu_button(uid)]]
-    await update.callback_query.message.edit_text('💳 <b>تنظیمات پرداخت</b>\n\n'+states+'\n\nدرگاه‌ها خاموش می‌توانند باقی بمانند تا بعداً فعال شوند.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
+    states='\n'.join((('ð¢' if r['enabled'] else 'ð´')+' '+r['key']) for r in rows)
+    kb=[[InlineKeyboardButton('ð³ Ù¾ÛÚ©Ø±Ø¨ÙØ¯Û Ø¯Ø±Ú¯Ø§Ù/ÙÛÙÚ© Ù¾Ø±Ø¯Ø§Ø®Øª',callback_data='v25:gateway')],[InlineKeyboardButton('ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data='v25:card')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu'),main_menu_button(uid)]]
+    await update.callback_query.message.edit_text('ð³ <b>ØªÙØ¸ÛÙØ§Øª Ù¾Ø±Ø¯Ø§Ø®Øª</b>\n\n'+states+'\n\nØ¯Ø±Ú¯Ø§ÙâÙØ§ Ø®Ø§ÙÙØ´ ÙÛâØªÙØ§ÙÙØ¯ Ø¨Ø§ÙÛ Ø¨ÙØ§ÙÙØ¯ ØªØ§ Ø¨Ø¹Ø¯Ø§Ù ÙØ¹Ø§Ù Ø´ÙÙØ¯.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_sms(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     cfg=_v25_exec('SELECT * FROM sms_settings WHERE owner_user_id=?',(uid,),fetchone=True)
-    state='🟢' if cfg and cfg['enabled'] else '🔴'
-    kb=[[InlineKeyboardButton(f'{state} روشن/خاموش',callback_data='v25:smstoggle')],[InlineKeyboardButton('⚙️ تنظیم Endpoint/API',callback_data='v25:smsconfig')],[InlineKeyboardButton('🧪 تست',callback_data='v25:smstest')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]
-    await update.callback_query.message.edit_text(f'📱 <b>مدیریت پیامک</b>\n\nوضعیت: {state}\n\nاتصال واقعی به سرویس‌دهنده فقط بعد از ثبت endpoint و کلید سرویس انجام می‌شود.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
+    state='ð¢' if cfg and cfg['enabled'] else 'ð´'
+    kb=[[InlineKeyboardButton(f'{state} Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´',callback_data='v25:smstoggle')],[InlineKeyboardButton('âï¸ ØªÙØ¸ÛÙ Endpoint/API',callback_data='v25:smsconfig')],[InlineKeyboardButton('ð§ª ØªØ³Øª',callback_data='v25:smstest')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')]]
+    await update.callback_query.message.edit_text(f'ð± <b>ÙØ¯ÛØ±ÛØª Ù¾ÛØ§ÙÚ©</b>\n\nÙØ¶Ø¹ÛØª: {state}\n\nØ§ØªØµØ§Ù ÙØ§ÙØ¹Û Ø¨Ù Ø³Ø±ÙÛØ³âØ¯ÙÙØ¯Ù ÙÙØ· Ø¨Ø¹Ø¯ Ø§Ø² Ø«Ø¨Øª endpoint Ù Ú©ÙÛØ¯ Ø³Ø±ÙÛØ³ Ø§ÙØ¬Ø§Ù ÙÛâØ´ÙØ¯.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_survey(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
-    await update.callback_query.message.edit_text('⭐ <b>تنظیمات نظرسنجی</b>\n\nسؤال‌های اصلی شامل محیط، تمیزی، کارکنان، سرعت، کیفیت، ارزش نسبت به قیمت و راحتی رزرو هستند. کسب‌وکار می‌تواند سؤال سفارشی هم اضافه کند.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🟢/🔴 مدیریت سوال‌ها',callback_data='v25:surveyadmin')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]))
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
+    await update.callback_query.message.edit_text('â­ <b>ØªÙØ¸ÛÙØ§Øª ÙØ¸Ø±Ø³ÙØ¬Û</b>\n\nØ³Ø¤Ø§ÙâÙØ§Û Ø§ØµÙÛ Ø´Ø§ÙÙ ÙØ­ÛØ·Ø ØªÙÛØ²ÛØ Ú©Ø§Ø±Ú©ÙØ§ÙØ Ø³Ø±Ø¹ØªØ Ú©ÛÙÛØªØ Ø§Ø±Ø²Ø´ ÙØ³Ø¨Øª Ø¨Ù ÙÛÙØª Ù Ø±Ø§Ø­ØªÛ Ø±Ø²Ø±Ù ÙØ³ØªÙØ¯. Ú©Ø³Ø¨âÙÚ©Ø§Ø± ÙÛâØªÙØ§ÙØ¯ Ø³Ø¤Ø§Ù Ø³ÙØ§Ø±Ø´Û ÙÙ Ø§Ø¶Ø§ÙÙ Ú©ÙØ¯.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð¢/ð´ ÙØ¯ÛØ±ÛØª Ø³ÙØ§ÙâÙØ§',callback_data='v25:surveyadmin')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')]]))
 
 
 async def v25_admin_morning(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     friday=get_system_setting('friday_pause','0')=='1'; night=get_system_setting('night_message_enabled','1')=='1'; morning=get_system_setting('morning_message_enabled','1')=='1'
-    txt=f'☀️ صبح: {"🟢" if morning else "🔴"}\n🌙 شب: {"🟢" if night else "🔴"}\n🗓️ توقف جمعه: {"🟢" if friday else "🔴"}'
-    kb=[[InlineKeyboardButton('☀️ روشن/خاموش صبح',callback_data='v25:toggle_morning')],[InlineKeyboardButton('🌙 روشن/خاموش شب',callback_data='v25:toggle_night')],[InlineKeyboardButton('🗓️ روشن/خاموش جمعه',callback_data='v25:toggle_friday')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]
-    await update.callback_query.message.edit_text('☀️ <b>پیام‌های صبح/شب و جمعه</b>\n\n'+txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
+    txt=f'âï¸ ØµØ¨Ø­: {"ð¢" if morning else "ð´"}\nð Ø´Ø¨: {"ð¢" if night else "ð´"}\nðï¸ ØªÙÙÙ Ø¬ÙØ¹Ù: {"ð¢" if friday else "ð´"}'
+    kb=[[InlineKeyboardButton('âï¸ Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ ØµØ¨Ø­',callback_data='v25:toggle_morning')],[InlineKeyboardButton('ð Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ Ø´Ø¨',callback_data='v25:toggle_night')],[InlineKeyboardButton('ðï¸ Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ Ø¬ÙØ¹Ù',callback_data='v25:toggle_friday')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')]]
+    await update.callback_query.message.edit_text('âï¸ <b>Ù¾ÛØ§ÙâÙØ§Û ØµØ¨Ø­/Ø´Ø¨ Ù Ø¬ÙØ¹Ù</b>\n\n'+txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_prices(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     status=get_system_setting('price_data_status','auto')
-    txt='📈 <b>قیمت بازار</b>\n\n🟢 داده‌ها: '+html.escape(status)+'\n💵 واحد اصلی: ریال\n🛡️ اگر منبع ثانویه در Variables فعال باشد، اختلاف منابع نیز بررسی می‌شود.'
-    await update.callback_query.message.edit_text(txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🟢/🔴 قیمت بازار',callback_data='v25:toggle_prices')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]))
+    txt='ð <b>ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±</b>\n\nð¢ Ø¯Ø§Ø¯ÙâÙØ§: '+html.escape(status)+'\nðµ ÙØ§Ø­Ø¯ Ø§ØµÙÛ: Ø±ÛØ§Ù\nð¡ï¸ Ø§Ú¯Ø± ÙÙØ¨Ø¹ Ø«Ø§ÙÙÛÙ Ø¯Ø± Variables ÙØ¹Ø§Ù Ø¨Ø§Ø´Ø¯Ø Ø§Ø®ØªÙØ§Ù ÙÙØ§Ø¨Ø¹ ÙÛØ² Ø¨Ø±Ø±Ø³Û ÙÛâØ´ÙØ¯.'
+    await update.callback_query.message.edit_text(txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð¢/ð´ ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±',callback_data='v25:toggle_prices')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')]]))
 
 # ------------------ Installment due history & notifications ------------------
 async def v25_installment_view(update,context,plan_id):
     uid=update.effective_user.id; plan=_v25_exec('SELECT * FROM installment_plans WHERE id=? AND user_id=?',(plan_id,uid),fetchone=True)
     if not plan: return
     payments=_v25_exec('SELECT * FROM installment_payments WHERE plan_id=? ORDER BY installment_no',(plan_id,),fetchall=True)
-    lines=[f'🏦 <b>{html.escape(plan["bank_name"])}</b>',f'📝 {html.escape(plan["title"])}',f'💵 قسط ماهانه: {irr(plan["monthly_rial"])}','', '📜 <b>تاریخچه</b>']
+    lines=[f'ð¦ <b>{html.escape(plan["bank_name"])}</b>',f'ð {html.escape(plan["title"])}',f'ðµ ÙØ³Ø· ÙØ§ÙØ§ÙÙ: {irr(plan["monthly_rial"])}','', 'ð <b>ØªØ§Ø±ÛØ®ÚÙ</b>']
     for r in payments[:36]:
-        icon={'paid':'✅','partial':'🟡','unpaid':'❌','pending':'⏳'}.get(r['status'],'⏳')
-        lines.append(f'{icon} قسط {r["installment_no"]} — {jalali_pretty_date(r["due_date"])} — {irr(r["amount_rial"])}')
-    kb=[[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:installments'),main_menu_button(uid)]]
+        icon={'paid':'â','partial':'ð¡','unpaid':'â','pending':'â³'}.get(r['status'],'â³')
+        lines.append(f'{icon} ÙØ³Ø· {r["installment_no"]} â {jalali_pretty_date(r["due_date"])} â {irr(r["amount_rial"])}')
+    kb=[[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:installments'),main_menu_button(uid)]]
     await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_installment_due_job(context):
@@ -8539,14 +8516,14 @@ async def v25_installment_due_job(context):
         key=f'inst_due:{r["id"]}:{d}'
         if _v25_exec('SELECT 1 FROM delivery_log WHERE delivery_key=?',(key,),fetchone=True): continue
         try:
-            await context.bot.send_message(r['user_id'],f'🔔 <b>یادآوری قسط</b>\n\n🏦 {html.escape(r["bank_name"])}\n📝 {html.escape(r["title"])}\n📅 امروز\n💰 مبلغ: {irr(r["amount_rial"])}\n\nوضعیت پرداخت را مشخص کن:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ پرداخت شد',callback_data=f'v25:instpay:{r["id"]}:paid'),InlineKeyboardButton('🟡 بعداً پرداخت می‌کنم',callback_data=f'v25:instpay:{r["id"]}:later')],[InlineKeyboardButton('❌ پرداخت نشد',callback_data=f'v25:instpay:{r["id"]}:unpaid')],[main_menu_button(r['user_id'])]]))
+            await context.bot.send_message(r['user_id'],f'ð <b>ÛØ§Ø¯Ø¢ÙØ±Û ÙØ³Ø·</b>\n\nð¦ {html.escape(r["bank_name"])}\nð {html.escape(r["title"])}\nð Ø§ÙØ±ÙØ²\nð° ÙØ¨ÙØº: {irr(r["amount_rial"])}\n\nÙØ¶Ø¹ÛØª Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ ÙØ´Ø®Øµ Ú©Ù:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â Ù¾Ø±Ø¯Ø§Ø®Øª Ø´Ø¯',callback_data=f'v25:instpay:{r["id"]}:paid'),InlineKeyboardButton('ð¡ Ø¨Ø¹Ø¯Ø§Ù Ù¾Ø±Ø¯Ø§Ø®Øª ÙÛâÚ©ÙÙ',callback_data=f'v25:instpay:{r["id"]}:later')],[InlineKeyboardButton('â Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ´Ø¯',callback_data=f'v25:instpay:{r["id"]}:unpaid')],[main_menu_button(r['user_id'])]]))
             _v25_exec('INSERT OR IGNORE INTO delivery_log(delivery_key,user_id,delivery_type,created_at) VALUES(?,?,?,?)',(key,r['user_id'],'installment_due',_v25_now()))
         except Exception as e: logger.warning('installment notification failed: %s',e)
 
 # ------------------ Portfolio P/L ------------------
 async def v25_current_price_for_portfolio(title):
     t=(title or '').lower()
-    mappings=[('gold18',['طلا','gold']),('usd',['دلار','usd','dollar']),('eur',['یورو','eur','euro']),('coin',['سکه','coin']),('silver',['نقره','silver']),('copper',['مس','copper']),('aluminum',['آلومینیوم','aluminum']),('nickel',['نیکل','nickel']),('zinc',['روی','zinc']),('lead',['سرب','lead'])]
+    mappings=[('gold18',['Ø·ÙØ§','gold']),('usd',['Ø¯ÙØ§Ø±','usd','dollar']),('eur',['ÛÙØ±Ù','eur','euro']),('coin',['Ø³Ú©Ù','coin']),('silver',['ÙÙØ±Ù','silver']),('copper',['ÙØ³','copper']),('aluminum',['Ø¢ÙÙÙÛÙÛÙÙ','aluminum']),('nickel',['ÙÛÚ©Ù','nickel']),('zinc',['Ø±ÙÛ','zinc']),('lead',['Ø³Ø±Ø¨','lead'])]
     for code,keys in mappings:
         if any(k in t for k in keys):
             try:
@@ -8564,13 +8541,13 @@ async def v25_portfolio_summary(update,context):
         if cur is not None:
             cur_value=float(r['quantity'])*cur; current+=cur_value; known+=1
             pnl=cur_value-cost; pct=(pnl/cost*100) if cost else 0
-            details.append(f"• {html.escape(r['title'])}: {'🟢' if pnl>=0 else '🔴'} {irr(pnl)} ({pct:+.2f}٪)")
-        else: details.append(f"• {html.escape(r['title'])}: ⚪ قیمت جاری در دسترس نیست")
+            details.append(f"â¢ {html.escape(r['title'])}: {'ð¢' if pnl>=0 else 'ð´'} {irr(pnl)} ({pct:+.2f}Ùª)")
+        else: details.append(f"â¢ {html.escape(r['title'])}: âª ÙÛÙØª Ø¬Ø§Ø±Û Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª")
     pnl=current-total_cost if known else None
-    lines=["📊 <b>خلاصه سرمایه</b>",f"💰 هزینه خرید: {irr(total_cost)}"]
-    if known: lines += [f"📈 ارزش فعلی دارایی‌های قابل‌قیمت‌گذاری: {irr(current)}",f"{'🟢' if pnl>=0 else '🔴'} سود/زیان فعلی: {irr(pnl)}"]
+    lines=["ð <b>Ø®ÙØ§ØµÙ Ø³Ø±ÙØ§ÛÙ</b>",f"ð° ÙØ²ÛÙÙ Ø®Ø±ÛØ¯: {irr(total_cost)}"]
+    if known: lines += [f"ð Ø§Ø±Ø²Ø´ ÙØ¹ÙÛ Ø¯Ø§Ø±Ø§ÛÛâÙØ§Û ÙØ§Ø¨ÙâÙÛÙØªâÚ¯Ø°Ø§Ø±Û: {irr(current)}",f"{'ð¢' if pnl>=0 else 'ð´'} Ø³ÙØ¯/Ø²ÛØ§Ù ÙØ¹ÙÛ: {irr(pnl)}"]
     lines += ['',*details]
-    lines += ['', '⚠️ سود/زیان فقط برای دارایی‌هایی محاسبه می‌شود که قیمت جاری آن‌ها با داده معتبر در دسترس باشد.']
+    lines += ['', 'â ï¸ Ø³ÙØ¯/Ø²ÛØ§Ù ÙÙØ· Ø¨Ø±Ø§Û Ø¯Ø§Ø±Ø§ÛÛâÙØ§ÛÛ ÙØ­Ø§Ø³Ø¨Ù ÙÛâØ´ÙØ¯ Ú©Ù ÙÛÙØª Ø¬Ø§Ø±Û Ø¢ÙâÙØ§ Ø¨Ø§ Ø¯Ø§Ø¯Ù ÙØ¹ØªØ¨Ø± Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø¨Ø§Ø´Ø¯.']
     await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=v25_portfolio_menu_keyboard(uid))
 
 # ------------------ Multi-source price connector (optional secondary) ------------------
@@ -8596,7 +8573,7 @@ async def fetch_price_v25(asset):
         if diff <= 0.01:
             return (val+secondary)/2, unit, 'multi'
         # Material disagreement: show the primary but flag uncertainty.
-        return val, unit+' | اختلاف منابع', 'disputed'
+        return val, unit+' | Ø§Ø®ØªÙØ§Ù ÙÙØ§Ø¨Ø¹', 'disputed'
     return val,unit,conf
 
 
@@ -8609,8 +8586,8 @@ async def v25_night_job(context):
         uid=r['user_id']; key=f'night:{uid}:{now.date().isoformat()}'
         if _v25_exec('SELECT 1 FROM delivery_log WHERE delivery_key=?',(key,),fetchone=True): continue
         d=now.date().isoformat(); done=_v25_exec("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND goal_date=? AND status='done'",(uid,d),fetchone=True)['n']; total=len(get_goals(uid)); streaks=[calculate_streak(uid,g['id']) for g in get_goals(uid)]; streak=max(streaks,default=0)
-        text=f'🌙 <b>شب بخیر {html.escape(display_name(uid))}</b>\n\nخسته نباشی 🌷\n\n📊 گزارش امروز\n✅ انجام‌شده: {done}\n🎯 کل هدف‌ها: {total}\n🔥 Streak: {streak} روز\n\nهر چیزی که امروز انجام نشد، می‌تواند فردا دوباره شروع شود.'
-        kb=InlineKeyboardMarkup([[InlineKeyboardButton('📊 گزارش روزانه' if lang(uid)=='fa' else '📊 Daily',callback_data='v25:reports'),InlineKeyboardButton('📆 گزارش هفتگی' if lang(uid)=='fa' else '📆 Weekly',callback_data='v25:report_week')],[InlineKeyboardButton('🗓 گزارش ماهانه' if lang(uid)=='fa' else '🗓 Monthly',callback_data='v25:report_month')],[main_menu_button(uid)]])
+        text=f'ð <b>Ø´Ø¨ Ø¨Ø®ÛØ± {html.escape(display_name(uid))}</b>\n\nØ®Ø³ØªÙ ÙØ¨Ø§Ø´Û ð·\n\nð Ú¯Ø²Ø§Ø±Ø´ Ø§ÙØ±ÙØ²\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {done}\nð¯ Ú©Ù ÙØ¯ÙâÙØ§: {total}\nð¥ Streak: {streak} Ø±ÙØ²\n\nÙØ± ÚÛØ²Û Ú©Ù Ø§ÙØ±ÙØ² Ø§ÙØ¬Ø§Ù ÙØ´Ø¯Ø ÙÛâØªÙØ§ÙØ¯ ÙØ±Ø¯Ø§ Ø¯ÙØ¨Ø§Ø±Ù Ø´Ø±ÙØ¹ Ø´ÙØ¯.'
+        kb=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ú¯Ø²Ø§Ø±Ø´ Ø±ÙØ²Ø§ÙÙ' if lang(uid)=='fa' else 'ð Daily',callback_data='v25:reports'),InlineKeyboardButton('ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û' if lang(uid)=='fa' else 'ð Weekly',callback_data='v25:report_week')],[InlineKeyboardButton('ð Ú¯Ø²Ø§Ø±Ø´ ÙØ§ÙØ§ÙÙ' if lang(uid)=='fa' else 'ð Monthly',callback_data='v25:report_month')],[main_menu_button(uid)]])
         try:
             await context.bot.send_message(uid,text,parse_mode='HTML',reply_markup=kb); _v25_exec('INSERT OR IGNORE INTO delivery_log(delivery_key,user_id,delivery_type,created_at) VALUES(?,?,?,?)',(key,uid,'night',_v25_now()))
         except Exception as e: logger.warning('night V25 failed for %s: %s',uid,e)
@@ -8632,9 +8609,9 @@ async def v25_reports(update,context,period='day'):
     uid=update.effective_user.id; today=datetime.now(TZ).date(); days=1 if period=='day' else (7 if period=='week' else 30)
     start=today-timedelta(days=days-1)
     c=db(); row=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND goal_date BETWEEN ? AND ? AND status='done'",(uid,start.isoformat(),today.isoformat())).fetchone(); done=row['n']; row2=c.execute("SELECT COUNT(*) n FROM goal_days WHERE user_id=? AND goal_date BETWEEN ? AND ? AND status='missed'",(uid,start.isoformat(),today.isoformat())).fetchone(); missed=row2['n']; c.close(); total=done+missed; rate=(done/total*100) if total else 0
-    label={'day':'روزانه','week':'هفتگی','month':'ماهانه'}[period]
-    text=f'📊 <b>گزارش {label}</b>\n\n✅ انجام‌شده: {done}\n❌ انجام‌نشده: {missed}\n📈 نرخ موفقیت: {rate:.1f}%\n🗓 بازه: {start.isoformat()} تا {today.isoformat()}'
-    kb=InlineKeyboardMarkup([[InlineKeyboardButton('📊 روزانه',callback_data='v25:reports'),InlineKeyboardButton('📆 هفتگی',callback_data='v25:report_week'),InlineKeyboardButton('🗓 ماهانه',callback_data='v25:report_month')],[main_menu_button(uid)]])
+    label={'day':'Ø±ÙØ²Ø§ÙÙ','week':'ÙÙØªÚ¯Û','month':'ÙØ§ÙØ§ÙÙ'}[period]
+    text=f'ð <b>Ú¯Ø²Ø§Ø±Ø´ {label}</b>\n\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: {done}\nâ Ø§ÙØ¬Ø§ÙâÙØ´Ø¯Ù: {missed}\nð ÙØ±Ø® ÙÙÙÙÛØª: {rate:.1f}%\nð Ø¨Ø§Ø²Ù: {start.isoformat()} ØªØ§ {today.isoformat()}'
+    kb=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ø±ÙØ²Ø§ÙÙ',callback_data='v25:reports'),InlineKeyboardButton('ð ÙÙØªÚ¯Û',callback_data='v25:report_week'),InlineKeyboardButton('ð ÙØ§ÙØ§ÙÙ',callback_data='v25:report_month')],[main_menu_button(uid)]])
     if update.callback_query: await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=kb)
     else: await update.message.reply_text(text,parse_mode='HTML',reply_markup=kb)
 
@@ -8642,34 +8619,34 @@ async def v25_reports(update,context,period='day'):
 async def v25_user_vip_plans(update,context):
     uid=update.effective_user.id; fa=lang(uid)=='fa'
     rows=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE enabled=1 ORDER BY duration_minutes',fetchall=True)
-    lines=['💎 <b>VIP و اشتراک</b>','']
+    lines=['ð <b>VIP Ù Ø§Ø´ØªØ±Ø§Ú©</b>','']
     kb=[]
     for r in rows:
-        lines.append(f"• {html.escape(r['name'])} — {irr(r['price_rial'])}")
+        lines.append(f"â¢ {html.escape(r['name'])} â {irr(r['price_rial'])}")
         kb.append([InlineKeyboardButton(r['name'],callback_data=f'v25:userplan:{r["id"]}')])
-    lines.append(''); lines.append('هر پلن را که خواستی انتخاب کن و روش پرداخت را ببین.')
-    kb.append([InlineKeyboardButton('⬅️ بازگشت' if fa else '⬅️ Back',callback_data='v25:hub'),main_menu_button(uid)])
+    lines.append(''); lines.append('ÙØ± Ù¾ÙÙ Ø±Ø§ Ú©Ù Ø®ÙØ§Ø³ØªÛ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù Ù Ø±ÙØ´ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨Ø¨ÛÙ.')
+    kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª' if fa else 'â¬ï¸ Back',callback_data='v25:hub'),main_menu_button(uid)])
     target=update.callback_query.message if update.callback_query else update.message
     if update.callback_query: await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
     else: await target.reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 async def v25_admin_vip_payment(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     card_on=get_system_setting('vip_card_enabled','0')=='1'; gw_on=get_system_setting('vip_gateway_enabled','0')=='1'
-    card='🟢' if card_on else '🔴'; gw='🟢' if gw_on else '🔴'
-    txt=f'💎 <b>پرداخت VIP</b>\n\n💵 کارت‌به‌کارت: {card}\n💳 درگاه آنلاین: {gw}\n\nشماره کارت و نام صاحب کارت فقط در صورت فعال‌سازی به مشتری نمایش داده می‌شود.'
-    kb=[[InlineKeyboardButton(f'{card} کارت‌به‌کارت',callback_data='v25:vipcardtoggle')],[InlineKeyboardButton(f'{gw} درگاه آنلاین',callback_data='v25:vipgatewaytoggle')],[InlineKeyboardButton('💳 شماره کارت / نام',callback_data='v25:vipcardinfo'),InlineKeyboardButton('🔗 لینک درگاه',callback_data='v25:vipgatewayinfo')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]
+    card='ð¢' if card_on else 'ð´'; gw='ð¢' if gw_on else 'ð´'
+    txt=f'ð <b>Ù¾Ø±Ø¯Ø§Ø®Øª VIP</b>\n\nðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª: {card}\nð³ Ø¯Ø±Ú¯Ø§Ù Ø¢ÙÙØ§ÛÙ: {gw}\n\nØ´ÙØ§Ø±Ù Ú©Ø§Ø±Øª Ù ÙØ§Ù ØµØ§Ø­Ø¨ Ú©Ø§Ø±Øª ÙÙØ· Ø¯Ø± ØµÙØ±Øª ÙØ¹Ø§ÙâØ³Ø§Ø²Û Ø¨Ù ÙØ´ØªØ±Û ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯.'
+    kb=[[InlineKeyboardButton(f'{card} Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data='v25:vipcardtoggle')],[InlineKeyboardButton(f'{gw} Ø¯Ø±Ú¯Ø§Ù Ø¢ÙÙØ§ÛÙ',callback_data='v25:vipgatewaytoggle')],[InlineKeyboardButton('ð³ Ø´ÙØ§Ø±Ù Ú©Ø§Ø±Øª / ÙØ§Ù',callback_data='v25:vipcardinfo'),InlineKeyboardButton('ð ÙÛÙÚ© Ø¯Ø±Ú¯Ø§Ù',callback_data='v25:vipgatewayinfo')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:adminmenu')]]
     await update.callback_query.message.edit_text(txt,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 # Finance/CRM helper: record a charge for a selected customer, with full/partial/unpaid state.
 async def v25_finance_menu(update,context):
-    uid=update.effective_user.id; rows=customer_list_rows(uid); lines=['📒 <b>مالی مشتریان</b>',''];
+    uid=update.effective_user.id; rows=customer_list_rows(uid); lines=['ð <b>ÙØ§ÙÛ ÙØ´ØªØ±ÛØ§Ù</b>',''];
     if rows:
-        lines += [f"• {html.escape(r['name'])} — {r['id']}" for r in rows]
-    else: lines.append('هنوز مشتری فعالی ثبت نشده است.')
-    kb=[[InlineKeyboardButton(f'➕ ثبت پرداخت برای {r["name"]}',callback_data=f'v25:finadd:{r["id"]}')] for r in rows[:40]]
-    kb.append([InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)])
+        lines += [f"â¢ {html.escape(r['name'])} â {r['id']}" for r in rows]
+    else: lines.append('ÙÙÙØ² ÙØ´ØªØ±Û ÙØ¹Ø§ÙÛ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª.')
+    kb=[[InlineKeyboardButton(f'â Ø«Ø¨Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø¨Ø±Ø§Û {r["name"]}',callback_data=f'v25:finadd:{r["id"]}')] for r in rows[:40]]
+    kb.append([InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)])
     await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 # 4) Extend callback one more time for global VIP + finance.
@@ -8680,56 +8657,56 @@ async def v25_callback(update,context):
         if data=='v25:vip': return await v25_user_vip_plans(update,context)
         if action=='userplan':
             pid=int(p[2]); plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=? AND enabled=1',(pid,),fetchone=True)
-            if not plan: await q.answer('پلن پیدا نشد.',show_alert=True); return
+            if not plan: await q.answer('Ù¾ÙÙ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.',show_alert=True); return
             card_on=get_system_setting('vip_card_enabled','0')=='1'; gw_on=get_system_setting('vip_gateway_enabled','0')=='1'
             kb=[]
             if gw_on and get_system_setting('vip_gateway_url',''):
-                kb.append([InlineKeyboardButton('💳 پرداخت آنلاین',url=get_system_setting('vip_gateway_url',''))])
+                kb.append([InlineKeyboardButton('ð³ Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢ÙÙØ§ÛÙ',url=get_system_setting('vip_gateway_url',''))])
             if card_on and get_system_setting('vip_card_number',''):
-                kb.append([InlineKeyboardButton('💵 کارت‌به‌کارت',callback_data=f'v25:vipglobalcard:{pid}')])
-            kb.append([InlineKeyboardButton('⬅️ پلن‌ها',callback_data='v25:vip'),main_menu_button(uid)])
-            await q.message.edit_text(f"💎 <b>{html.escape(plan['name'])}</b>\n\n💰 {irr(plan['price_rial'])}\n\nروش پرداخت را انتخاب کن:",parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb)); return
+                kb.append([InlineKeyboardButton('ðµ Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª',callback_data=f'v25:vipglobalcard:{pid}')])
+            kb.append([InlineKeyboardButton('â¬ï¸ Ù¾ÙÙâÙØ§',callback_data='v25:vip'),main_menu_button(uid)])
+            await q.message.edit_text(f"ð <b>{html.escape(plan['name'])}</b>\n\nð° {irr(plan['price_rial'])}\n\nØ±ÙØ´ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:",parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb)); return
         if action=='vipglobalcard':
             plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=? AND enabled=1',(int(p[2]),),fetchone=True)
             if not plan or get_system_setting('vip_card_enabled','0')!='1' or not get_system_setting('vip_card_number',''):
-                await q.answer('پرداخت کارت‌به‌کارت VIP در حال حاضر فعال نیست.',show_alert=True); return
+                await q.answer('Ù¾Ø±Ø¯Ø§Ø®Øª Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª VIP Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ÙØ¹Ø§Ù ÙÛØ³Øª.',show_alert=True); return
             num=get_system_setting('vip_card_number',''); name=get_system_setting('vip_card_name','')
             context.user_data['v25_mode']='vip_receipt'; context.user_data['vip_plan_id']=int(p[2])
-            await q.message.edit_text(f'💵 <b>پرداخت کارت‌به‌کارت VIP</b>\n\n💰 مبلغ: {irr(plan["price_rial"])}\n💳 شماره کارت: <code>{html.escape(num)}</code>\n👤 به نام: {html.escape(name or "—")}\n\n📎 بعد از واریز تصویر رسید را بفرست.',parse_mode='HTML',reply_markup=v25_back(uid,'v25:vip')); return
+            await q.message.edit_text(f'ðµ <b>Ù¾Ø±Ø¯Ø§Ø®Øª Ú©Ø§Ø±ØªâØ¨ÙâÚ©Ø§Ø±Øª VIP</b>\n\nð° ÙØ¨ÙØº: {irr(plan["price_rial"])}\nð³ Ø´ÙØ§Ø±Ù Ú©Ø§Ø±Øª: <code>{html.escape(num)}</code>\nð¤ Ø¨Ù ÙØ§Ù: {html.escape(name or "â")}\n\nð Ø¨Ø¹Ø¯ Ø§Ø² ÙØ§Ø±ÛØ² ØªØµÙÛØ± Ø±Ø³ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª.',parse_mode='HTML',reply_markup=v25_back(uid,'v25:vip')); return
         if data=='v25:adminvip': return await v25_admin_vip_payment(update,context)
         if data=='v25:vipcardtoggle':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
             set_system_setting('vip_card_enabled','0' if get_system_setting('vip_card_enabled','0')=='1' else '1',uid); return await v25_admin_vip_payment(update,context)
         if data=='v25:vipgatewaytoggle':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
             set_system_setting('vip_gateway_enabled','0' if get_system_setting('vip_gateway_enabled','0')=='1' else '1',uid); return await v25_admin_vip_payment(update,context)
         if data=='v25:vipcardinfo':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='admin_vip_card_number'; await q.message.edit_text('💳 شماره کارت VIP را بفرست:'); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            context.user_data['v25_mode']='admin_vip_card_number'; await q.message.edit_text('ð³ Ø´ÙØ§Ø±Ù Ú©Ø§Ø±Øª VIP Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
         if data=='v25:vipgatewayinfo':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='admin_vip_gateway_url'; await q.message.edit_text('🔗 لینک درگاه VIP را بفرست:'); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            context.user_data['v25_mode']='admin_vip_gateway_url'; await q.message.edit_text('ð ÙÛÙÚ© Ø¯Ø±Ú¯Ø§Ù VIP Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
         if action=='finadd':
-            if not admin_guard(uid) and not customer_feature_allowed(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid) and not customer_feature_allowed(uid): await q.answer('â',show_alert=True); return
             customer_id=int(p[2]); c=db(); owner_row=c.execute('SELECT id FROM customers WHERE id=? AND owner_user_id=?',(customer_id,uid)).fetchone(); c.close();
-            if not owner_row: await q.answer('⛔ مشتری متعلق به حساب شما نیست.',show_alert=True); return
-            context.user_data['v25_mode']='v25_mode_fin_total'; context.user_data['fin_customer_id']=customer_id; await q.message.edit_text('💰 مبلغ کل خدمت را به ریال وارد کن:'); return
+            if not owner_row: await q.answer('â ÙØ´ØªØ±Û ÙØªØ¹ÙÙ Ø¨Ù Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙÛØ³Øª.',show_alert=True); return
+            context.user_data['v25_mode']='v25_mode_fin_total'; context.user_data['fin_customer_id']=customer_id; await q.message.edit_text('ð° ÙØ¨ÙØº Ú©Ù Ø®Ø¯ÙØª Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù ÙØ§Ø±Ø¯ Ú©Ù:'); return
         if action=='bizfinance': return await v25_finance_menu(update,context)
         return await _OLD_V25_CALLBACK_EXTRA(update,context)
     except Exception as e:
-        logger.exception('V25 extra callback error: %s',e); await q.message.reply_text('❌ عملیات انجام نشد.',reply_markup=v25_back(uid))
+        logger.exception('V25 extra callback error: %s',e); await q.message.reply_text('â Ø¹ÙÙÛØ§Øª Ø§ÙØ¬Ø§Ù ÙØ´Ø¯.',reply_markup=v25_back(uid))
 
 # 5) Admin feature page: include ALL feature flags, not only V25-specific ones.
 async def v25_admin_feature_status(update,context):
     uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
+    if not admin_guard(uid): return await update.callback_query.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True)
     c=db(); rows=c.execute('SELECT key,enabled FROM feature_flags ORDER BY key').fetchall(); c.close()
     labels=dict(FEATURE_LABELS_FA)
     labels.update(V25_FEATURE_LABELS)
-    text='🔧 <b>وضعیت همه قابلیت‌ها</b>\n\n'; kb=[]
+    text='ð§ <b>ÙØ¶Ø¹ÛØª ÙÙÙ ÙØ§Ø¨ÙÛØªâÙØ§</b>\n\n'; kb=[]
     for r in rows:
-        label=labels.get(r['key'],r['key'].replace('_',' ')); state='🟢' if r['enabled'] else '🔴'; text+=f'{state} {label}\n'; kb.append([InlineKeyboardButton(f'{state} {label}',callback_data=f'v25:feat:{r["key"]}')])
-    kb.append([InlineKeyboardButton('⬅️ مدیریت',callback_data='v25:adminmenu'),main_menu_button(uid)])
+        label=labels.get(r['key'],r['key'].replace('_',' ')); state='ð¢' if r['enabled'] else 'ð´'; text+=f'{state} {label}\n'; kb.append([InlineKeyboardButton(f'{state} {label}',callback_data=f'v25:feat:{r["key"]}')])
+    kb.append([InlineKeyboardButton('â¬ï¸ ÙØ¯ÛØ±ÛØª',callback_data='v25:adminmenu'),main_menu_button(uid)])
     await update.callback_query.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 # 6) Text modes for global VIP settings.
@@ -8738,13 +8715,13 @@ async def v25_installment_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get('v25_mode'); txt=(update.message.text or '').strip()
     if mode=='admin_vip_card_number':
         if not admin_guard(uid): clear_flow(context); return True
-        context.user_data['vip_card_number_new']=txt; context.user_data['v25_mode']='admin_vip_card_name'; await update.message.reply_text('👤 نام صاحب کارت را بفرست یا - بزن:'); return True
+        context.user_data['vip_card_number_new']=txt; context.user_data['v25_mode']='admin_vip_card_name'; await update.message.reply_text('ð¤ ÙØ§Ù ØµØ§Ø­Ø¨ Ú©Ø§Ø±Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª ÛØ§ - Ø¨Ø²Ù:'); return True
     if mode=='admin_vip_card_name':
         if not admin_guard(uid): clear_flow(context); return True
-        set_system_setting('vip_card_number',context.user_data.get('vip_card_number_new',''),uid); set_system_setting('vip_card_name','' if txt=='-' else txt,uid); clear_flow(context); await update.message.reply_text('✅ اطلاعات کارت VIP ذخیره شد؛ برای جلوگیری از فعال‌شدن ناخواسته، وضعیت همچنان جداگانه قابل کنترل است.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💎 پرداخت VIP',callback_data='v25:adminvip')],[main_menu_button(uid)]])); return True
+        set_system_setting('vip_card_number',context.user_data.get('vip_card_number_new',''),uid); set_system_setting('vip_card_name','' if txt=='-' else txt,uid); clear_flow(context); await update.message.reply_text('â Ø§Ø·ÙØ§Ø¹Ø§Øª Ú©Ø§Ø±Øª VIP Ø°Ø®ÛØ±Ù Ø´Ø¯Ø Ø¨Ø±Ø§Û Ø¬ÙÙÚ¯ÛØ±Û Ø§Ø² ÙØ¹Ø§ÙâØ´Ø¯Ù ÙØ§Ø®ÙØ§Ø³ØªÙØ ÙØ¶Ø¹ÛØª ÙÙÚÙØ§Ù Ø¬Ø¯Ø§Ú¯Ø§ÙÙ ÙØ§Ø¨Ù Ú©ÙØªØ±Ù Ø§Ø³Øª.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ù¾Ø±Ø¯Ø§Ø®Øª VIP',callback_data='v25:adminvip')],[main_menu_button(uid)]])); return True
     if mode=='admin_vip_gateway_url':
         if not admin_guard(uid): clear_flow(context); return True
-        set_system_setting('vip_gateway_url',txt,uid); clear_flow(context); await update.message.reply_text('✅ لینک درگاه VIP ذخیره شد. وضعیت روشن/خاموش جداست.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💎 پرداخت VIP',callback_data='v25:adminvip')],[main_menu_button(uid)]])); return True
+        set_system_setting('vip_gateway_url',txt,uid); clear_flow(context); await update.message.reply_text('â ÙÛÙÚ© Ø¯Ø±Ú¯Ø§Ù VIP Ø°Ø®ÛØ±Ù Ø´Ø¯. ÙØ¶Ø¹ÛØª Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ Ø¬Ø¯Ø§Ø³Øª.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ù¾Ø±Ø¯Ø§Ø®Øª VIP',callback_data='v25:adminvip')],[main_menu_button(uid)]])); return True
     return await _OLD_V25_INSTALLMENT_TEXT_EXTRA(update,context)
 
 # 7) Customer direct-message shortcut in customer detail.
@@ -8755,7 +8732,7 @@ async def customer_detail(update,context,cid):
         # Send an additional message button after the detail view; keeping this non-destructive.
         q=update.callback_query; uid=q.from_user.id; r=get_customer(uid,cid)
         if r and r['telegram_user_id']:
-            await q.message.reply_text('📩 برای ارسال پیام مستقیم به این مشتری، متن را بفرست:',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📩 ارسال پیام',callback_data=f'v25:msgcustomer:{cid}')],[main_menu_button(uid)]]))
+            await q.message.reply_text('ð© Ø¨Ø±Ø§Û Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù ÙØ³ØªÙÛÙ Ø¨Ù Ø§ÛÙ ÙØ´ØªØ±ÛØ ÙØªÙ Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð© Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù',callback_data=f'v25:msgcustomer:{cid}')],[main_menu_button(uid)]]))
     except Exception: pass
 
 _OLD_V25_CALLBACK_EXTRA2=v25_callback
@@ -8763,8 +8740,8 @@ async def v25_callback(update,context):
     q=update.callback_query; data=q.data; uid=q.from_user.id; p=data.split(':'); action=p[1] if len(p)>1 else ''
     if action=='msgcustomer':
         cid=int(p[2]); r=get_customer(uid,cid)
-        if not r or not r['telegram_user_id']: await q.answer('این مشتری شناسه تلگرام ندارد.',show_alert=True); return
-        context.user_data['v25_mode']='customer_direct_message'; context.user_data['customer_message_id']=cid; await q.answer(); await q.message.reply_text('📩 متن پیام را بفرست:',reply_markup=v25_back(uid,'v25:business')); return
+        if not r or not r['telegram_user_id']: await q.answer('Ø§ÛÙ ÙØ´ØªØ±Û Ø´ÙØ§Ø³Ù ØªÙÚ¯Ø±Ø§Ù ÙØ¯Ø§Ø±Ø¯.',show_alert=True); return
+        context.user_data['v25_mode']='customer_direct_message'; context.user_data['customer_message_id']=cid; await q.answer(); await q.message.reply_text('ð© ÙØªÙ Ù¾ÛØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:business')); return
     return await _OLD_V25_CALLBACK_EXTRA2(update,context)
 
 # 8) Final text mode: direct customer message.
@@ -8773,12 +8750,12 @@ async def v25_installment_text_save(update,context):
     uid=update.effective_user.id; mode=context.user_data.get('v25_mode'); txt=(update.message.text or '').strip()
     if mode=='customer_direct_message':
         cid=int(context.user_data.get('customer_message_id')); r=get_customer(uid,cid); clear_flow(context)
-        if not r or not r['telegram_user_id']: await update.message.reply_text('❌ مشتری قابل پیام‌رسانی نیست.',reply_markup=customer_keyboard(uid)); return True
+        if not r or not r['telegram_user_id']: await update.message.reply_text('â ÙØ´ØªØ±Û ÙØ§Ø¨Ù Ù¾ÛØ§ÙâØ±Ø³Ø§ÙÛ ÙÛØ³Øª.',reply_markup=customer_keyboard(uid)); return True
         try:
-            await context.bot.send_message(r['telegram_user_id'],f'📩 <b>پیام از {html.escape(ensure_business_profile(uid)["business_name"] or "کسب‌وکار")}</b>\n\n{html.escape(txt)}',parse_mode='HTML')
-            await update.message.reply_text('✅ پیام ارسال شد.',reply_markup=customer_keyboard(uid))
+            await context.bot.send_message(r['telegram_user_id'],f'ð© <b>Ù¾ÛØ§Ù Ø§Ø² {html.escape(ensure_business_profile(uid)["business_name"] or "Ú©Ø³Ø¨âÙÚ©Ø§Ø±")}</b>\n\n{html.escape(txt)}',parse_mode='HTML')
+            await update.message.reply_text('â Ù¾ÛØ§Ù Ø§Ø±Ø³Ø§Ù Ø´Ø¯.',reply_markup=customer_keyboard(uid))
         except Exception:
-            await update.message.reply_text('❌ ارسال پیام ناموفق بود.',reply_markup=customer_keyboard(uid))
+            await update.message.reply_text('â Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù ÙØ§ÙÙÙÙ Ø¨ÙØ¯.',reply_markup=customer_keyboard(uid))
         return True
     return await _OLD_V25_INSTALLMENT_TEXT_FINAL(update,context)
 
@@ -8788,12 +8765,12 @@ async def v25_installment_text_save(update,context):
 
 
 async def v25_customer_message_menu(update,context):
-    uid=update.effective_user.id; rows=customer_list_rows(uid); selected=set(context.user_data.get('customer_message_selected',[])); lines=['📩 <b>ارسال پیام به مشتریان</b>','']
-    lines.append(f'انتخاب‌شده: {len(selected)}')
+    uid=update.effective_user.id; rows=customer_list_rows(uid); selected=set(context.user_data.get('customer_message_selected',[])); lines=['ð© <b>Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù Ø¨Ù ÙØ´ØªØ±ÛØ§Ù</b>','']
+    lines.append(f'Ø§ÙØªØ®Ø§Ø¨âØ´Ø¯Ù: {len(selected)}')
     kb=[]
     for r in rows[:50]:
-        mark='✅' if r['id'] in selected else '☐'; kb.append([InlineKeyboardButton(f'{mark} {r["name"]}',callback_data=f'v25:msgsel:{r["id"]}')])
-    kb += [[InlineKeyboardButton('📢 همه مشتریان',callback_data='v25:msgall')],[InlineKeyboardButton('📤 ارسال پیام انتخاب‌شده',callback_data='v25:msgsend')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:business'),main_menu_button(uid)]]
+        mark='â' if r['id'] in selected else 'â'; kb.append([InlineKeyboardButton(f'{mark} {r["name"]}',callback_data=f'v25:msgsel:{r["id"]}')])
+    kb += [[InlineKeyboardButton('ð¢ ÙÙÙ ÙØ´ØªØ±ÛØ§Ù',callback_data='v25:msgall')],[InlineKeyboardButton('ð¤ Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù Ø§ÙØªØ®Ø§Ø¨âØ´Ø¯Ù',callback_data='v25:msgsend')],[InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:business'),main_menu_button(uid)]]
     await update.callback_query.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 _OLD_V25_CALLBACK_MSG=v25_callback
@@ -8808,8 +8785,8 @@ async def v25_callback(update,context):
     if data=='v25:msgall':
         rows=customer_list_rows(uid); context.user_data['customer_message_selected']=[r['id'] for r in rows if r['telegram_user_id']]; await q.answer(); return await v25_customer_message_menu(update,context)
     if data=='v25:msgsend':
-        if not context.user_data.get('customer_message_selected'): await q.answer('حداقل یک مشتری را انتخاب کن.',show_alert=True); return
-        context.user_data['v25_mode']='customer_multi_message'; await q.answer(); await q.message.edit_text('📩 متن پیام را بفرست:',reply_markup=v25_back(uid,'v25:customermsg')); return
+        if not context.user_data.get('customer_message_selected'): await q.answer('Ø­Ø¯Ø§ÙÙ ÛÚ© ÙØ´ØªØ±Û Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.',show_alert=True); return
+        context.user_data['v25_mode']='customer_multi_message'; await q.answer(); await q.message.edit_text('ð© ÙØªÙ Ù¾ÛØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:customermsg')); return
     return await _OLD_V25_CALLBACK_MSG(update,context)
 
 _OLD_V25_INSTALLMENT_TEXT_MSG=v25_installment_text_save
@@ -8821,9 +8798,9 @@ async def v25_installment_text_save(update,context):
         for r in rows:
             if not r['telegram_user_id']: continue
             try:
-                await context.bot.send_message(r['telegram_user_id'],f'📩 <b>پیام از {html.escape(biz["business_name"] or "کسب‌وکار")}</b>\n\n{html.escape(txt)}',parse_mode='HTML'); sent+=1
+                await context.bot.send_message(r['telegram_user_id'],f'ð© <b>Ù¾ÛØ§Ù Ø§Ø² {html.escape(biz["business_name"] or "Ú©Ø³Ø¨âÙÚ©Ø§Ø±")}</b>\n\n{html.escape(txt)}',parse_mode='HTML'); sent+=1
             except Exception: pass
-        clear_flow(context); await update.message.reply_text(f'✅ پیام برای {sent} مشتری ارسال شد.',reply_markup=customer_keyboard(uid)); return True
+        clear_flow(context); await update.message.reply_text(f'â Ù¾ÛØ§Ù Ø¨Ø±Ø§Û {sent} ÙØ´ØªØ±Û Ø§Ø±Ø³Ø§Ù Ø´Ø¯.',reply_markup=customer_keyboard(uid)); return True
     return await _OLD_V25_INSTALLMENT_TEXT_MSG(update,context)
 
 # ------------------ Final callback dispatcher extension ------------------
@@ -8840,7 +8817,7 @@ async def v25_callback(update,context):
         if data=='v25:adminmorning': return await v25_admin_morning(update,context)
         if data=='v25:adminprices': return await v25_admin_prices(update,context)
         if data in {'v25:reports','v25:report_week','v25:report_month','v25:toggle_morning','v25:toggle_night','v25:toggle_friday','v25:toggle_prices'} and not admin_guard(uid):
-            await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+            await q.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True); return
         if data=='v25:reports': return await v25_reports(update,context,'day')
         if data=='v25:report_week': return await v25_reports(update,context,'week')
         if data=='v25:report_month': return await v25_reports(update,context,'month')
@@ -8849,13 +8826,13 @@ async def v25_callback(update,context):
         if data=='v25:toggle_friday': set_system_setting('friday_pause','0' if get_system_setting('friday_pause','0')=='1' else '1',uid); return await v25_admin_morning(update,context)
         if data=='v25:toggle_prices': set_system_setting('price_data_status','off' if get_system_setting('price_data_status','auto')!='off' else 'auto',uid); return await v25_admin_prices(update,context)
         if action=='vip_receipt':
-            if not admin_guard(uid): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True); return
             if len(parts) < 4 or parts[2] not in {'approve','reject'}:
-                await q.answer('عملیات نامعتبر است.',show_alert=True); return
+                await q.answer('Ø¹ÙÙÛØ§Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.',show_alert=True); return
             rid=int(parts[3])
             c=db(); row=c.execute('SELECT vr.*,p.name,p.duration_minutes FROM vip_receipts vr JOIN subscription_plans_v25 p ON p.id=vr.plan_id WHERE vr.id=?',(rid,)).fetchone()
-            if not row: c.close(); await q.answer('رسید پیدا نشد.',show_alert=True); return
-            if row['status']!='pending': c.close(); await q.answer('این رسید قبلاً بررسی شده است.',show_alert=True); return
+            if not row: c.close(); await q.answer('Ø±Ø³ÛØ¯ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.',show_alert=True); return
+            if row['status']!='pending': c.close(); await q.answer('Ø§ÛÙ Ø±Ø³ÛØ¯ ÙØ¨ÙØ§Ù Ø¨Ø±Ø±Ø³Û Ø´Ø¯Ù Ø§Ø³Øª.',show_alert=True); return
             now=_v25_now(); status=parts[2]
             if status=='approve':
                 base=datetime.now(TZ); u=c.execute('SELECT vip_until FROM users WHERE user_id=?',(row['user_id'],)).fetchone()
@@ -8865,10 +8842,10 @@ async def v25_callback(update,context):
                 expires=base+timedelta(minutes=int(row['duration_minutes']))
                 c.execute('UPDATE users SET vip_until=? WHERE user_id=?',(expires.isoformat(),row['user_id']))
                 c.execute('INSERT INTO subscription_history(user_id,plan,duration_days,source,amount,started_at,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)',(row['user_id'],row['name'],max(0,int(round(int(row['duration_minutes'])/1440))), 'card_receipt',row['amount_rial'],now,expires.isoformat(),now))
-                msg='✅ رسید تأیید شد و VIP فعال شد.'
-                user_msg=f'✅ پرداخت VIP شما تأیید شد.\n\n💎 پلن: {html.escape(row["name"])}\n⏰ پایان VIP: {fa_datetime(expires)}'
+                msg='â Ø±Ø³ÛØ¯ ØªØ£ÛÛØ¯ Ø´Ø¯ Ù VIP ÙØ¹Ø§Ù Ø´Ø¯.'
+                user_msg=f'â Ù¾Ø±Ø¯Ø§Ø®Øª VIP Ø´ÙØ§ ØªØ£ÛÛØ¯ Ø´Ø¯.\n\nð Ù¾ÙÙ: {html.escape(row["name"])}\nâ° Ù¾Ø§ÛØ§Ù VIP: {fa_datetime(expires)}'
             else:
-                msg='❌ رسید رد شد.'; user_msg='❌ رسید پرداخت VIP شما تأیید نشد. لطفاً اطلاعات پرداخت را بررسی و در صورت نیاز دوباره اقدام کنید.'
+                msg='â Ø±Ø³ÛØ¯ Ø±Ø¯ Ø´Ø¯.'; user_msg='â Ø±Ø³ÛØ¯ Ù¾Ø±Ø¯Ø§Ø®Øª VIP Ø´ÙØ§ ØªØ£ÛÛØ¯ ÙØ´Ø¯. ÙØ·ÙØ§Ù Ø§Ø·ÙØ§Ø¹Ø§Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ù Ø¯Ø± ØµÙØ±Øª ÙÛØ§Ø² Ø¯ÙØ¨Ø§Ø±Ù Ø§ÙØ¯Ø§Ù Ú©ÙÛØ¯.'
             c.execute("UPDATE vip_receipts SET status=?,reviewed_at=?,reviewed_by=? WHERE id=? AND status=\'pending\'",(status,now,uid,rid)); c.commit(); c.close()
             try: await context.bot.send_message(row['user_id'],user_msg,parse_mode='HTML',reply_markup=keyboard(row['user_id']))
             except Exception: logger.exception('VIP receipt user notification failed')
@@ -8878,38 +8855,38 @@ async def v25_callback(update,context):
             ipid=int(parts[2]); status=parts[3]
             # Never allow a user to mutate another user's installment by guessing its ID.
             row=_v25_exec('SELECT ip.*,p.user_id FROM installment_payments ip JOIN installment_plans p ON p.id=ip.plan_id WHERE ip.id=? AND p.user_id=?', (ipid,uid), fetchone=True)
-            if not row: await q.answer('⛔ این قسط متعلق به حساب شما نیست.',show_alert=True); return
-            if status not in {'paid','later','unpaid'}: await q.answer('وضعیت نامعتبر است.',show_alert=True); return
-            if status=='paid': _v25_exec('UPDATE installment_payments SET status="paid",paid_rial=amount_rial,paid_at=? WHERE id=?',(_v25_now(),ipid)); msg='✅ پرداخت ثبت شد.'
-            elif status=='later': _v25_exec('UPDATE installment_payments SET status="partial",note=? WHERE id=?',('کاربر اعلام کرد بعداً پرداخت می‌کند.',ipid)); msg='⏳ برای بعد نگه داشته شد.'
-            else: _v25_exec('UPDATE installment_payments SET status="unpaid" WHERE id=?',(ipid,)); msg='❌ عدم پرداخت ثبت شد.'
+            if not row: await q.answer('â Ø§ÛÙ ÙØ³Ø· ÙØªØ¹ÙÙ Ø¨Ù Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙÛØ³Øª.',show_alert=True); return
+            if status not in {'paid','later','unpaid'}: await q.answer('ÙØ¶Ø¹ÛØª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.',show_alert=True); return
+            if status=='paid': _v25_exec('UPDATE installment_payments SET status="paid",paid_rial=amount_rial,paid_at=? WHERE id=?',(_v25_now(),ipid)); msg='â Ù¾Ø±Ø¯Ø§Ø®Øª Ø«Ø¨Øª Ø´Ø¯.'
+            elif status=='later': _v25_exec('UPDATE installment_payments SET status="partial",note=? WHERE id=?',('Ú©Ø§Ø±Ø¨Ø± Ø§Ø¹ÙØ§Ù Ú©Ø±Ø¯ Ø¨Ø¹Ø¯Ø§Ù Ù¾Ø±Ø¯Ø§Ø®Øª ÙÛâÚ©ÙØ¯.',ipid)); msg='â³ Ø¨Ø±Ø§Û Ø¨Ø¹Ø¯ ÙÚ¯Ù Ø¯Ø§Ø´ØªÙ Ø´Ø¯.'
+            else: _v25_exec('UPDATE installment_payments SET status="unpaid" WHERE id=?',(ipid,)); msg='â Ø¹Ø¯Ù Ù¾Ø±Ø¯Ø§Ø®Øª Ø«Ø¨Øª Ø´Ø¯.'
             await q.message.edit_text(msg,reply_markup=v25_back(uid,'v25:installments')); return
         if action=='planedit':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
             pid=int(parts[2]); plan=_v25_exec('SELECT * FROM subscription_plans_v25 WHERE id=?',(pid,),fetchone=True)
             if not plan: return
-            context.user_data['v25_admin_plan_id']=pid; context.user_data['v25_mode']='admin_plan_price'; await q.message.edit_text(f'💎 {html.escape(plan["name"])}\n\nقیمت جدید را به ریال بفرست:'); return
+            context.user_data['v25_admin_plan_id']=pid; context.user_data['v25_mode']='admin_plan_price'; await q.message.edit_text(f'ð {html.escape(plan["name"])}\n\nÙÛÙØª Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù Ø¨ÙØ±Ø³Øª:'); return
         if action=='planadd':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='admin_plan_name'; await q.message.edit_text('📝 نام پلن جدید را بفرست:'); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            context.user_data['v25_mode']='admin_plan_name'; await q.message.edit_text('ð ÙØ§Ù Ù¾ÙÙ Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
         if action=='feat':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
             if len(parts) < 3 or not _feature_flag_exists(parts[2]):
-                await q.answer('قابلیت نامعتبر است.',show_alert=True); return
+                await q.answer('ÙØ§Ø¨ÙÛØª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.',show_alert=True); return
             key=parts[2]
             cur=feature_enabled(key)
             set_feature(key,not cur,uid)
             set_feature_access_mode(key,'free' if not cur else 'off',uid)
             return await v25_admin_feature_status(update,context)
         if action=='smstoggle':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
             cfg=_v25_exec('SELECT enabled FROM sms_settings WHERE owner_user_id=?',(uid,),fetchone=True); enabled=not bool(cfg and cfg['enabled']); now=_v25_now(); _v25_exec('INSERT INTO sms_settings(owner_user_id,enabled,updated_at) VALUES(?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at',(uid,int(enabled),now)); return await v25_admin_sms(update,context)
         if action=='smsconfig':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='admin_sms_endpoint'; await q.message.edit_text('📡 Endpoint سرویس پیامکی را بفرست:'); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            context.user_data['v25_mode']='admin_sms_endpoint'; await q.message.edit_text('ð¡ Endpoint Ø³Ø±ÙÛØ³ Ù¾ÛØ§ÙÚ©Û Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return
         if action=='smstest':
-            if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
-            context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('📱 شماره مقصد تست را بفرست:',reply_markup=v25_back(uid,'v25:adminsms')); return
+            if not admin_guard(uid): await q.answer('â',show_alert=True); return
+            context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('ð± Ø´ÙØ§Ø±Ù ÙÙØµØ¯ ØªØ³Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª:',reply_markup=v25_back(uid,'v25:adminsms')); return
             return await _OLD_V25_CALLBACK_FINAL(update,context)
         if action=='gateway' and admin_guard(uid):
             return await _OLD_V25_CALLBACK_FINAL(update,context)
@@ -8919,11 +8896,11 @@ async def v25_callback(update,context):
     except Exception as e:
         logger.exception('Final V25 callback error: %s',e)
         await q.message.reply_text(
-            f'⚠️ این عملیات با خطا روبه‌رو شد.\n\nکد خطا: <code>{type(e).__name__}</code>',
+            f'â ï¸ Ø§ÛÙ Ø¹ÙÙÛØ§Øª Ø¨Ø§ Ø®Ø·Ø§ Ø±ÙØ¨ÙâØ±Ù Ø´Ø¯.\n\nÚ©Ø¯ Ø®Ø·Ø§: <code>{type(e).__name__}</code>',
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('🔄 تلاش دوباره',callback_data=q.data)],
-                [InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:hub'),main_menu_button(uid)]
+                [InlineKeyboardButton('ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù',callback_data=q.data)],
+                [InlineKeyboardButton('â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª',callback_data='v25:hub'),main_menu_button(uid)]
             ])
         )
 
@@ -8934,46 +8911,46 @@ async def v25_installment_text_save(update,context):
     if mode=='admin_plan_price':
         if not admin_guard(uid): clear_flow(context); return True
         try: price=int(float(text.replace(',','')))
-        except Exception: await update.message.reply_text('❌ مبلغ نامعتبر است.'); return True
-        pid=context.user_data.get('v25_admin_plan_id'); _v25_exec('UPDATE subscription_plans_v25 SET price_rial=?,updated_at=? WHERE id=?',(price,_v25_now(),pid)); clear_flow(context); await update.message.reply_text('✅ قیمت پلن تغییر کرد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💎 پلن‌ها',callback_data='v25:adminplans')],[main_menu_button(uid)]])); return True
+        except Exception: await update.message.reply_text('â ÙØ¨ÙØº ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        pid=context.user_data.get('v25_admin_plan_id'); _v25_exec('UPDATE subscription_plans_v25 SET price_rial=?,updated_at=? WHERE id=?',(price,_v25_now(),pid)); clear_flow(context); await update.message.reply_text('â ÙÛÙØª Ù¾ÙÙ ØªØºÛÛØ± Ú©Ø±Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ù¾ÙÙâÙØ§',callback_data='v25:adminplans')],[main_menu_button(uid)]])); return True
     if mode=='admin_plan_name':
         if not admin_guard(uid): clear_flow(context); return True
-        context.user_data['admin_plan_name']=text; context.user_data['v25_mode']='admin_plan_duration'; await update.message.reply_text('⏱️ مدت را به دقیقه وارد کن. مثال: 43200 برای ۳۰ روز:'); return True
+        context.user_data['admin_plan_name']=text; context.user_data['v25_mode']='admin_plan_duration'; await update.message.reply_text('â±ï¸ ÙØ¯Øª Ø±Ø§ Ø¨Ù Ø¯ÙÛÙÙ ÙØ§Ø±Ø¯ Ú©Ù. ÙØ«Ø§Ù: 43200 Ø¨Ø±Ø§Û Û³Û° Ø±ÙØ²:'); return True
     if mode=='admin_plan_duration':
         if not admin_guard(uid): clear_flow(context); return True
         try: dur=int(text)
-        except Exception: await update.message.reply_text('❌ مدت نامعتبر است.'); return True
-        context.user_data['admin_plan_duration']=dur; context.user_data['v25_mode']='admin_plan_create_price'; await update.message.reply_text('💰 قیمت پلن را به ریال بفرست:'); return True
+        except Exception: await update.message.reply_text('â ÙØ¯Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
+        context.user_data['admin_plan_duration']=dur; context.user_data['v25_mode']='admin_plan_create_price'; await update.message.reply_text('ð° ÙÛÙØª Ù¾ÙÙ Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='admin_plan_create_price':
         if not admin_guard(uid): clear_flow(context); return True
         try: price=int(float(text.replace(',','')))
-        except Exception: await update.message.reply_text('❌ مبلغ نامعتبر است.'); return True
+        except Exception: await update.message.reply_text('â ÙØ¨ÙØº ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.'); return True
         code='custom_'+hashlib.sha256((context.user_data.get('admin_plan_name','')+_v25_now()).encode()).hexdigest()[:10]
-        _v25_exec('INSERT INTO subscription_plans_v25(code,name,duration_minutes,price_rial,enabled,created_at,updated_at) VALUES(?,?,?,?,1,?,?)',(code,context.user_data['admin_plan_name'],context.user_data['admin_plan_duration'],price,_v25_now(),_v25_now())); clear_flow(context); await update.message.reply_text('✅ پلن جدید ساخته شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('💎 پلن‌ها',callback_data='v25:adminplans')],[main_menu_button(uid)]])); return True
+        _v25_exec('INSERT INTO subscription_plans_v25(code,name,duration_minutes,price_rial,enabled,created_at,updated_at) VALUES(?,?,?,?,1,?,?)',(code,context.user_data['admin_plan_name'],context.user_data['admin_plan_duration'],price,_v25_now(),_v25_now())); clear_flow(context); await update.message.reply_text('â Ù¾ÙÙ Ø¬Ø¯ÛØ¯ Ø³Ø§Ø®ØªÙ Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð Ù¾ÙÙâÙØ§',callback_data='v25:adminplans')],[main_menu_button(uid)]])); return True
     if mode=='admin_sms_endpoint':
         if not admin_guard(uid): clear_flow(context); return True
-        context.user_data['admin_sms_endpoint']=text; context.user_data['v25_mode']='admin_sms_key'; await update.message.reply_text('🔐 API Key را بفرست:'); return True
+        context.user_data['admin_sms_endpoint']=text; context.user_data['v25_mode']='admin_sms_key'; await update.message.reply_text('ð API Key Ø±Ø§ Ø¨ÙØ±Ø³Øª:'); return True
     if mode=='admin_sms_key':
         if not admin_guard(uid): clear_flow(context); return True
-        endpoint=context.user_data.get('admin_sms_endpoint',''); now=_v25_now(); _v25_exec('INSERT INTO sms_settings(owner_user_id,enabled,provider,endpoint,api_key,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET endpoint=excluded.endpoint,api_key=excluded.api_key,updated_at=excluded.updated_at',(uid,0,'custom',endpoint,text,now)); clear_flow(context); await update.message.reply_text('✅ تنظیمات سرویس پیامکی ذخیره شد؛ سرویس همچنان خاموش است تا خودت فعالش کنی.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📱 پیامک',callback_data='v25:adminsms')],[main_menu_button(uid)]])); return True
+        endpoint=context.user_data.get('admin_sms_endpoint',''); now=_v25_now(); _v25_exec('INSERT INTO sms_settings(owner_user_id,enabled,provider,endpoint,api_key,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(owner_user_id) DO UPDATE SET endpoint=excluded.endpoint,api_key=excluded.api_key,updated_at=excluded.updated_at',(uid,0,'custom',endpoint,text,now)); clear_flow(context); await update.message.reply_text('â ØªÙØ¸ÛÙØ§Øª Ø³Ø±ÙÛØ³ Ù¾ÛØ§ÙÚ©Û Ø°Ø®ÛØ±Ù Ø´Ø¯Ø Ø³Ø±ÙÛØ³ ÙÙÚÙØ§Ù Ø®Ø§ÙÙØ´ Ø§Ø³Øª ØªØ§ Ø®ÙØ¯Øª ÙØ¹Ø§ÙØ´ Ú©ÙÛ.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð± Ù¾ÛØ§ÙÚ©',callback_data='v25:adminsms')],[main_menu_button(uid)]])); return True
     if mode=='v25_mode_fin_customer':
-        context.user_data['fin_customer_id']=int(text); context.user_data['v25_mode']='v25_mode_fin_total'; await update.message.reply_text('💰 مبلغ کل خدمت را به ریال وارد کن:'); return True
+        context.user_data['fin_customer_id']=int(text); context.user_data['v25_mode']='v25_mode_fin_total'; await update.message.reply_text('ð° ÙØ¨ÙØº Ú©Ù Ø®Ø¯ÙØª Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù ÙØ§Ø±Ø¯ Ú©Ù:'); return True
     if mode=='v25_mode_fin_total':
-        context.user_data['fin_total']=int(float(text.replace(',',''))); context.user_data['v25_mode']='v25_mode_fin_paid'; await update.message.reply_text('✅ مبلغ پرداخت‌شده را به ریال وارد کن (اگر هنوز چیزی پرداخت نشده 0 بزن):'); return True
+        context.user_data['fin_total']=int(float(text.replace(',',''))); context.user_data['v25_mode']='v25_mode_fin_paid'; await update.message.reply_text('â ÙØ¨ÙØº Ù¾Ø±Ø¯Ø§Ø®ØªâØ´Ø¯Ù Ø±Ø§ Ø¨Ù Ø±ÛØ§Ù ÙØ§Ø±Ø¯ Ú©Ù (Ø§Ú¯Ø± ÙÙÙØ² ÚÛØ²Û Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ´Ø¯Ù 0 Ø¨Ø²Ù):'); return True
     if mode=='v25_mode_fin_paid':
         paid=int(float(text.replace(',',''))); total=int(context.user_data.get('fin_total',0)); customer_id=int(context.user_data['fin_customer_id'])
         if total < 0 or paid < 0 or paid > total:
-            await update.message.reply_text('❌ مبلغ واردشده معتبر نیست.'); return True
+            await update.message.reply_text('â ÙØ¨ÙØº ÙØ§Ø±Ø¯Ø´Ø¯Ù ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.'); return True
         c=db(); owner_row=c.execute('SELECT id FROM customers WHERE id=? AND owner_user_id=?',(customer_id,uid)).fetchone()
         if not owner_row:
-            c.close(); clear_flow(context); await update.message.reply_text('⛔ مشتری متعلق به حساب شما نیست.'); return True
+            c.close(); clear_flow(context); await update.message.reply_text('â ÙØ´ØªØ±Û ÙØªØ¹ÙÙ Ø¨Ù Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙÛØ³Øª.'); return True
         status='paid' if paid>=total else ('partial' if paid>0 else 'pending')
         c.execute('INSERT INTO customer_finance(owner_user_id,customer_id,amount_rial,paid_rial,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',(uid,customer_id,total,paid,status,_v25_now(),_v25_now())); c.commit(); c.close(); clear_flow(context)
-        await update.message.reply_text('✅ تراکنش مالی مشتری ثبت شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📒 مالی مشتریان',callback_data='v25:bizfinance')],[main_menu_button(uid)]])); return True
+        await update.message.reply_text('â ØªØ±Ø§Ú©ÙØ´ ÙØ§ÙÛ ÙØ´ØªØ±Û Ø«Ø¨Øª Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð ÙØ§ÙÛ ÙØ´ØªØ±ÛØ§Ù',callback_data='v25:bizfinance')],[main_menu_button(uid)]])); return True
     if mode=='survey_comment':
         aid=int(context.user_data.get('survey_appointment_id')); c=db(); owner_ok=c.execute('SELECT id FROM appointments WHERE id=? AND customer_id IN (SELECT id FROM customers WHERE telegram_user_id=? )',(aid,uid)).fetchone();
-        if not owner_ok: c.close(); clear_flow(context); await update.message.reply_text('⛔ این نظرسنجی متعلق به حساب شما نیست.'); return True
-        c.execute('UPDATE survey_responses SET suggestion=?,comment=? WHERE appointment_id=?',(text,text,aid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('🙏 ممنون؛ پیشنهادت ثبت شد.',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])); return True
+        if not owner_ok: c.close(); clear_flow(context); await update.message.reply_text('â Ø§ÛÙ ÙØ¸Ø±Ø³ÙØ¬Û ÙØªØ¹ÙÙ Ø¨Ù Ø­Ø³Ø§Ø¨ Ø´ÙØ§ ÙÛØ³Øª.'); return True
+        c.execute('UPDATE survey_responses SET suggestion=?,comment=? WHERE appointment_id=?',(text,text,aid)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('ð ÙÙÙÙÙØ Ù¾ÛØ´ÙÙØ§Ø¯Øª Ø«Ø¨Øª Ø´Ø¯.',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]])); return True
     return await _OLD_V25_INSTALLMENT_TEXT_SAVE(update,context)
 
 _OLD_V25_BUSINESS_TEXT_SAVE=v25_business_text_save
@@ -8986,7 +8963,7 @@ async def v25_business_text_save(update,context):
         if cfg and cfg['endpoint'] and cfg['api_key']:
             try: ok,details=await v25_sms_send(uid,phone,msg)
             except Exception as e: details=str(e)
-        clear_flow(context); await update.message.reply_text('✅ تست ارسال شد.' if ok else '⚠️ تست انجام نشد؛ تنظیمات سرویس را بررسی کن.\n'+html.escape(details),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📱 پیامک',callback_data='v25:sms')],[main_menu_button(uid)]])); return True
+        clear_flow(context); await update.message.reply_text('â ØªØ³Øª Ø§Ø±Ø³Ø§Ù Ø´Ø¯.' if ok else 'â ï¸ ØªØ³Øª Ø§ÙØ¬Ø§Ù ÙØ´Ø¯Ø ØªÙØ¸ÛÙØ§Øª Ø³Ø±ÙÛØ³ Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.\n'+html.escape(details),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð± Ù¾ÛØ§ÙÚ©',callback_data='v25:sms')],[main_menu_button(uid)]])); return True
     if mode=='booking_phone' or mode=='booking_name' or mode=='survey_comment':
         return await v25_installment_text_save(update,context)
     return await _OLD_V25_BUSINESS_TEXT_SAVE(update,context)
@@ -8996,11 +8973,11 @@ _OLD_TEXT_ROUTER_FINAL=text_router
 async def text_router(update,context):
     uid=update.effective_user.id
     txt=(update.message.text or '').strip() if update.message else ''
-    if txt in ('⬅️ برگشت','⬅️ Back'):
+    if txt in ('â¬ï¸ Ø¨Ø±Ú¯Ø´Øª','â¬ï¸ Back'):
         clear_flow(context); await update.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
-    if txt in ('🏠 منوی اصلی','🏠 Main Menu'):
-        clear_flow(context); await update.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid)); return
-    if txt in ('🧠 مرکز من','🧠 My Center'):
+    if txt in ('ð  ÙÙÙÛ Ø§ØµÙÛ','ð  Main Menu'):
+        clear_flow(context); await update.message.reply_text('ð  ÙÙÙÛ Ø§ØµÙÛ',reply_markup=keyboard(uid)); return
+    if txt in ('ð§  ÙØ±Ú©Ø² ÙÙ','ð§  My Center'):
         await v25_hub(update,context); return
     mode=context.user_data.get('v25_mode')
     if mode in {'admin_plan_price','admin_plan_name','admin_plan_duration','admin_plan_create_price','admin_sms_endpoint','admin_sms_key','v25_mode_fin_customer','v25_mode_fin_total','v25_mode_fin_paid','survey_comment','booking_name','booking_phone','v25_sms_test'}:
@@ -9013,7 +8990,7 @@ _ORIGINAL_FINAL_ADMIN_KEYBOARD_2=final_admin_keyboard
 def final_admin_keyboard():
     base=_LEGACY_FINAL_ADMIN_KEYBOARD().inline_keyboard
     rows=[list(r) for r in base]
-    rows.append([InlineKeyboardButton('🛡️ مرکز مدیریت جدید',callback_data='v25:adminmenu')])
+    rows.append([InlineKeyboardButton('ð¡ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª Ø¬Ø¯ÛØ¯',callback_data='v25:adminmenu')])
     return InlineKeyboardMarkup(rows)
 admin_keyboard=final_admin_keyboard
 
@@ -9021,14 +8998,14 @@ admin_keyboard=final_admin_keyboard
 # ===================== TOKEN / QUOTA SYSTEM =====================
 # Free by default. Admin can later switch any feature to limited/VIP/off.
 TOKEN_FEATURES = [
-    ("price_data", "📈 قیمت بازار"),
-    ("portfolio", "💰 سرمایه‌های من"),
-    ("customers", "👥 CRM / مشتریان"),
-    ("customer_online_booking", "🔗 رزرو آنلاین"),
-    ("reminders", "🔔 یادآوری"),
-    ("reports", "📊 گزارش حرفه‌ای"),
-    ("mini_app", "📱 Mini App"),
-    ("smart_planner", "🧠 برنامه‌ریزی هوشمند"),
+    ("price_data", "ð ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±"),
+    ("portfolio", "ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ"),
+    ("customers", "ð¥ CRM / ÙØ´ØªØ±ÛØ§Ù"),
+    ("customer_online_booking", "ð Ø±Ø²Ø±Ù Ø¢ÙÙØ§ÛÙ"),
+    ("reminders", "ð ÛØ§Ø¯Ø¢ÙØ±Û"),
+    ("reports", "ð Ú¯Ø²Ø§Ø±Ø´ Ø­Ø±ÙÙâØ§Û"),
+    ("mini_app", "ð± Mini App"),
+    ("smart_planner", "ð§  Ø¨Ø±ÙØ§ÙÙâØ±ÛØ²Û ÙÙØ´ÙÙØ¯"),
 ]
 
 def token_now():
@@ -9132,25 +9109,25 @@ def feature_token_gate(uid, key):
 
 def token_gate_message(uid, key, reason):
     fa=lang(uid)=="fa"
-    label=dict(TOKEN_FEATURES).get(key,"این قابلیت" if fa else "This feature")
+    label=dict(TOKEN_FEATURES).get(key,"Ø§ÛÙ ÙØ§Ø¨ÙÛØª" if fa else "This feature")
     if reason == "vip":
-        return f"💎 {label}\n\nاین بخش در حال حاضر مخصوص VIP است." if fa else f"💎 {label}\n\nThis feature is currently for VIP users."
+        return f"ð {label}\n\nØ§ÛÙ Ø¨Ø®Ø´ Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ÙØ®ØµÙØµ VIP Ø§Ø³Øª." if fa else f"ð {label}\n\nThis feature is currently for VIP users."
     if reason == "quota":
-        return (f"🎟️ سهمیه رایگان {label} تمام شده است.\n\n⭐ توکن شما: {token_balance(uid)}\n💎 می‌توانید با توکن ادامه دهید یا اشتراک VIP تهیه کنید.") if fa else (f"🎟️ Your free quota for {label} is finished.\n\n⭐ Tokens: {token_balance(uid)}\n💎 You can continue with tokens or get VIP.")
-    return "⛔ این قابلیت فعلاً در دسترس نیست." if fa else "⛔ This feature is not available right now."
+        return (f"ðï¸ Ø³ÙÙÛÙ Ø±Ø§ÛÚ¯Ø§Ù {label} ØªÙØ§Ù Ø´Ø¯Ù Ø§Ø³Øª.\n\nâ­ ØªÙÚ©Ù Ø´ÙØ§: {token_balance(uid)}\nð ÙÛâØªÙØ§ÙÛØ¯ Ø¨Ø§ ØªÙÚ©Ù Ø§Ø¯Ø§ÙÙ Ø¯ÙÛØ¯ ÛØ§ Ø§Ø´ØªØ±Ø§Ú© VIP ØªÙÛÙ Ú©ÙÛØ¯.") if fa else (f"ðï¸ Your free quota for {label} is finished.\n\nâ­ Tokens: {token_balance(uid)}\nð You can continue with tokens or get VIP.")
+    return "â Ø§ÛÙ ÙØ§Ø¨ÙÛØª ÙØ¹ÙØ§Ù Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª." if fa else "â This feature is not available right now."
 
 def token_user_text(uid):
     bal=token_balance(uid); fa=lang(uid)=="fa"
     c=db(); rows=c.execute("SELECT feature_key,free_limit,period,token_cost,after_limit,enabled FROM token_rules ORDER BY feature_key").fetchall(); c.close()
-    lines=["🎟️ <b>توکن‌های من</b>","",f"⭐ موجودی: <b>{bal}</b>",""]
+    lines=["ðï¸ <b>ØªÙÚ©ÙâÙØ§Û ÙÙ</b>","",f"â­ ÙÙØ¬ÙØ¯Û: <b>{bal}</b>",""]
     if fa:
-        lines.append("توکن‌ها برای استفاده بیشتر از قابلیت‌هایی که مدیر سهمیه‌گذاری کرده‌اند قابل مصرف‌اند.")
+        lines.append("ØªÙÚ©ÙâÙØ§ Ø¨Ø±Ø§Û Ø§Ø³ØªÙØ§Ø¯Ù Ø¨ÛØ´ØªØ± Ø§Ø² ÙØ§Ø¨ÙÛØªâÙØ§ÛÛ Ú©Ù ÙØ¯ÛØ± Ø³ÙÙÛÙâÚ¯Ø°Ø§Ø±Û Ú©Ø±Ø¯ÙâØ§ÙØ¯ ÙØ§Ø¨Ù ÙØµØ±ÙâØ§ÙØ¯.")
     else: lines.append("Tokens can be used for extra usage on features configured by the admin.")
     return "\n".join(lines)
 
 def token_user_keyboard(uid):
     fa=lang(uid)=="fa"
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🔄 بروزرسانی" if fa else "🔄 Refresh",callback_data="v25:tokens")],[InlineKeyboardButton("💎 VIP" if fa else "💎 VIP",callback_data="vip:main")],[InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back",callback_data="v25:hub"),main_menu_button(uid)]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ" if fa else "ð Refresh",callback_data="v25:tokens")],[InlineKeyboardButton("ð VIP" if fa else "ð VIP",callback_data="vip:main")],[InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back",callback_data="v25:hub"),main_menu_button(uid)]])
 
 def token_admin_text():
     ref=int(token_setting("referral_tokens_per_success","10") or 10)
@@ -9158,15 +9135,15 @@ def token_admin_text():
     vip_cost=int(token_setting("tokens_for_vip_days","100") or 100)
     vip_days=int(token_setting("vip_days_per_token_pack","30") or 30)
     c=db(); top=c.execute("SELECT COUNT(*) n FROM token_wallets").fetchone()["n"]; total=c.execute("SELECT COALESCE(SUM(balance),0) n FROM token_wallets").fetchone()["n"]; c.close()
-    return (f"🎟️ <b>مدیریت توکن و سهمیه</b>\n\n👥 کیف‌پول‌های فعال: <b>{top}</b>\n⭐ مجموع توکن‌های موجود: <b>{total}</b>\n\n🤝 هر دعوت موفق: <b>{ref} توکن</b>\n⭐ هر <b>{xp_per} XP</b>: 1 توکن\n💎 <b>{vip_days} روز VIP</b>: {vip_cost} توکن\n\nهر قابلیت را می‌توانی جداگانه روی رایگان نامحدود، سهمیه‌دار یا VIP قرار بدهی.")
+    return (f"ðï¸ <b>ÙØ¯ÛØ±ÛØª ØªÙÚ©Ù Ù Ø³ÙÙÛÙ</b>\n\nð¥ Ú©ÛÙâÙ¾ÙÙâÙØ§Û ÙØ¹Ø§Ù: <b>{top}</b>\nâ­ ÙØ¬ÙÙØ¹ ØªÙÚ©ÙâÙØ§Û ÙÙØ¬ÙØ¯: <b>{total}</b>\n\nð¤ ÙØ± Ø¯Ø¹ÙØª ÙÙÙÙ: <b>{ref} ØªÙÚ©Ù</b>\nâ­ ÙØ± <b>{xp_per} XP</b>: 1 ØªÙÚ©Ù\nð <b>{vip_days} Ø±ÙØ² VIP</b>: {vip_cost} ØªÙÚ©Ù\n\nÙØ± ÙØ§Ø¨ÙÛØª Ø±Ø§ ÙÛâØªÙØ§ÙÛ Ø¬Ø¯Ø§Ú¯Ø§ÙÙ Ø±ÙÛ Ø±Ø§ÛÚ¯Ø§Ù ÙØ§ÙØ­Ø¯ÙØ¯Ø Ø³ÙÙÛÙâØ¯Ø§Ø± ÛØ§ VIP ÙØ±Ø§Ø± Ø¨Ø¯ÙÛ.")
 
 def token_admin_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🤝 توکن دعوت",callback_data="v25:token_ref"),InlineKeyboardButton("⭐ XP → توکن",callback_data="v25:token_xp")],
-        [InlineKeyboardButton("💎 توکن → VIP",callback_data="v25:token_vip")],
-        [InlineKeyboardButton("⚙️ سهمیه قابلیت‌ها",callback_data="v25:token_rules")],
-        [InlineKeyboardButton("📊 کیف‌پول کاربران",callback_data="v25:token_users")],
-        [InlineKeyboardButton("⬅️ پنل مدیریت",callback_data="adm:stats")]
+        [InlineKeyboardButton("ð¤ ØªÙÚ©Ù Ø¯Ø¹ÙØª",callback_data="v25:token_ref"),InlineKeyboardButton("â­ XP â ØªÙÚ©Ù",callback_data="v25:token_xp")],
+        [InlineKeyboardButton("ð ØªÙÚ©Ù â VIP",callback_data="v25:token_vip")],
+        [InlineKeyboardButton("âï¸ Ø³ÙÙÛÙ ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="v25:token_rules")],
+        [InlineKeyboardButton("ð Ú©ÛÙâÙ¾ÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",callback_data="v25:token_users")],
+        [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")]
     ])
 
 def token_rules_keyboard():
@@ -9174,12 +9151,12 @@ def token_rules_keyboard():
     for key,label in TOKEN_FEATURES:
         r=token_rule(key)
         if r:
-            limit="∞" if int(r["free_limit"])<0 else str(r["free_limit"])
+            limit="â" if int(r["free_limit"])<0 else str(r["free_limit"])
             cost=int(r["token_cost"])
-            txt=f"{label} | {limit} | 🎟️{cost}"
-        else: txt=f"{label} | ∞ | 🎟️0"
+            txt=f"{label} | {limit} | ðï¸{cost}"
+        else: txt=f"{label} | â | ðï¸0"
         rows.append([InlineKeyboardButton(txt,callback_data=f"v25:token_rule:{key}")])
-    rows.append([InlineKeyboardButton("⬅️ توکن و سهمیه",callback_data="v25:tokens_admin")])
+    rows.append([InlineKeyboardButton("â¬ï¸ ØªÙÚ©Ù Ù Ø³ÙÙÛÙ",callback_data="v25:tokens_admin")])
     return InlineKeyboardMarkup(rows)
 
 def token_rule_keyboard(key):
@@ -9187,26 +9164,26 @@ def token_rule_keyboard(key):
     limit=int(r["free_limit"]) if r else -1; cost=int(r["token_cost"]) if r else 0
     period=r["period"] if r else "lifetime"
     after=r["after_limit"] if r else "vip"
-    def lim(n): return "🟢 ∞ رایگان" if n<0 else f"🔢 {n} بار"
-    def mark(n): return "✅" if limit==n else ""
-    def cmk(n): return "✅" if cost==n else ""
+    def lim(n): return "ð¢ â Ø±Ø§ÛÚ¯Ø§Ù" if n<0 else f"ð¢ {n} Ø¨Ø§Ø±"
+    def mark(n): return "â" if limit==n else ""
+    def cmk(n): return "â" if cost==n else ""
     rows=[
-        [InlineKeyboardButton(f"{mark(-1)} ∞ رایگان",callback_data=f"v25:token_setlimit:{key}:-1")],
+        [InlineKeyboardButton(f"{mark(-1)} â Ø±Ø§ÛÚ¯Ø§Ù",callback_data=f"v25:token_setlimit:{key}:-1")],
         [InlineKeyboardButton(f"{mark(1)} 1",callback_data=f"v25:token_setlimit:{key}:1"),InlineKeyboardButton(f"{mark(3)} 3",callback_data=f"v25:token_setlimit:{key}:3"),InlineKeyboardButton(f"{mark(5)} 5",callback_data=f"v25:token_setlimit:{key}:5")],
         [InlineKeyboardButton(f"{mark(10)} 10",callback_data=f"v25:token_setlimit:{key}:10"),InlineKeyboardButton(f"{mark(20)} 20",callback_data=f"v25:token_setlimit:{key}:20"),InlineKeyboardButton(f"{mark(50)} 50",callback_data=f"v25:token_setlimit:{key}:50")],
-        [InlineKeyboardButton(f"{cmk(0)} 🎟️0",callback_data=f"v25:token_setcost:{key}:0"),InlineKeyboardButton(f"{cmk(1)} 🎟️1",callback_data=f"v25:token_setcost:{key}:1"),InlineKeyboardButton(f"{cmk(5)} 🎟️5",callback_data=f"v25:token_setcost:{key}:5")],
-        [InlineKeyboardButton(f"{cmk(10)} 🎟️10",callback_data=f"v25:token_setcost:{key}:10"),InlineKeyboardButton(f"{cmk(20)} 🎟️20",callback_data=f"v25:token_setcost:{key}:20"),InlineKeyboardButton(f"{cmk(50)} 🎟️50",callback_data=f"v25:token_setcost:{key}:50")],
-        [InlineKeyboardButton("📅 روزانه",callback_data=f"v25:token_period:{key}:daily"),InlineKeyboardButton("📅 هفتگی",callback_data=f"v25:token_period:{key}:weekly"),InlineKeyboardButton("📅 ماهانه",callback_data=f"v25:token_period:{key}:monthly")],
-        [InlineKeyboardButton("♾️ هرگز بازنشانی نشود",callback_data=f"v25:token_period:{key}:lifetime")],
-        [InlineKeyboardButton("💎 بعد از سهمیه → VIP",callback_data=f"v25:token_after:{key}:vip")],
-        [InlineKeyboardButton("🟢 فعال",callback_data=f"v25:token_enable:{key}:1"),InlineKeyboardButton("🔴 غیرفعال",callback_data=f"v25:token_enable:{key}:0")],
-        [InlineKeyboardButton("⬅️ سهمیه قابلیت‌ها",callback_data="v25:token_rules")]
+        [InlineKeyboardButton(f"{cmk(0)} ðï¸0",callback_data=f"v25:token_setcost:{key}:0"),InlineKeyboardButton(f"{cmk(1)} ðï¸1",callback_data=f"v25:token_setcost:{key}:1"),InlineKeyboardButton(f"{cmk(5)} ðï¸5",callback_data=f"v25:token_setcost:{key}:5")],
+        [InlineKeyboardButton(f"{cmk(10)} ðï¸10",callback_data=f"v25:token_setcost:{key}:10"),InlineKeyboardButton(f"{cmk(20)} ðï¸20",callback_data=f"v25:token_setcost:{key}:20"),InlineKeyboardButton(f"{cmk(50)} ðï¸50",callback_data=f"v25:token_setcost:{key}:50")],
+        [InlineKeyboardButton("ð Ø±ÙØ²Ø§ÙÙ",callback_data=f"v25:token_period:{key}:daily"),InlineKeyboardButton("ð ÙÙØªÚ¯Û",callback_data=f"v25:token_period:{key}:weekly"),InlineKeyboardButton("ð ÙØ§ÙØ§ÙÙ",callback_data=f"v25:token_period:{key}:monthly")],
+        [InlineKeyboardButton("â¾ï¸ ÙØ±Ú¯Ø² Ø¨Ø§Ø²ÙØ´Ø§ÙÛ ÙØ´ÙØ¯",callback_data=f"v25:token_period:{key}:lifetime")],
+        [InlineKeyboardButton("ð Ø¨Ø¹Ø¯ Ø§Ø² Ø³ÙÙÛÙ â VIP",callback_data=f"v25:token_after:{key}:vip")],
+        [InlineKeyboardButton("ð¢ ÙØ¹Ø§Ù",callback_data=f"v25:token_enable:{key}:1"),InlineKeyboardButton("ð´ ØºÛØ±ÙØ¹Ø§Ù",callback_data=f"v25:token_enable:{key}:0")],
+        [InlineKeyboardButton("â¬ï¸ Ø³ÙÙÛÙ ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="v25:token_rules")]
     ]
     return InlineKeyboardMarkup(rows)
 
 async def token_admin_callback(update,context):
     q=update.callback_query; uid=q.from_user.id
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     await q.answer(); p=q.data.split(":")
     action=p[1] if len(p)>1 else "tokens_admin"
     if action=="tokens_admin": await q.message.edit_text(token_admin_text(),parse_mode="HTML",reply_markup=token_admin_keyboard()); return
@@ -9216,21 +9193,21 @@ async def token_admin_callback(update,context):
         cur=int(token_setting("xp_per_token","100") or 100); nxt={10:50,50:100,100:250,250:500,500:10}.get(cur,100); set_token_setting("xp_per_token",nxt,uid); await q.message.edit_text(token_admin_text(),parse_mode="HTML",reply_markup=token_admin_keyboard()); return
     if action=="token_vip":
         cur=int(token_setting("tokens_for_vip_days","100") or 100); nxt={50:100,100:250,250:500,500:1000,1000:50}.get(cur,100); set_token_setting("tokens_for_vip_days",nxt,uid); await q.message.edit_text(token_admin_text(),parse_mode="HTML",reply_markup=token_admin_keyboard()); return
-    if action=="token_rules": await q.message.edit_text("⚙️ <b>سهمیه قابلیت‌ها</b>\n\n∞ یعنی فعلاً کاملاً رایگان و نامحدود. وقتی سهمیه تعیین کنی، بعد از اتمام آن قابلیت می‌تواند با توکن یا VIP ادامه پیدا کند.",parse_mode="HTML",reply_markup=token_rules_keyboard()); return
+    if action=="token_rules": await q.message.edit_text("âï¸ <b>Ø³ÙÙÛÙ ÙØ§Ø¨ÙÛØªâÙØ§</b>\n\nâ ÛØ¹ÙÛ ÙØ¹ÙØ§Ù Ú©Ø§ÙÙØ§Ù Ø±Ø§ÛÚ¯Ø§Ù Ù ÙØ§ÙØ­Ø¯ÙØ¯. ÙÙØªÛ Ø³ÙÙÛÙ ØªØ¹ÛÛÙ Ú©ÙÛØ Ø¨Ø¹Ø¯ Ø§Ø² Ø§ØªÙØ§Ù Ø¢Ù ÙØ§Ø¨ÙÛØª ÙÛâØªÙØ§ÙØ¯ Ø¨Ø§ ØªÙÚ©Ù ÛØ§ VIP Ø§Ø¯Ø§ÙÙ Ù¾ÛØ¯Ø§ Ú©ÙØ¯.",parse_mode="HTML",reply_markup=token_rules_keyboard()); return
     if action=="token_users":
-        c=db(); rows=c.execute("SELECT user_id,balance FROM token_wallets ORDER BY balance DESC LIMIT 50").fetchall(); c.close(); txt="📊 <b>کیف‌پول کاربران</b>\n\n"+"\n".join(f"👤 <code>{r['user_id']}</code> — 🎟️ {r['balance']}" for r in rows) if rows else "📊 کیف‌پولی ثبت نشده."; await q.message.edit_text(txt,parse_mode="HTML",reply_markup=token_admin_keyboard()); return
+        c=db(); rows=c.execute("SELECT user_id,balance FROM token_wallets ORDER BY balance DESC LIMIT 50").fetchall(); c.close(); txt="ð <b>Ú©ÛÙâÙ¾ÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>\n\n"+"\n".join(f"ð¤ <code>{r['user_id']}</code> â ðï¸ {r['balance']}" for r in rows) if rows else "ð Ú©ÛÙâÙ¾ÙÙÛ Ø«Ø¨Øª ÙØ´Ø¯Ù."; await q.message.edit_text(txt,parse_mode="HTML",reply_markup=token_admin_keyboard()); return
     if action=="token_rule":
-        key=p[2]; label=dict(TOKEN_FEATURES).get(key,key); await q.message.edit_text(f"⚙️ <b>{html.escape(label)}</b>\n\nدکمه‌های زیر را بزن تا سهمیه و هزینه توکن تنظیم شود.",parse_mode="HTML",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; label=dict(TOKEN_FEATURES).get(key,key); await q.message.edit_text(f"âï¸ <b>{html.escape(label)}</b>\n\nØ¯Ú©ÙÙâÙØ§Û Ø²ÛØ± Ø±Ø§ Ø¨Ø²Ù ØªØ§ Ø³ÙÙÛÙ Ù ÙØ²ÛÙÙ ØªÙÚ©Ù ØªÙØ¸ÛÙ Ø´ÙØ¯.",parse_mode="HTML",reply_markup=token_rule_keyboard(key)); return
     if action=="token_setlimit":
-        key=p[2]; limit=int(p[3]); r=token_rule(key); set_token_rule(key,limit,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("✅ سهمیه تغییر کرد.",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; limit=int(p[3]); r=token_rule(key); set_token_rule(key,limit,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("â Ø³ÙÙÛÙ ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=token_rule_keyboard(key)); return
     if action=="token_setcost":
-        key=p[2]; cost=int(p[3]); r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",cost,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("✅ هزینه توکن تغییر کرد.",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; cost=int(p[3]); r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",cost,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("â ÙØ²ÛÙÙ ØªÙÚ©Ù ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=token_rule_keyboard(key)); return
     if action=="token_period":
-        key=p[2]; period=p[3]; r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,period,int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("✅ دوره سهمیه تغییر کرد.",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; period=p[3]; r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,period,int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",int(r["enabled"]) if r else 1,uid); await q.message.edit_text("â Ø¯ÙØ±Ù Ø³ÙÙÛÙ ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=token_rule_keyboard(key)); return
     if action=="token_after":
-        key=p[2]; after=p[3]; r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,after,int(r["enabled"]) if r else 1,uid); await q.message.edit_text("✅ رفتار بعد از پایان سهمیه تنظیم شد.",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; after=p[3]; r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,after,int(r["enabled"]) if r else 1,uid); await q.message.edit_text("â Ø±ÙØªØ§Ø± Ø¨Ø¹Ø¯ Ø§Ø² Ù¾Ø§ÛØ§Ù Ø³ÙÙÛÙ ØªÙØ¸ÛÙ Ø´Ø¯.",reply_markup=token_rule_keyboard(key)); return
     if action=="token_enable":
-        key=p[2]; enabled=int(p[3]); r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",enabled,uid); await q.message.edit_text("✅ وضعیت سهمیه تغییر کرد.",reply_markup=token_rule_keyboard(key)); return
+        key=p[2]; enabled=int(p[3]); r=token_rule(key); set_token_rule(key,int(r["free_limit"]) if r else -1,r["period"] if r else "lifetime",int(r["token_cost"]) if r else 0,r["after_limit"] if r else "vip",enabled,uid); await q.message.edit_text("â ÙØ¶Ø¹ÛØª Ø³ÙÙÛÙ ØªØºÛÛØ± Ú©Ø±Ø¯.",reply_markup=token_rule_keyboard(key)); return
 
 def token_init_db():
     c=db(); now=token_now()
@@ -9523,7 +9500,7 @@ _OLD_ADMIN_KEYBOARD_TOKEN=final_admin_keyboard
 def final_admin_keyboard():
     base=_OLD_ADMIN_KEYBOARD_TOKEN().inline_keyboard
     rows=[list(r) for r in base]
-    rows.insert(-1,[InlineKeyboardButton("🎟️ مدیریت توکن و سهمیه",callback_data="v25:tokens_admin")])
+    rows.insert(-1,[InlineKeyboardButton("ðï¸ ÙØ¯ÛØ±ÛØª ØªÙÚ©Ù Ù Ø³ÙÙÛÙ",callback_data="v25:tokens_admin")])
     return InlineKeyboardMarkup(rows)
 admin_keyboard=final_admin_keyboard
 
@@ -9542,7 +9519,7 @@ def vip_keyboard(uid):
     base=_OLD_VIP_KEYBOARD_TOKEN(uid).inline_keyboard
     rows=[list(r) for r in base]
     fa=lang(uid)=="fa"
-    rows.insert(-1,[InlineKeyboardButton("🎟️ تبدیل توکن به VIP" if fa else "🎟️ Convert Tokens to VIP",callback_data="vip:tokens")])
+    rows.insert(-1,[InlineKeyboardButton("ðï¸ ØªØ¨Ø¯ÛÙ ØªÙÚ©Ù Ø¨Ù VIP" if fa else "ðï¸ Convert Tokens to VIP",callback_data="vip:tokens")])
     return InlineKeyboardMarkup(rows)
 
 _OLD_VIP_CALLBACK_TOKEN=vip_callback
@@ -9553,10 +9530,10 @@ async def vip_callback(update,context):
         tokens_from_xp(uid)
         ok,days=redeem_tokens_for_vip(uid)
         if ok:
-            await q.message.edit_text(f"✅ {days} روز VIP با توکن فعال شد.\n\n🎟️ موجودی باقیمانده: {token_balance(uid)}",reply_markup=vip_keyboard(uid))
+            await q.message.edit_text(f"â {days} Ø±ÙØ² VIP Ø¨Ø§ ØªÙÚ©Ù ÙØ¹Ø§Ù Ø´Ø¯.\n\nðï¸ ÙÙØ¬ÙØ¯Û Ø¨Ø§ÙÛÙØ§ÙØ¯Ù: {token_balance(uid)}",reply_markup=vip_keyboard(uid))
         else:
             cost=int(token_setting("tokens_for_vip_days","100") or 100)
-            await q.message.edit_text(f"🎟️ توکن کافی نیست.\n\nموجودی: {token_balance(uid)}\nنیاز: {cost} توکن",reply_markup=vip_keyboard(uid))
+            await q.message.edit_text(f"ðï¸ ØªÙÚ©Ù Ú©Ø§ÙÛ ÙÛØ³Øª.\n\nÙÙØ¬ÙØ¯Û: {token_balance(uid)}\nÙÛØ§Ø²: {cost} ØªÙÚ©Ù",reply_markup=vip_keyboard(uid))
         return
     return await _OLD_VIP_CALLBACK_TOKEN(update,context)
 
@@ -9565,10 +9542,10 @@ _OLD_TOKEN_USER_KEYBOARD=token_user_keyboard
 def token_user_keyboard(uid):
     fa=lang(uid)=="fa"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 XP → توکن" if fa else "🔄 XP → Tokens",callback_data="v25:token_xp_convert")],
-        [InlineKeyboardButton("💎 تبدیل توکن به VIP" if fa else "💎 Convert Tokens to VIP",callback_data="vip:tokens")],
-        [InlineKeyboardButton("🔄 بروزرسانی" if fa else "🔄 Refresh",callback_data="v25:tokens")],
-        [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back",callback_data="v25:hub"),main_menu_button(uid)]
+        [InlineKeyboardButton("ð XP â ØªÙÚ©Ù" if fa else "ð XP â Tokens",callback_data="v25:token_xp_convert")],
+        [InlineKeyboardButton("ð ØªØ¨Ø¯ÛÙ ØªÙÚ©Ù Ø¨Ù VIP" if fa else "ð Convert Tokens to VIP",callback_data="vip:tokens")],
+        [InlineKeyboardButton("ð Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ" if fa else "ð Refresh",callback_data="v25:tokens")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back",callback_data="v25:hub"),main_menu_button(uid)]
     ])
 
 # Extend the token callback router with XP conversion.
@@ -9577,7 +9554,7 @@ async def v25_callback(update,context):
     data=update.callback_query.data
     if data == "v25:token_xp_convert":
         uid=update.effective_user.id; await update.callback_query.answer(); n=tokens_from_xp(uid)
-        await update.callback_query.message.edit_text((f"✅ {n} توکن جدید از XP تبدیل شد.\n\n⭐ موجودی XP به توکن فعلی ثبت شد.\n🎟️ موجودی: {token_balance(uid)}" if lang(uid)=="fa" else f"✅ Converted {n} new tokens from XP.\n\n🎟️ Balance: {token_balance(uid)}"),reply_markup=token_user_keyboard(uid)); return
+        await update.callback_query.message.edit_text((f"â {n} ØªÙÚ©Ù Ø¬Ø¯ÛØ¯ Ø§Ø² XP ØªØ¨Ø¯ÛÙ Ø´Ø¯.\n\nâ­ ÙÙØ¬ÙØ¯Û XP Ø¨Ù ØªÙÚ©Ù ÙØ¹ÙÛ Ø«Ø¨Øª Ø´Ø¯.\nðï¸ ÙÙØ¬ÙØ¯Û: {token_balance(uid)}" if lang(uid)=="fa" else f"â Converted {n} new tokens from XP.\n\nðï¸ Balance: {token_balance(uid)}"),reply_markup=token_user_keyboard(uid)); return
     return await _OLD_V25_CALLBACK_TOKEN2(update,context)
 
 
@@ -9619,11 +9596,11 @@ def keyboard(uid):
     # Keep the original menu order, then add enhanced modules in a predictable grid.
     extras = []
     extra_defs = [
-        ("unified_hub", "🧠 مرکز من", "🧠 My Center"),
-        ("portfolio", "💰 سرمایه‌های من", "💰 My Portfolio"),
-        ("installments", "💳 اقساط", "💳 Installments"),
-        ("profile_sharing", "👤 اطلاعات من", "👤 My Profile"),
-        ("calendar_hub", "📅 تقویم من", "📅 My Calendar"),
+        ("unified_hub", "ð§  ÙØ±Ú©Ø² ÙÙ", "ð§  My Center"),
+        ("portfolio", "ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ", "ð° My Portfolio"),
+        ("installments", "ð³ Ø§ÙØ³Ø§Ø·", "ð³ Installments"),
+        ("profile_sharing", "ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ", "ð¤ My Profile"),
+        ("calendar_hub", "ð ØªÙÙÛÙ ÙÙ", "ð My Calendar"),
     ]
     for key, fa_label, en_label in extra_defs:
         try:
@@ -9634,15 +9611,15 @@ def keyboard(uid):
             logger.exception("Menu feature check failed: %s", key)
 
     # Token wallet is available independently of the optional V25 feature flags.
-    extras.append("🎟️ توکن‌های من" if fa else "🎟️ My Tokens")
+    extras.append("ðï¸ ØªÙÚ©ÙâÙØ§Û ÙÙ" if fa else "ðï¸ My Tokens")
 
     rows = [list(r) for r in base if r]
     for i in range(0, len(extras), 2):
         rows.append(extras[i:i + 2])
 
     if admin_is_allowed(uid):
-        rows.append(["📢 مدیریت کانال" if fa else "📢 Channel Management",
-                     "🛡 پنل مدیریت" if fa else "🛡 Admin Panel"])
+        rows.append(["ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù" if fa else "ð¢ Channel Management",
+                     "ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª" if fa else "ð¡ Admin Panel"])
 
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -9741,15 +9718,15 @@ def _forced_sub_failure_payload():
 
     if not msg:
         msg = (
-            "🔒 <b>عضویت اجباری</b>\n\n"
-            "برای استفاده از ربات، ابتدا عضو کانال شوید.\n"
-            "بعد از عضویت روی «🔄 بررسی مجدد» بزنید."
+            "ð <b>Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û</b>\n\n"
+            "Ø¨Ø±Ø§Û Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§ØªØ Ø§Ø¨ØªØ¯Ø§ Ø¹Ø¶Ù Ú©Ø§ÙØ§Ù Ø´ÙÛØ¯.\n"
+            "Ø¨Ø¹Ø¯ Ø§Ø² Ø¹Ø¶ÙÛØª Ø±ÙÛ Â«ð Ø¨Ø±Ø±Ø³Û ÙØ¬Ø¯Ø¯Â» Ø¨Ø²ÙÛØ¯."
         )
 
     kb_lines = []
     if channel_url and (channel_url.startswith("http://") or channel_url.startswith("https://")):
-        kb_lines.append([InlineKeyboardButton("🔗 عضویت در کانال", url=channel_url)])
-    kb_lines.append([InlineKeyboardButton("🔄 بررسی مجدد", callback_data="forcedsub:check")])
+        kb_lines.append([InlineKeyboardButton("ð Ø¹Ø¶ÙÛØª Ø¯Ø± Ú©Ø§ÙØ§Ù", url=channel_url)])
+    kb_lines.append([InlineKeyboardButton("ð Ø¨Ø±Ø±Ø³Û ÙØ¬Ø¯Ø¯", callback_data="forcedsub:check")])
     return msg, InlineKeyboardMarkup(kb_lines)
 
 
@@ -9769,18 +9746,18 @@ async def _forced_sub_admin_panel(update, context):
     dval = _forced_sub_get("forced_sub_duration_value", "24")
     channel_url = _forced_sub_get("forced_sub_channel_url", "")
     
-    dtype_labels = {"hours": "ساعت", "days": "روز", "forever": "دائمی"}
+    dtype_labels = {"hours": "Ø³Ø§Ø¹Øª", "days": "Ø±ÙØ²", "forever": "Ø¯Ø§Ø¦ÙÛ"}
     dtype_label = dtype_labels.get(dtype, dtype)
     
-    status = "🟢 فعال" if enabled else "🔴 غیرفعال"
-    duration = "دائمی" if dtype == "forever" else f"{dval} {dtype_label}"
+    status = "ð¢ ÙØ¹Ø§Ù" if enabled else "ð´ ØºÛØ±ÙØ¹Ø§Ù"
+    duration = "Ø¯Ø§Ø¦ÙÛ" if dtype == "forever" else f"{dval} {dtype_label}"
     
     text = (
-        f"🔒 <b>عضویت اجباری کانال</b>\n\n"
-        f"وضعیت: {status}\n"
-        f"نوع بررسی: فقط وضعیت عضویت فعلی\n"
-        f"کانال: {html.escape(channel_url or 'تنظیم نشده')}\n\n"
-        f"👥 <b>وضعیت کاربران:</b>\n"
+        f"ð <b>Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û Ú©Ø§ÙØ§Ù</b>\n\n"
+        f"ÙØ¶Ø¹ÛØª: {status}\n"
+        f"ÙÙØ¹ Ø¨Ø±Ø±Ø³Û: ÙÙØ· ÙØ¶Ø¹ÛØª Ø¹Ø¶ÙÛØª ÙØ¹ÙÛ\n"
+        f"Ú©Ø§ÙØ§Ù: {html.escape(channel_url or 'ØªÙØ¸ÛÙ ÙØ´Ø¯Ù')}\n\n"
+        f"ð¥ <b>ÙØ¶Ø¹ÛØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù:</b>\n"
     )
     
     # Get user stats
@@ -9789,15 +9766,15 @@ async def _forced_sub_admin_panel(update, context):
     members = c.execute("SELECT COUNT(*) n FROM user_channel_membership WHERE is_member=1").fetchone()["n"]
     c.close()
     
-    text += f"📊 ثبت‌شده: {total}\n✅ عضو فعال: {members}\n"
+    text += f"ð Ø«Ø¨ØªâØ´Ø¯Ù: {total}\nâ Ø¹Ø¶Ù ÙØ¹Ø§Ù: {members}\n"
     
     kb = [
-        [InlineKeyboardButton("🟢 فعال‌سازی" if not enabled else "🔴 غیرفعال‌سازی", callback_data="forcedsub:toggle")],
-        [InlineKeyboardButton("🔗 تنظیم لینک کانال", callback_data="forcedsub:channel")],
-        [InlineKeyboardButton("✉️ تنظیم پیام", callback_data="forcedsub:message")],
-        [InlineKeyboardButton("👥 لیست کاربران", callback_data="forcedsub:users")],
-        [InlineKeyboardButton("🔄 بررسی همه", callback_data="forcedsub:check_all")],
-        [InlineKeyboardButton("⬅️ بازگشت", callback_data="adm:system")],
+        [InlineKeyboardButton("ð¢ ÙØ¹Ø§ÙâØ³Ø§Ø²Û" if not enabled else "ð´ ØºÛØ±ÙØ¹Ø§ÙâØ³Ø§Ø²Û", callback_data="forcedsub:toggle")],
+        [InlineKeyboardButton("ð ØªÙØ¸ÛÙ ÙÛÙÚ© Ú©Ø§ÙØ§Ù", callback_data="forcedsub:channel")],
+        [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙ Ù¾ÛØ§Ù", callback_data="forcedsub:message")],
+        [InlineKeyboardButton("ð¥ ÙÛØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù", callback_data="forcedsub:users")],
+        [InlineKeyboardButton("ð Ø¨Ø±Ø±Ø³Û ÙÙÙ", callback_data="forcedsub:check_all")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="adm:system")],
     ]
     
     if update.callback_query:
@@ -9822,38 +9799,38 @@ async def _show_admin_section(update, context, section):
     if section == 'dashboard':
         s = admin_stats()
         text = (
-            "📊 <b>داشبورد مرکزی</b>\n\n"
-            f"👥 کاربران: {s['users']}\n"
-            f"🆕 جدید امروز: {s['new_today']}\n"
-            f"🟢 فعال امروز: {s['active_today']}\n"
-            f"🎯 اهداف: {s['goals']}\n"
-            f"✅ انجام‌شده امروز: {s['done_today']}\n"
-            f"⏰ یادآوری: {s['reminders']}\n"
-            f"🏆 دستاورد: {s['achievements']}\n"
-            f"📅 نوبت امروز: {s['appointments_today']}\n"
-            f"💎 VIP فعال: {s['vip_users']}\n"
-            f"🎫 تیکت باز: {s['open_tickets']}"
+            "ð <b>Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ ÙØ±Ú©Ø²Û</b>\n\n"
+            f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: {s['users']}\n"
+            f"ð Ø¬Ø¯ÛØ¯ Ø§ÙØ±ÙØ²: {s['new_today']}\n"
+            f"ð¢ ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: {s['active_today']}\n"
+            f"ð¯ Ø§ÙØ¯Ø§Ù: {s['goals']}\n"
+            f"â Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø§ÙØ±ÙØ²: {s['done_today']}\n"
+            f"â° ÛØ§Ø¯Ø¢ÙØ±Û: {s['reminders']}\n"
+            f"ð Ø¯Ø³ØªØ§ÙØ±Ø¯: {s['achievements']}\n"
+            f"ð ÙÙØ¨Øª Ø§ÙØ±ÙØ²: {s['appointments_today']}\n"
+            f"ð VIP ÙØ¹Ø§Ù: {s['vip_users']}\n"
+            f"ð« ØªÛÚ©Øª Ø¨Ø§Ø²: {s['open_tickets']}"
         )
         await update.message.reply_text(text, reply_markup=back_kb)
     elif section == 'users':
         c = db()
         rows = c.execute("SELECT user_id,first_name,COALESCE(xp,0) xp,blocked FROM users ORDER BY created_at DESC LIMIT 20").fetchall()
         c.close()
-        lines = ["👥 <b>آخرین کاربران</b>", ""]
+        lines = ["ð¥ <b>Ø¢Ø®Ø±ÛÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>", ""]
         for r in rows:
-            name = r['first_name'] or 'بدون نام'
-            status = '⛔' if r['blocked'] else '🟢'
-            lines.append(f"{status} {name} | ID: <code>{r['user_id']}</code> | ⭐{r['xp']}")
-        text = '\n'.join(lines) if len(rows) else '👥 کاربری ثبت نشده.'
+            name = r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù'
+            status = 'â' if r['blocked'] else 'ð¢'
+            lines.append(f"{status} {name} | ID: <code>{r['user_id']}</code> | â­{r['xp']}")
+        text = '\n'.join(lines) if len(rows) else 'ð¥ Ú©Ø§Ø±Ø¨Ø±Û Ø«Ø¨Øª ÙØ´Ø¯Ù.'
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'tickets':
         c = db()
         rows = c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall()
         c.close()
-        lines = ["🎫 <b>تیکت‌های باز</b>", ""]
+        lines = ["ð« <b>ØªÛÚ©ØªâÙØ§Û Ø¨Ø§Ø²</b>", ""]
         for r in rows:
-            lines.append(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}")
-        text = '\n'.join(lines) if rows else '🎫 تیکت بازی نیست.'
+            lines.append(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'Ø¨Ø¯ÙÙ Ø¹ÙÙØ§Ù'}")
+        text = '\n'.join(lines) if rows else 'ð« ØªÛÚ©Øª Ø¨Ø§Ø²Û ÙÛØ³Øª.'
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'finance':
         c = db()
@@ -9862,36 +9839,36 @@ async def _show_admin_section(update, context, section):
         vip = c.execute("SELECT COUNT(*) n FROM subscription_history").fetchone()['n']
         c.close()
         text = (
-            f"💰 <b>مالی و پرداخت</b>\n\n"
-            f"💳 تراکنش‌ها: {payments}\n"
-            f"💵 مبلغ ثبت‌شده: {revenue:,}\n"
-            f"💎 سوابق اشتراک: {vip}"
+            f"ð° <b>ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª</b>\n\n"
+            f"ð³ ØªØ±Ø§Ú©ÙØ´âÙØ§: {payments}\n"
+            f"ðµ ÙØ¨ÙØº Ø«Ø¨ØªâØ´Ø¯Ù: {revenue:,}\n"
+            f"ð Ø³ÙØ§Ø¨Ù Ø§Ø´ØªØ±Ø§Ú©: {vip}"
         )
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'xpvip':
         text = (
-            "⭐ <b>XP / VIP</b>\n\n"
-            "از بخش کاربران، پرونده هر کاربر را باز کن تا XP و اشتراک را مدیریت کنی.\n\n"
-            "برای اشتراک: ➕ اضافه‌کردن روز، ➖ کم‌کردن روز، ✏️ ویرایش یا ❌ لغو کامل."
+            "â­ <b>XP / VIP</b>\n\n"
+            "Ø§Ø² Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ Ù¾Ø±ÙÙØ¯Ù ÙØ± Ú©Ø§Ø±Ø¨Ø± Ø±Ø§ Ø¨Ø§Ø² Ú©Ù ØªØ§ XP Ù Ø§Ø´ØªØ±Ø§Ú© Ø±Ø§ ÙØ¯ÛØ±ÛØª Ú©ÙÛ.\n\n"
+            "Ø¨Ø±Ø§Û Ø§Ø´ØªØ±Ø§Ú©: â Ø§Ø¶Ø§ÙÙâÚ©Ø±Ø¯Ù Ø±ÙØ²Ø â Ú©ÙâÚ©Ø±Ø¯Ù Ø±ÙØ²Ø âï¸ ÙÛØ±Ø§ÛØ´ ÛØ§ â ÙØºÙ Ú©Ø§ÙÙ."
         )
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'channel':
-        await update.message.reply_text("📡 <b>مدیریت کانال و پست‌گذاری</b>", parse_mode='HTML', reply_markup=channel_keyboard())
+        await update.message.reply_text("ð¡ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>", parse_mode='HTML', reply_markup=channel_keyboard())
     elif section == 'health':
         await run_health_checks(context.bot, uid)
         await update.message.reply_text(health_text(), reply_markup=back_kb)
     elif section == 'backup':
         ok = backup_database_snapshot(keep=20)
         admin_log(uid, 'manual_backup', None, 'success' if ok else 'failed')
-        text = '💾 بکاپ با موفقیت ساخته شد.' if ok else '❌ ساخت بکاپ ناموفق بود.'
+        text = 'ð¾ Ø¨Ú©Ø§Ù¾ Ø¨Ø§ ÙÙÙÙÛØª Ø³Ø§Ø®ØªÙ Ø´Ø¯.' if ok else 'â Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾ ÙØ§ÙÙÙÙ Ø¨ÙØ¯.'
         await update.message.reply_text(text, reply_markup=back_kb)
     elif section == 'features':
         await update.message.reply_text(feature_admin_text(), reply_markup=feature_admin_keyboard())
     elif section == 'security':
         text = (
-            "🔐 <b>امنیت و Audit</b>\n\n"
-            "از بخش لاگ مدیران، اقدامات اخیر را بررسی کن.\n"
-            "از بخش کاربران، کاربران محدود شده را مدیریت کن."
+            "ð <b>Ø§ÙÙÛØª Ù Audit</b>\n\n"
+            "Ø§Ø² Ø¨Ø®Ø´ ÙØ§Ú¯ ÙØ¯ÛØ±Ø§ÙØ Ø§ÙØ¯Ø§ÙØ§Øª Ø§Ø®ÛØ± Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.\n"
+            "Ø§Ø² Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ­Ø¯ÙØ¯ Ø´Ø¯Ù Ø±Ø§ ÙØ¯ÛØ±ÛØª Ú©Ù."
         )
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'test':
@@ -9899,20 +9876,20 @@ async def _show_admin_section(update, context, section):
     elif section == 'system':
         paused = get_system_setting('bot_paused_until', '')
         maintenance = feature_enabled('maintenance')
-        forced_sub_status = "🟢 فعال" if _forced_sub_is_enabled() else "🔴 غیرفعال"
+        forced_sub_status = "ð¢ ÙØ¹Ø§Ù" if _forced_sub_is_enabled() else "ð´ ØºÛØ±ÙØ¹Ø§Ù"
         text = (
-            f"⚙️ <b>تنظیمات سیستم</b>\n\n"
-            f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-            f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
-            f"🔒 عضویت اجباری: {forced_sub_status}\n"
-            f"🗄 Schema: {DB_SCHEMA_VERSION}"
+            f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\n"
+            f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+            f"â¸ ØªÙÙÙ ÙÙÙØª: {html.escape(paused or 'ÙØ¹Ø§Ù ÙÛØ³Øª')}\n"
+            f"ð Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û: {forced_sub_status}\n"
+            f"ð Schema: {DB_SCHEMA_VERSION}"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔒 عضویت اجباری کانال", callback_data="forcedsub:home")],
+            [InlineKeyboardButton("ð Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û Ú©Ø§ÙØ§Ù", callback_data="forcedsub:home")],
         ])
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=kb)
     elif section == 'other':
-        text = "📦 <b>سایر ماژول‌های مدیریتی</b>\n\nاز منوی زیر بخش موردنظر را انتخاب کن." if fa else "📦 <b>Other Admin Modules</b>"
+        text = "ð¦ <b>Ø³Ø§ÛØ± ÙØ§ÚÙÙâÙØ§Û ÙØ¯ÛØ±ÛØªÛ</b>\n\nØ§Ø² ÙÙÙÛ Ø²ÛØ± Ø¨Ø®Ø´ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù." if fa else "ð¦ <b>Other Admin Modules</b>"
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     else:
         await admin_command(update, context)
@@ -9931,7 +9908,7 @@ async def text_router(update, context):
     # Universal navigation has absolute priority.
     # These are real ReplyKeyboard buttons, so this routing must live in the
     # handler that is registered by main(); later wrapper definitions are too late.
-    if text in ("🏠 منوی اصلی", "🏠 Main Menu"):
+    if text in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu"):
         clear_flow(context)
         try:
             await update.message.delete()
@@ -9945,266 +9922,266 @@ async def text_router(update, context):
             reply_markup=_compact_root_inline(uid),
         )
         return
-    if text in ("⬅️ برگشت", "⬅️ Back"):
+    if text in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
         clear_flow(context)
         try:
             await update.message.delete()
         except Exception:
             pass
         # From an error/input recovery keyboard, Back returns to the compact
-        # Goals section—the section that owns the "🎯 برنامه من" entry.
+        # Goals sectionâthe section that owns the "ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ" entry.
         await context.bot.send_message(
             chat_id=uid,
-            text="🎯 <b>برنامه و اهداف</b>" if lang(uid)=="fa" else "🎯 <b>Goals & Plan</b>",
+            text="ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>" if lang(uid)=="fa" else "ð¯ <b>Goals & Plan</b>",
             parse_mode="HTML",
             reply_markup=_compact_menu_keyboard(uid, "goals"),
         )
         return
 
-    # "🎯 برنامه من" is a top-level ReplyKeyboard action. Handle it here before
+    # "ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ" is a top-level ReplyKeyboard action. Handle it here before
     # the legacy input state machine; otherwise the old chain can raise TypeError.
-    if text in ("🎯 برنامه من", "🎯 My Plan"):
+    if text in ("ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ", "ð¯ My Plan"):
         clear_flow(context)
         await _compact_menu_show(update, context, "goals")
         return
 
-    if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+    if txt in ("ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot"):
         clear_flow(context)
         await update.message.reply_text(
-            "👤 <b>استفاده از ربات</b>\n\nقابلیت‌های عادی ربات در دسترس تو هستند." if lang(uid)=="fa" else
-            "👤 <b>Use Bot</b>\n\nAll normal bot features are available here.",
+            "ð¤ <b>Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª</b>\n\nÙØ§Ø¨ÙÛØªâÙØ§Û Ø¹Ø§Ø¯Û Ø±Ø¨Ø§Øª Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ØªÙ ÙØ³ØªÙØ¯." if lang(uid)=="fa" else
+            "ð¤ <b>Use Bot</b>\n\nAll normal bot features are available here.",
             parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
         )
         return
-    if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+    if txt in ("ð¡ ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª", "ð¡ Bot Management"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=keyboard(uid))
             return
         clear_flow(context)
         await _show_admin_management(update, context)
         return
     # Birthday & Events buttons
-    if txt in ("🎂 تولد من", "🎂 My Birthday"):
+    if txt in ("ð ØªÙÙØ¯ ÙÙ", "ð My Birthday"):
         if not birthday_enabled():
-            await update.message.reply_text("🎂 این قابلیت در حال حاضر غیرفعال است.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("ð Ø§ÛÙ ÙØ§Ø¨ÙÛØª Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.", reply_markup=compact_keyboard(uid))
             return
         await birthday_show_callback(update, context)
         return
-    if txt in ("🎂 تولد و مناسبت‌ها", "🎂 Birthday & Events"):
+    if txt in ("ð ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§", "ð Birthday & Events"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "🎂 <b>تولد و مناسبت‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        text = "ð <b>ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§</b>\n\nØ¨Ø®Ø´ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎂 مدیریت تولد", callback_data="adm:birthdays:list"),
-             InlineKeyboardButton("⚙️ تنظیمات تولد", callback_data="adm:birthdays:settings")],
-            [InlineKeyboardButton("📅 مناسبت‌ها", callback_data="adm:events:list")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð ÙØ¯ÛØ±ÛØª ØªÙÙØ¯", callback_data="adm:birthdays:list"),
+             InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª ØªÙÙØ¯", callback_data="adm:birthdays:settings")],
+            [InlineKeyboardButton("ð ÙÙØ§Ø³Ø¨ØªâÙØ§", callback_data="adm:events:list")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🎁 هدیه مدیریتی", "🎁 Admin Gifts"):
+    if txt in ("ð ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ", "ð Admin Gifts"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         text = (
-            "🎁 <b>هدیه مدیریتی</b>\n\n"
-            "برای ارسال هدیه به کاربر:\n"
-            "1️⃣ شناسه کاربر رو بفرست\n"
-            "2️⃣ نوع هدیه رو انتخاب کن\n"
-            "3️⃣ مقدار و مدت رو تعیین کن"
+            "ð <b>ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ</b>\n\n"
+            "Ø¨Ø±Ø§Û Ø§Ø±Ø³Ø§Ù ÙØ¯ÛÙ Ø¨Ù Ú©Ø§Ø±Ø¨Ø±:\n"
+            "1ï¸â£ Ø´ÙØ§Ø³Ù Ú©Ø§Ø±Ø¨Ø± Ø±Ù Ø¨ÙØ±Ø³Øª\n"
+            "2ï¸â£ ÙÙØ¹ ÙØ¯ÛÙ Ø±Ù Ø§ÙØªØ®Ø§Ø¨ Ú©Ù\n"
+            "3ï¸â£ ÙÙØ¯Ø§Ø± Ù ÙØ¯Øª Ø±Ù ØªØ¹ÛÛÙ Ú©Ù"
         )
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]])
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")]])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         context.user_data["admin_gift_mode"] = "user_id"
         return
     # New admin menu items (restructured)
-    if txt in ("👥 کاربران و پاداش‌ها", "👥 Users & Rewards"):
+    if txt in ("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§", "ð¥ Users & Rewards"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "👥 <b>کاربران و پاداش‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        text = "ð¥ <b>Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§</b>\n\nØ¨Ø®Ø´ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👥 لیست کاربران", callback_data="adm:users"),
-             InlineKeyboardButton("🔎 جستجو", callback_data="adm:search")],
-            [InlineKeyboardButton("⭐ XP / VIP", callback_data="adm:xpvip"),
-             InlineKeyboardButton("🎁 هدیه مدیریتی", callback_data="adm:gifts")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð¥ ÙÛØ³Øª Ú©Ø§Ø±Ø¨Ø±Ø§Ù", callback_data="adm:users"),
+             InlineKeyboardButton("ð Ø¬Ø³ØªØ¬Ù", callback_data="adm:search")],
+            [InlineKeyboardButton("â­ XP / VIP", callback_data="adm:xpvip"),
+             InlineKeyboardButton("ð ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ", callback_data="adm:gifts")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("💎 اشتراک و دسترسی‌ها", "💎 Subscriptions & Access"):
+    if txt in ("ð Ø§Ø´ØªØ±Ø§Ú© Ù Ø¯Ø³ØªØ±Ø³ÛâÙØ§", "ð Subscriptions & Access"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "💎 <b>اشتراک و دسترسی‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
+        text = "ð <b>Ø§Ø´ØªØ±Ø§Ú© Ù Ø¯Ø³ØªØ±Ø³ÛâÙØ§</b>\n\nØ¨Ø®Ø´ ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💎 مدیریت VIP", callback_data="adm:xpvip"),
-             InlineKeyboardButton("🔐 ماتریس دسترسی", callback_data="adm:access")],
-            [InlineKeyboardButton("🧩 قابلیت‌ها", callback_data="adm:features"),
-             InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð ÙØ¯ÛØ±ÛØª VIP", callback_data="adm:xpvip"),
+             InlineKeyboardButton("ð ÙØ§ØªØ±ÛØ³ Ø¯Ø³ØªØ±Ø³Û", callback_data="adm:access")],
+            [InlineKeyboardButton("ð§© ÙØ§Ø¨ÙÛØªâÙØ§", callback_data="adm:features"),
+             InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª", callback_data="adm:features")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
+    if txt in ("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", "ð¢ Channel Management"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        await update.message.reply_text("📡 <b>مدیریت کانال</b>", parse_mode="HTML", reply_markup=channel_keyboard())
+        await update.message.reply_text("ð¡ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù</b>", parse_mode="HTML", reply_markup=channel_keyboard())
         return
-    if txt in ("🎯 اهداف و یادآوری", "🎯 Goals & Reminders"):
+    if txt in ("ð¯ Ø§ÙØ¯Ø§Ù Ù ÛØ§Ø¯Ø¢ÙØ±Û", "ð¯ Goals & Reminders"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         c = db()
         goals = c.execute("SELECT COUNT(*) n FROM goals").fetchone()["n"]
         active = c.execute("SELECT COUNT(*) n FROM goals WHERE enabled=1").fetchone()["n"]
         c.close()
-        text = f"🎯 <b>اهداف و یادآوری</b>\n\n🎯 کل اهداف: {goals}\n✅ فعال: {active}"
+        text = f"ð¯ <b>Ø§ÙØ¯Ø§Ù Ù ÛØ§Ø¯Ø¢ÙØ±Û</b>\n\nð¯ Ú©Ù Ø§ÙØ¯Ø§Ù: {goals}\nâ ÙØ¹Ø§Ù: {active}"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª", callback_data="adm:features")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("📈 قیمت و بازار", "📈 Prices & Market"):
+    if txt in ("ð ÙÛÙØª Ù Ø¨Ø§Ø²Ø§Ø±", "ð Prices & Market"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "📈 <b>قیمت و بازار</b>\n\nاز بخش ابزارهای هوشمند برای کاربران قابل دسترسی است."
+        text = "ð <b>ÙÛÙØª Ù Ø¨Ø§Ø²Ø§Ø±</b>\n\nØ§Ø² Ø¨Ø®Ø´ Ø§Ø¨Ø²Ø§Ø±ÙØ§Û ÙÙØ´ÙÙØ¯ Ø¨Ø±Ø§Û Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ§Ø¨Ù Ø¯Ø³ØªØ±Ø³Û Ø§Ø³Øª."
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª", callback_data="adm:features")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("💳 پرداخت‌ها", "💳 Payments"):
+    if txt in ("ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§", "ð³ Payments"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         c = db()
         payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"]
         revenue = c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()["n"]
         c.close()
-        text = f"💳 <b>پرداخت‌ها</b>\n\n💳 تراکنش‌ها: {payments}\n💵 مبلغ: {revenue:,}"
+        text = f"ð³ <b>Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§</b>\n\nð³ ØªØ±Ø§Ú©ÙØ´âÙØ§: {payments}\nðµ ÙØ¨ÙØº: {revenue:,}"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª", callback_data="adm:features")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("👥 مشتری و رزرو", "👥 Customers & Bookings"):
+    if txt in ("ð¥ ÙØ´ØªØ±Û Ù Ø±Ø²Ø±Ù", "ð¥ Customers & Bookings"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         await _show_admin_section(update, context, "users")
         return
 
-    if txt in ("🎫 پشتیبانی و تیکت", "🎫 Support & Tickets"):
+    if txt in ("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ Ù ØªÛÚ©Øª", "ð« Support & Tickets"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         c = db()
         rows = c.execute("SELECT id,user_id,subject FROM tickets WHERE status='open' ORDER BY updated_at DESC LIMIT 20").fetchall()
         c.close()
-        text = "🎫 <b>تیکت‌های باز</b>\n\n" + "\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'بدون عنوان'}" for r in rows) or "تیکت بازی نیست"
+        text = "ð« <b>ØªÛÚ©ØªâÙØ§Û Ø¨Ø§Ø²</b>\n\n" + "\n".join(f"#{r['id']} | {r['user_id']} | {r['subject'] or 'Ø¨Ø¯ÙÙ Ø¹ÙÙØ§Ù'}" for r in rows) or "ØªÛÚ©Øª Ø¨Ø§Ø²Û ÙÛØ³Øª"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("📊 آمار و گزارش", "📊 Reports & Analytics"):
+    if txt in ("ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´", "ð Reports & Analytics"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         s = admin_stats()
         text = (
-            f"📊 <b>آمار و گزارش</b>\n\n"
-            f"👥 کاربران: {s['users']}\n"
-            f"🎯 اهداف: {s['goals']}\n"
-            f"✅ انجام‌شده امروز: {s['done_today']}\n"
-            f"🏆 دستاورد: {s['achievements']}"
+            f"ð <b>Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´</b>\n\n"
+            f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: {s['users']}\n"
+            f"ð¯ Ø§ÙØ¯Ø§Ù: {s['goals']}\n"
+            f"â Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø§ÙØ±ÙØ²: {s['done_today']}\n"
+            f"ð Ø¯Ø³ØªØ§ÙØ±Ø¯: {s['achievements']}"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📋 گزارش روز", callback_data="adm:report"),
-             InlineKeyboardButton("📝 لاگ مدیران", callback_data="adm:audit")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ Ø±ÙØ²", callback_data="adm:report"),
+             InlineKeyboardButton("ð ÙØ§Ú¯ ÙØ¯ÛØ±Ø§Ù", callback_data="adm:audit")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🧪 مرکز تست", "🧪 Test Center"):
+    if txt in ("ð§ª ÙØ±Ú©Ø² ØªØ³Øª", "ð§ª Test Center"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "🧪 <b>مرکز تست</b>\n\nتست‌های سیستم را اجرا کن."
+        text = "ð§ª <b>ÙØ±Ú©Ø² ØªØ³Øª</b>\n\nØªØ³ØªâÙØ§Û Ø³ÛØ³ØªÙ Ø±Ø§ Ø§Ø¬Ø±Ø§ Ú©Ù."
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🩺 Health Check", callback_data="adm:health_run"),
-             InlineKeyboardButton("🔎 عیب‌یابی", callback_data="adm:diagnostics")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð©º Health Check", callback_data="adm:health_run"),
+             InlineKeyboardButton("ð Ø¹ÛØ¨âÛØ§Ø¨Û", callback_data="adm:diagnostics")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🧩 قابلیت‌ها", "🧩 Features"):
+    if txt in ("ð§© ÙØ§Ø¨ÙÛØªâÙØ§", "ð§© Features"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         await update.message.reply_text(feature_admin_text(), reply_markup=feature_admin_keyboard())
         return
-    if txt in ("⚙️ تنظیمات سیستم", "⚙️ System Settings"):
+    if txt in ("âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ", "âï¸ System Settings"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         paused = get_system_setting("bot_paused_until", "")
         maintenance = feature_enabled("maintenance")
         text = (
-            f"⚙️ <b>تنظیمات سیستم</b>\n\n"
-            f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-            f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
-            f"🗄 Schema: {DB_SCHEMA_VERSION}"
+            f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\n"
+            f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+            f"â¸ ØªÙÙÙ ÙÙÙØª: {html.escape(paused or 'ÙØ¹Ø§Ù ÙÛØ³Øª')}\n"
+            f"ð Schema: {DB_SCHEMA_VERSION}"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧩 تغییر قابلیت‌ها", callback_data="adm:features")],
-            [InlineKeyboardButton("⏸ مدیریت توقف", callback_data="adm:pause")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð§© ØªØºÛÛØ± ÙØ§Ø¨ÙÛØªâÙØ§", callback_data="adm:features")],
+            [InlineKeyboardButton("â¸ ÙØ¯ÛØ±ÛØª ØªÙÙÙ", callback_data="adm:pause")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🔐 امنیت", "🔐 Security"):
+    if txt in ("ð Ø§ÙÙÛØª", "ð Security"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         text = (
-            "🔐 <b>امنیت</b>\n\n"
-            "از بخش لاگ مدیران، اقدامات اخیر را بررسی کن.\n"
-            "از بخش کاربران، کاربران محدود شده را مدیریت کن."
+            "ð <b>Ø§ÙÙÛØª</b>\n\n"
+            "Ø§Ø² Ø¨Ø®Ø´ ÙØ§Ú¯ ÙØ¯ÛØ±Ø§ÙØ Ø§ÙØ¯Ø§ÙØ§Øª Ø§Ø®ÛØ± Ø±Ø§ Ø¨Ø±Ø±Ø³Û Ú©Ù.\n"
+            "Ø§Ø² Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ Ú©Ø§Ø±Ø¨Ø±Ø§Ù ÙØ­Ø¯ÙØ¯ Ø´Ø¯Ù Ø±Ø§ ÙØ¯ÛØ±ÛØª Ú©Ù."
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📝 لاگ مدیران", callback_data="adm:audit")],
-            [InlineKeyboardButton("👥 کاربران", callback_data="adm:users")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("ð ÙØ§Ú¯ ÙØ¯ÛØ±Ø§Ù", callback_data="adm:audit")],
+            [InlineKeyboardButton("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù", callback_data="adm:users")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("💾 بکاپ و بازیابی", "💾 Backup & Recovery"):
+    if txt in ("ð¾ Ø¨Ú©Ø§Ù¾ Ù Ø¨Ø§Ø²ÛØ§Ø¨Û", "ð¾ Backup & Recovery"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
         ok = backup_database_snapshot(keep=20)
         admin_log(uid, "manual_backup", None, "success" if ok else "failed")
-        text = "💾 بکاپ با موفقیت ساخته شد." if ok else "❌ ساخت بکاپ ناموفق بود."
+        text = "ð¾ Ø¨Ú©Ø§Ù¾ Ø¨Ø§ ÙÙÙÙÛØª Ø³Ø§Ø®ØªÙ Ø´Ø¯." if ok else "â Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾ ÙØ§ÙÙÙÙ Ø¨ÙØ¯."
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, reply_markup=kb)
         return
-    if txt in ("📦 ماژول‌های دیگر", "📦 Other Modules"):
+    if txt in ("ð¦ ÙØ§ÚÙÙâÙØ§Û Ø¯ÛÚ¯Ø±", "ð¦ Other Modules"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=compact_keyboard(uid))
             return
-        text = "📦 <b>ماژول‌های دیگر</b>\n\nاز بخش‌های مختلف پنل مدیریت استفاده کن."
+        text = "ð¦ <b>ÙØ§ÚÙÙâÙØ§Û Ø¯ÛÚ¯Ø±</b>\n\nØ§Ø² Ø¨Ø®Ø´âÙØ§Û ÙØ®ØªÙÙ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù."
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
+            [InlineKeyboardButton("â¬ï¸ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", callback_data="adm:stats")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
@@ -10212,64 +10189,64 @@ async def text_router(update, context):
     # Admin section navigation: each button opens its specific section
     _admin_section_map = {
         # Dashboard
-        "📊 داشبورد و گزارش": "dashboard", "📊 Dashboard & Reports": "dashboard",
+        "ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Ú¯Ø²Ø§Ø±Ø´": "dashboard", "ð Dashboard & Reports": "dashboard",
         # Users
-        "👥 کاربران و نقش‌ها": "users", "👥 Users & Roles": "users",
-        "👥 کاربران و پاداش‌ها": "users",
+        "ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§": "users", "ð¥ Users & Roles": "users",
+        "ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§": "users",
         # Tickets
-        "🎫 تیکت‌ها و Incident": "tickets", "🎫 Tickets & Incidents": "tickets",
-        "🎫 پشتیبانی و تیکت": "tickets",
+        "ð« ØªÛÚ©ØªâÙØ§ Ù Incident": "tickets", "ð« Tickets & Incidents": "tickets",
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ Ù ØªÛÚ©Øª": "tickets",
         # Finance
-        "💰 مالی و پرداخت": "finance", "💰 Finance & Payments": "finance",
+        "ð° ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª": "finance", "ð° Finance & Payments": "finance",
         # VIP/XP
-        "💎 VIP / XP / Token": "xpvip",
-        "💎 اشتراک و دسترسی‌ها": "xpvip",
+        "ð VIP / XP / Token": "xpvip",
+        "ð Ø§Ø´ØªØ±Ø§Ú© Ù Ø¯Ø³ØªØ±Ø³ÛâÙØ§": "xpvip",
         # Channel
-        "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
-        "📢 مدیریت کانال": "channel",
+        "ð¢ Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±": "channel", "ð¢ Channels & Publishing": "channel",
+        "ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù": "channel",
         # AI
         # Health
-        "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
-        "🩺 Health Check": "health",
+        "ð©º Ø³ÙØ§ÙØª Ù Diagnostics": "health", "ð©º Health & Diagnostics": "health",
+        "ð©º Health Check": "health",
         # Backup
-        "💾 Backup و Recovery": "backup", "💾 Backup & Recovery": "backup",
-        "💾 بکاپ و بازیابی": "backup",
+        "ð¾ Backup Ù Recovery": "backup", "ð¾ Backup & Recovery": "backup",
+        "ð¾ Ø¨Ú©Ø§Ù¾ Ù Ø¨Ø§Ø²ÛØ§Ø¨Û": "backup",
         # Features
-        "🧩 قابلیت‌ها و Feature Flags": "features", "🧩 Features & Flags": "features",
-        "🧩 قابلیت‌ها": "features",
+        "ð§© ÙØ§Ø¨ÙÛØªâÙØ§ Ù Feature Flags": "features", "ð§© Features & Flags": "features",
+        "ð§© ÙØ§Ø¨ÙÛØªâÙØ§": "features",
         # Security
-        "🔐 امنیت و Audit": "security", "🔐 Security & Audit": "security",
-        "🔐 امنیت": "security",
+        "ð Ø§ÙÙÛØª Ù Audit": "security", "ð Security & Audit": "security",
+        "ð Ø§ÙÙÛØª": "security",
         # Test
-        "🧪 مرکز تست و Regression": "test", "🧪 Test & Regression": "test",
-        "🧪 مرکز تست": "test",
+        "ð§ª ÙØ±Ú©Ø² ØªØ³Øª Ù Regression": "test", "ð§ª Test & Regression": "test",
+        "ð§ª ÙØ±Ú©Ø² ØªØ³Øª": "test",
         # System
-        "⚙️ تنظیمات سیستم": "system", "⚙️ System Settings": "system",
+        "âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ": "system", "âï¸ System Settings": "system",
         # Other
-        "📦 سایر ماژول‌های مدیریتی": "other", "📦 Other Admin Modules": "other",
-        "📦 ماژول‌های دیگر": "other",
+        "ð¦ Ø³Ø§ÛØ± ÙØ§ÚÙÙâÙØ§Û ÙØ¯ÛØ±ÛØªÛ": "other", "ð¦ Other Admin Modules": "other",
+        "ð¦ ÙØ§ÚÙÙâÙØ§Û Ø¯ÛÚ¯Ø±": "other",
         # Birthday
-        "🎂 تولد و مناسبت‌ها": "birthday",
+        "ð ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§": "birthday",
         # Goals
-        "🎯 اهداف و یادآوری": "dashboard",
+        "ð¯ Ø§ÙØ¯Ø§Ù Ù ÛØ§Ø¯Ø¢ÙØ±Û": "dashboard",
         # Prices
-        "📈 قیمت و بازار": "finance",
+        "ð ÙÛÙØª Ù Ø¨Ø§Ø²Ø§Ø±": "finance",
         # Payments
-        "💳 پرداخت‌ها": "finance",
+        "ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§": "finance",
         # Customers
-        "👥 مشتری و رزرو": "users",
+        "ð¥ ÙØ´ØªØ±Û Ù Ø±Ø²Ø±Ù": "users",
         # Voice
         # Gifts
-        "🎁 هدیه مدیریتی": "xpvip",
+        "ð ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ": "xpvip",
         # Referrals
-        "📣 دعوت و رفرال": "other",
-        "📣 Referrals": "other",
+        "ð£ Ø¯Ø¹ÙØª Ù Ø±ÙØ±Ø§Ù": "other",
+        "ð£ Referrals": "other",
     }
     # Forced subscription has its own dedicated admin panel and is exposed
     # directly from the main management menu for quick access.
-    if txt in ("🔒 عضویت اجباری کانال", "🔒 Mandatory Channel Subscription"):
+    if txt in ("ð Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û Ú©Ø§ÙØ§Ù", "ð Mandatory Channel Subscription"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=keyboard(uid))
             return
         await _forced_sub_admin_panel(update, context)
         return
@@ -10288,7 +10265,7 @@ async def text_router(update, context):
                 if dval > 0:
                     _forced_sub_set("forced_sub_duration_type", "hours")
                     _forced_sub_set("forced_sub_duration_value", str(dval))
-                    await update.message.reply_text(f"✅ مدت {dval} ساعت ذخیره شد.")
+                    await update.message.reply_text(f"â ÙØ¯Øª {dval} Ø³Ø§Ø¹Øª Ø°Ø®ÛØ±Ù Ø´Ø¯.")
                     return
             except ValueError:
                 pass
@@ -10298,11 +10275,11 @@ async def text_router(update, context):
                 if dval > 0:
                     _forced_sub_set("forced_sub_duration_type", "days")
                     _forced_sub_set("forced_sub_duration_value", str(dval))
-                    await update.message.reply_text(f"✅ مدت {dval} روز ذخیره شد.")
+                    await update.message.reply_text(f"â ÙØ¯Øª {dval} Ø±ÙØ² Ø°Ø®ÛØ±Ù Ø´Ø¯.")
                     return
             except ValueError:
                 pass
-        await update.message.reply_text("⚠️ فرمت نادرست. مثال: 48h یا 7d")
+        await update.message.reply_text("â ï¸ ÙØ±ÙØª ÙØ§Ø¯Ø±Ø³Øª. ÙØ«Ø§Ù: 48h ÛØ§ 7d")
         return
     if context.user_data.get("forced_sub_wait") == "channel_url":
         context.user_data.pop("forced_sub_wait", None)
@@ -10315,29 +10292,29 @@ async def text_router(update, context):
         )
         if valid:
             _forced_sub_set("forced_sub_channel_url", channel_value)
-            await update.message.reply_text(f"✅ کانال ذخیره شد:\n{channel_value}")
+            await update.message.reply_text(f"â Ú©Ø§ÙØ§Ù Ø°Ø®ÛØ±Ù Ø´Ø¯:\n{channel_value}")
         else:
             await update.message.reply_text(
-                "⚠️ فرمت کانال معتبر نیست.\n\n"
-                "نمونه معتبر:\n@ChannelUsername\nhttps://t.me/ChannelUsername\n-1001234567890"
+                "â ï¸ ÙØ±ÙØª Ú©Ø§ÙØ§Ù ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.\n\n"
+                "ÙÙÙÙÙ ÙØ¹ØªØ¨Ø±:\n@ChannelUsername\nhttps://t.me/ChannelUsername\n-1001234567890"
             )
         return
     if context.user_data.get("forced_sub_wait") == "custom_message":
         context.user_data.pop("forced_sub_wait", None)
         _forced_sub_set("forced_sub_message", txt)
-        await update.message.reply_text("✅ پیام اختصاصی ذخیره شد.")
+        await update.message.reply_text("â Ù¾ÛØ§Ù Ø§Ø®ØªØµØ§ØµÛ Ø°Ø®ÛØ±Ù Ø´Ø¯.")
         return
 
     # V25 modules must also have priority over transient legacy input states.
     v25_routes = {
-        "🧠 مرکز من": v25_hub,
-        "🧠 My Center": v25_hub,
-        "💰 سرمایه‌های من": v25_portfolio_menu,
-        "💰 My Portfolio": v25_portfolio_menu,
-        "💳 اقساط": v25_installments_menu,
-        "💳 Installments": v25_installments_menu,
-        "👤 اطلاعات من": v25_profile_menu,
-        "👤 My Profile": v25_profile_menu,
+        "ð§  ÙØ±Ú©Ø² ÙÙ": v25_hub,
+        "ð§  My Center": v25_hub,
+        "ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ": v25_portfolio_menu,
+        "ð° My Portfolio": v25_portfolio_menu,
+        "ð³ Ø§ÙØ³Ø§Ø·": v25_installments_menu,
+        "ð³ Installments": v25_installments_menu,
+        "ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª ÙÙ": v25_profile_menu,
+        "ð¤ My Profile": v25_profile_menu,
     }
     if text in v25_routes:
         clear_flow(context)
@@ -10345,112 +10322,112 @@ async def text_router(update, context):
         return
 
 
-    if text in ("🎟️ توکن‌های من", "🎟️ My Tokens"):
+    if text in ("ðï¸ ØªÙÚ©ÙâÙØ§Û ÙÙ", "ðï¸ My Tokens"):
         clear_flow(context)
         tokens_from_xp(uid)
         await update.message.reply_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
         return
 
     # ===== User Menu Buttons (from _compact_user_keyboard) =====
-    if txt in ("⚡ دسترسی سریع", "⚡ Quick Access"):
+    if txt in ("â¡ Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹", "â¡ Quick Access"):
         clear_flow(context)
         fa = lang(uid) == "fa"
-        text = "⚡ <b>دسترسی سریع</b>\n\nپرتکرارترین قابلیت‌ها:" if fa else "⚡ <b>Quick Access</b>"
+        text = "â¡ <b>Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹</b>\n\nÙ¾Ø±ØªÚ©Ø±Ø§Ø±ØªØ±ÛÙ ÙØ§Ø¨ÙÛØªâÙØ§:" if fa else "â¡ <b>Quick Access</b>"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ افزودن هدف" if fa else "➕ Add Goal", callback_data="new_goal"),
-             InlineKeyboardButton("📋 لیست اهداف" if fa else "📋 Goals List", callback_data="goals:main")],
-            [InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today"),
-             InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders")],
-            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show"),
-             InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Invite Friends", callback_data="ref:home")],
+            [InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù ÙØ¯Ù" if fa else "â Add Goal", callback_data="new_goal"),
+             InlineKeyboardButton("ð ÙÛØ³Øª Ø§ÙØ¯Ø§Ù" if fa else "ð Goals List", callback_data="goals:main")],
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ§ÙÙ Ø§ÙØ±ÙØ²" if fa else "ð Today's Plan", callback_data="goals:today"),
+             InlineKeyboardButton("ð ÛØ§Ø¯Ø¢ÙØ±Û Ø¨Ø¹Ø¯Û" if fa else "ð Next Reminder", callback_data="goalreminders")],
+            [InlineKeyboardButton("ð ØªÙÙØ¯ ÙÙ" if fa else "ð My Birthday", callback_data="birthday:show"),
+             InlineKeyboardButton("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Invite Friends", callback_data="ref:home")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🎯 برنامه و اهداف", "🎯 Goals & Plan"):
+    if txt in ("ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù", "ð¯ Goals & Plan"):
         clear_flow(context)
         await _compact_menu_show(update, context, "goals")
         return
-    if txt in ("📅 تقویم و یادآوری", "📅 Calendar & Reminders"):
+    if txt in ("ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û", "ð Calendar & Reminders"):
         clear_flow(context)
         fa = lang(uid) == "fa"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 تقویم من" if fa else "📅 My Calendar", callback_data="goals:calendar")],
-            [InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders", callback_data="goalreminders")],
-            [InlineKeyboardButton("📆 برنامه امروز" if fa else "📆 Today", callback_data="goals:today")],
+            [InlineKeyboardButton("ð ØªÙÙÛÙ ÙÙ" if fa else "ð My Calendar", callback_data="goals:calendar")],
+            [InlineKeyboardButton("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§" if fa else "ð Reminders", callback_data="goalreminders")],
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ§ÙÙ Ø§ÙØ±ÙØ²" if fa else "ð Today", callback_data="goals:today")],
         ])
-        await update.message.reply_text("📅 <b>تقویم و یادآوری</b>" if fa else "📅 <b>Calendar & Reminders</b>", parse_mode="HTML", reply_markup=kb)
+        await update.message.reply_text("ð <b>ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û</b>" if fa else "ð <b>Calendar & Reminders</b>", parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("👤 حساب من", "👤 My Account"):
+    if txt in ("ð¤ Ø­Ø³Ø§Ø¨ ÙÙ", "ð¤ My Account"):
         clear_flow(context)
         fa = lang(uid) == "fa"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👤 اطلاعات شخصی" if fa else "👤 Personal Info", callback_data="v25:profile")],
-            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
-            [InlineKeyboardButton("👥 مدیریت مشتریان" if fa else "👥 Customers", callback_data="cust:main")],
-            [InlineKeyboardButton("⚙️ تنظیمات" if fa else "⚙️ Settings", callback_data="settings:lang")],
+            [InlineKeyboardButton("ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª Ø´Ø®ØµÛ" if fa else "ð¤ Personal Info", callback_data="v25:profile")],
+            [InlineKeyboardButton("ð ØªÙÙØ¯ ÙÙ" if fa else "ð My Birthday", callback_data="birthday:show")],
+            [InlineKeyboardButton("ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±ÛØ§Ù" if fa else "ð¥ Customers", callback_data="cust:main")],
+            [InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª" if fa else "âï¸ Settings", callback_data="settings:lang")],
         ])
-        await update.message.reply_text("👤 <b>حساب من</b>" if fa else "👤 <b>My Account</b>", parse_mode="HTML", reply_markup=kb)
+        await update.message.reply_text("ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>" if fa else "ð¤ <b>My Account</b>", parse_mode="HTML", reply_markup=kb)
         return
-    if txt in ("🎁 پاداش‌های من", "🎁 My Rewards"):
+    if txt in ("ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ", "ð My Rewards"):
         clear_flow(context)
         await xp_command(update, context)
         return
-    if txt in ("📊 آمار و گزارش", "📊 Reports & Analytics", "📊 Stats & Reports"):
+    if txt in ("ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´", "ð Reports & Analytics", "ð Stats & Reports"):
         clear_flow(context)
         await _compact_menu_show(update, context, "reports")
         return
-    if txt in ("🛠️ ابزارها", "🛠️ Tools"):
+    if txt in ("ð ï¸ Ø§Ø¨Ø²Ø§Ø±ÙØ§", "ð ï¸ Tools"):
         clear_flow(context)
         fa = lang(uid) == "fa"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Prices", callback_data="prices:menu")],
+            [InlineKeyboardButton("ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ" if fa else "ð Prices", callback_data="prices:menu")],
         ])
-        await update.message.reply_text("🛠️ <b>ابزارها</b>" if fa else "🛠️ <b>Tools</b>", parse_mode="HTML", reply_markup=kb)
+        await update.message.reply_text("ð ï¸ <b>Ø§Ø¨Ø²Ø§Ø±ÙØ§</b>" if fa else "ð ï¸ <b>Tools</b>", parse_mode="HTML", reply_markup=kb)
         return
 
     # Every normal legacy button is handled here before any text-input flow.
     legacy_routes = {
-        "🎯 اهداف امروز": today, "🎯 Today's Goals": today,
-        "✏️ هدف خودم می‌نویسم": custom_goal_start, "✏️ Write my own goal": custom_goal_start,
-        "🏆 اهداف آماده": ready_menu, "🏆 Ready Goals": ready_menu,
-        "✏️ ویرایش اهداف": edit_menu, "✏️ Edit Goals": edit_menu,
-        "📅 جدول هفتگی": weekly, "📅 Weekly Table": weekly,
-        "📊 آمار من": stats, "📊 My Stats": stats,
-        "👤 پروفایل": profile, "👤 Profile": profile,
-        "🏆 دستاوردها": achievements, "🏆 Achievements": achievements,
-        "🤝 دعوت دوستان": referral, "🤝 Referrals": referral,
-        "📈 قیمت آنلاین": prices, "📈 Online Prices": prices,
-        "💎 VIP": vip_center,
-        "🎫 پشتیبانی": support_start, "🎫 Support": support_start,
-        "⚙️ تنظیمات": settings, "⚙️ Settings": settings,
-        "👥 مدیریت مشتری و نوبت‌دهی": customer_panel, "👥 Customer & Appointments": customer_panel,
+        "ð¯ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²": today, "ð¯ Today's Goals": today,
+        "âï¸ ÙØ¯Ù Ø®ÙØ¯Ù ÙÛâÙÙÛØ³Ù": custom_goal_start, "âï¸ Write my own goal": custom_goal_start,
+        "ð Ø§ÙØ¯Ø§Ù Ø¢ÙØ§Ø¯Ù": ready_menu, "ð Ready Goals": ready_menu,
+        "âï¸ ÙÛØ±Ø§ÛØ´ Ø§ÙØ¯Ø§Ù": edit_menu, "âï¸ Edit Goals": edit_menu,
+        "ð Ø¬Ø¯ÙÙ ÙÙØªÚ¯Û": weekly, "ð Weekly Table": weekly,
+        "ð Ø¢ÙØ§Ø± ÙÙ": stats, "ð My Stats": stats,
+        "ð¤ Ù¾Ø±ÙÙØ§ÛÙ": profile, "ð¤ Profile": profile,
+        "ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§": achievements, "ð Achievements": achievements,
+        "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù": referral, "ð¤ Referrals": referral,
+        "ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ": prices, "ð Online Prices": prices,
+        "ð VIP": vip_center,
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ": support_start, "ð« Support": support_start,
+        "âï¸ ØªÙØ¸ÛÙØ§Øª": settings, "âï¸ Settings": settings,
+        "ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ": customer_panel, "ð¥ Customer & Appointments": customer_panel,
     }
     if text in legacy_routes:
         requested = FEATURE_MENU_MAP.get(text)
         if requested and not user_feature_allowed(uid, requested):
-            await update.message.reply_text("⛔ این قابلیت فعلاً توسط مدیر غیرفعال شده است.", reply_markup=keyboard(uid))
+            await update.message.reply_text("â Ø§ÛÙ ÙØ§Ø¨ÙÛØª ÙØ¹ÙØ§Ù ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯Ù Ø§Ø³Øª.", reply_markup=keyboard(uid))
             return
         clear_flow(context)
         await legacy_routes[text](update, context)
         return
 
-    if text == "⭐ XP":
+    if text == "â­ XP":
         clear_flow(context)
         await xp_command(update, context)
         return
 
-    if text in ("📢 مدیریت کانال", "📢 Channel Management"):
+    if text in ("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", "ð¢ Channel Management"):
         clear_flow(context)
         if admin_guard(uid):
             await update.message.reply_text(
-                "📢 <b>مدیریت کانال و پست‌گذاری</b>\n\nاتصال کانال، ساخت پست، زمان‌بندی و انتشار خودکار.",
+                "ð¢ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>\n\nØ§ØªØµØ§Ù Ú©Ø§ÙØ§ÙØ Ø³Ø§Ø®Øª Ù¾Ø³ØªØ Ø²ÙØ§ÙâØ¨ÙØ¯Û Ù Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±.",
                 parse_mode="HTML", reply_markup=channel_keyboard())
             await hide_main_reply_keyboard(update)
         else:
-            await update.message.reply_text("⛔ دسترسی ندارید.")
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.")
         return
 
-    if text in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+    if text in ("ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", "ð¡ Admin Panel"):
         clear_flow(context)
         await admin_command(update, context)
         return
@@ -10525,9 +10502,9 @@ class _FallbackJobQueue:
         self._tasks.clear()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-# ⏰  SCHEDULER JOBS
-# ═══════════════════════════════════════════════════════════════════════
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# â°  SCHEDULER JOBS
+# âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 _birthday_last_run = ""
 
@@ -10574,10 +10551,10 @@ async def event_scheduler_job(context):
         for u in users:
             if not event_already_delivered(event["id"], u["user_id"]):
                 try:
-                    text = f"🎉 <b>{html.escape(event['name'])}</b>\n\n{event['message']}"
+                    text = f"ð <b>{html.escape(event['name'])}</b>\n\n{event['message']}"
                     if event["xp_reward"] > 0:
                         add_xp(u["user_id"], event["xp_reward"], f"event:{event['id']}")
-                        text += f"\n\n🎁 هدیه: ⭐ {event['xp_reward']} XP"
+                        text += f"\n\nð ÙØ¯ÛÙ: â­ {event['xp_reward']} XP"
                     await context.bot.send_message(u["user_id"], text, parse_mode="HTML")
                     mark_event_delivered(event["id"], u["user_id"])
                 except Exception as e:
@@ -10616,51 +10593,51 @@ async def v25_reports(update, context, period="day"):
     missed = sum(int(r["missed"] or 0) for r in rows)
     total = sum(int(r["total"] or 0) for r in rows)
     rate = (done / total * 100.0) if total else 0.0
-    label = {"day": "روزانه", "week": "هفتگی", "month": "ماهانه"}.get(period, "گزارش")
+    label = {"day": "Ø±ÙØ²Ø§ÙÙ", "week": "ÙÙØªÚ¯Û", "month": "ÙØ§ÙØ§ÙÙ"}.get(period, "Ú¯Ø²Ø§Ø±Ø´")
 
     if lang(uid) == "fa":
         lines = [
-            f"📊 <b>گزارش {label} شما</b>",
+            f"ð <b>Ú¯Ø²Ø§Ø±Ø´ {label} Ø´ÙØ§</b>",
             "",
-            f"سلام {html.escape(display_name(uid))} 👋",
-            "این گزارش خلاصه فعالیت و هدف‌های ثبت‌شده شما در بازه انتخاب‌شده است.",
+            f"Ø³ÙØ§Ù {html.escape(display_name(uid))} ð",
+            "Ø§ÛÙ Ú¯Ø²Ø§Ø±Ø´ Ø®ÙØ§ØµÙ ÙØ¹Ø§ÙÛØª Ù ÙØ¯ÙâÙØ§Û Ø«Ø¨ØªâØ´Ø¯Ù Ø´ÙØ§ Ø¯Ø± Ø¨Ø§Ø²Ù Ø§ÙØªØ®Ø§Ø¨âØ´Ø¯Ù Ø§Ø³Øª.",
             "",
-            f"✅ انجام‌شده: <b>{done}</b>",
-            f"❌ انجام‌نشده: <b>{missed}</b>",
-            f"📌 کل موارد ثبت‌شده: <b>{total}</b>",
-            f"📈 نرخ موفقیت: <b>{rate:.1f}%</b>",
-            f"🗓 بازه: <b>{start.isoformat()} تا {today.isoformat()}</b>",
+            f"â Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù: <b>{done}</b>",
+            f"â Ø§ÙØ¬Ø§ÙâÙØ´Ø¯Ù: <b>{missed}</b>",
+            f"ð Ú©Ù ÙÙØ§Ø±Ø¯ Ø«Ø¨ØªâØ´Ø¯Ù: <b>{total}</b>",
+            f"ð ÙØ±Ø® ÙÙÙÙÛØª: <b>{rate:.1f}%</b>",
+            f"ð Ø¨Ø§Ø²Ù: <b>{start.isoformat()} ØªØ§ {today.isoformat()}</b>",
         ]
         if period == "week" and rows:
-            lines += ["", "📅 <b>جزئیات روزها:</b>"]
+            lines += ["", "ð <b>Ø¬Ø²Ø¦ÛØ§Øª Ø±ÙØ²ÙØ§:</b>"]
             for r in rows:
                 d = r["goal_date"]
                 dt = datetime.fromisoformat(d).date()
-                day_names = ["شنبه","یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه"]
+                day_names = ["Ø´ÙØ¨Ù","ÛÚ©Ø´ÙØ¨Ù","Ø¯ÙØ´ÙØ¨Ù","Ø³ÙâØ´ÙØ¨Ù","ÚÙØ§Ø±Ø´ÙØ¨Ù","Ù¾ÙØ¬Ø´ÙØ¨Ù","Ø¬ÙØ¹Ù"]
                 day_name = day_names[(dt.weekday() + 1) % 7]
-                lines.append(f"• {day_name} {d}: {int(r['done'] or 0)}/{int(r['total'] or 0)} ✅")
+                lines.append(f"â¢ {day_name} {d}: {int(r['done'] or 0)}/{int(r['total'] or 0)} â")
         if not rows:
-            lines += ["", "ℹ️ هنوز برای این بازه فعالیت ثبت‌شده‌ای ندارید."]
+            lines += ["", "â¹ï¸ ÙÙÙØ² Ø¨Ø±Ø§Û Ø§ÛÙ Ø¨Ø§Ø²Ù ÙØ¹Ø§ÙÛØª Ø«Ø¨ØªâØ´Ø¯ÙâØ§Û ÙØ¯Ø§Ø±ÛØ¯."]
         text = "\n".join(lines)
     else:
         text = (
-            f"📊 <b>Your {label} Report</b>\n\n"
-            f"Hello {html.escape(display_name(uid))} 👋\n"
+            f"ð <b>Your {label} Report</b>\n\n"
+            f"Hello {html.escape(display_name(uid))} ð\n"
             "Here is your activity summary for the selected period.\n\n"
-            f"✅ Completed: <b>{done}</b>\n"
-            f"❌ Missed: <b>{missed}</b>\n"
-            f"📌 Recorded items: <b>{total}</b>\n"
-            f"📈 Success rate: <b>{rate:.1f}%</b>\n"
-            f"🗓 Range: <b>{start.isoformat()} to {today.isoformat()}</b>"
+            f"â Completed: <b>{done}</b>\n"
+            f"â Missed: <b>{missed}</b>\n"
+            f"ð Recorded items: <b>{total}</b>\n"
+            f"ð Success rate: <b>{rate:.1f}%</b>\n"
+            f"ð Range: <b>{start.isoformat()} to {today.isoformat()}</b>"
         )
         if not rows:
-            text += "\n\nℹ️ No activity has been recorded for this period."
+            text += "\n\nâ¹ï¸ No activity has been recorded for this period."
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 روزانه" if lang(uid)=="fa" else "📊 Daily", callback_data="v25:reports"),
-            InlineKeyboardButton("📆 هفتگی" if lang(uid)=="fa" else "📆 Weekly", callback_data="v25:report_week"),
-            InlineKeyboardButton("🗓 ماهانه" if lang(uid)=="fa" else "🗓 Monthly", callback_data="v25:report_month"),
+            InlineKeyboardButton("ð Ø±ÙØ²Ø§ÙÙ" if lang(uid)=="fa" else "ð Daily", callback_data="v25:reports"),
+            InlineKeyboardButton("ð ÙÙØªÚ¯Û" if lang(uid)=="fa" else "ð Weekly", callback_data="v25:report_week"),
+            InlineKeyboardButton("ð ÙØ§ÙØ§ÙÙ" if lang(uid)=="fa" else "ð Monthly", callback_data="v25:report_month"),
         ],
         [main_menu_button(uid)],
     ])
@@ -10677,36 +10654,36 @@ def _compact_menu_keyboard(uid, section):
     fa = lang(uid) == "fa"
     common = {
         "goals": [
-            [("🎯 اهداف امروز", "cm:today"), ("✏️ هدف جدید", "cm:custom_goal")],
-            [("🏆 اهداف آماده", "cm:ready_goals"), ("✏️ ویرایش اهداف", "cm:edit_goals")],
-            [("📅 گزارش هفتگی", "cm:weekly"), ("📊 آمار من", "cm:stats")],
+            [("ð¯ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²", "cm:today"), ("âï¸ ÙØ¯Ù Ø¬Ø¯ÛØ¯", "cm:custom_goal")],
+            [("ð Ø§ÙØ¯Ø§Ù Ø¢ÙØ§Ø¯Ù", "cm:ready_goals"), ("âï¸ ÙÛØ±Ø§ÛØ´ Ø§ÙØ¯Ø§Ù", "cm:edit_goals")],
+            [("ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û", "cm:weekly"), ("ð Ø¢ÙØ§Ø± ÙÙ", "cm:stats")],
         ],
         "reports": [
-            [("📅 گزارش هفتگی", "cm:weekly"), ("📊 آمار من", "cm:stats")],
-            [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
+            [("ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û", "cm:weekly"), ("ð Ø¢ÙØ§Ø± ÙÙ", "cm:stats")],
+            [("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "cm:achievements"), ("â­ XP", "cm:xp")],
         ],
         "tools": [
-            [("📈 قیمت آنلاین", "cm:prices"), ("🧠 مرکز من", "cm:center")],
+            [("ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ", "cm:prices"), ("ð§  ÙØ±Ú©Ø² ÙÙ", "cm:center")],
         ],
         "vip": [
-            [("💎 VIP و اشتراک", "cm:vip"), ("⭐ XP", "cm:xp")],
-            [("🤝 دعوت دوستان", "cm:referral"), ("🎟️ توکن‌های من", "cm:tokens")],
+            [("ð VIP Ù Ø§Ø´ØªØ±Ø§Ú©", "cm:vip"), ("â­ XP", "cm:xp")],
+            [("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù", "cm:referral"), ("ðï¸ ØªÙÚ©ÙâÙØ§Û ÙÙ", "cm:tokens")],
         ],
         "account": [
-            [("👤 پروفایل", "cm:profile"), ("⚙️ تنظیمات", "cm:settings")],
-            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم من", "cm:calendar")],
+            [("ð¤ Ù¾Ø±ÙÙØ§ÛÙ", "cm:profile"), ("âï¸ ØªÙØ¸ÛÙØ§Øª", "cm:settings")],
+            [("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§", "cm:reminders"), ("ð ØªÙÙÛÙ ÙÙ", "cm:calendar")],
         ],
         "support": [
-            [("🎫 پشتیبانی", "cm:support"), ("📚 راهنمای ربات", "cm:guide")],
+            [("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", "cm:support"), ("ð Ø±Ø§ÙÙÙØ§Û Ø±Ø¨Ø§Øª", "cm:guide")],
         ],
     }
     titles = {
-        "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
-        "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-        "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
-        "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
-        "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
-        "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+        "goals": ("ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>", "ð¯ <b>Goals & Plan</b>"),
+        "reports": ("ð <b>Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª</b>", "ð <b>Reports & Progress</b>"),
+        "tools": ("ð ï¸ <b>Ø§Ø¨Ø²Ø§Ø±ÙØ§</b>", "ð ï¸ <b>Tools</b>"),
+        "vip": ("ð <b>VIP Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§</b>", "ð <b>VIP & Rewards</b>"),
+        "account": ("ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>", "ð¤ <b>My Account</b>"),
+        "support": ("ð« <b>Ù¾Ø´ØªÛØ¨Ø§ÙÛ</b>", "ð« <b>Support</b>"),
     }
     rows = []
     for row in common.get(section, []):
@@ -10719,20 +10696,20 @@ def _compact_menu_keyboard(uid, section):
     # the small set of category navigation buttons separately where needed.
     if not fa:
         en = {
-            "cm:today":"🎯 Today's Goals","cm:custom_goal":"✏️ New Goal",
-            "cm:ready_goals":"🏆 Ready Goals","cm:edit_goals":"✏️ Edit Goals",
-            "cm:weekly":"📅 Weekly Report","cm:stats":"📊 My Stats",
-            "cm:achievements":"🏆 Achievements","cm:xp":"⭐ XP",
-            "cm:prices":"📈 Online Prices","cm:center":"🧠 My Center",
-            "cm:vip":"💎 VIP & Subscription","cm:referral":"🤝 Referrals",
-            "cm:tokens":"🎟️ My Tokens","cm:profile":"👤 Profile",
-            "cm:settings":"⚙️ Settings","cm:reminders":"🔔 Reminders",
-            "cm:calendar":"📅 Calendar","cm:support":"🎫 Support",
-            "cm:guide":"📚 Bot Guide",
+            "cm:today":"ð¯ Today's Goals","cm:custom_goal":"âï¸ New Goal",
+            "cm:ready_goals":"ð Ready Goals","cm:edit_goals":"âï¸ Edit Goals",
+            "cm:weekly":"ð Weekly Report","cm:stats":"ð My Stats",
+            "cm:achievements":"ð Achievements","cm:xp":"â­ XP",
+            "cm:prices":"ð Online Prices","cm:center":"ð§  My Center",
+            "cm:vip":"ð VIP & Subscription","cm:referral":"ð¤ Referrals",
+            "cm:tokens":"ðï¸ My Tokens","cm:profile":"ð¤ Profile",
+            "cm:settings":"âï¸ Settings","cm:reminders":"ð Reminders",
+            "cm:calendar":"ð Calendar","cm:support":"ð« Support",
+            "cm:guide":"ð Bot Guide",
         }
         rows = [[InlineKeyboardButton(en.get(btn.callback_data, btn.text), callback_data=btn.callback_data) for btn in row] for row in rows]
     rows.append([
-        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home"),
+        InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="cm:home"),
         main_menu_button(uid),
     ])
     return InlineKeyboardMarkup(rows)
@@ -10743,12 +10720,12 @@ async def _compact_menu_show(update, context, section):
     fa = lang(uid) == "fa"
     context.user_data["_nav_parent_section"] = section
     titles = {
-        "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
-        "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-        "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
-        "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
-        "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
-        "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+        "goals": ("ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>", "ð¯ <b>Goals & Plan</b>"),
+        "reports": ("ð <b>Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª</b>", "ð <b>Reports & Progress</b>"),
+        "tools": ("ð ï¸ <b>Ø§Ø¨Ø²Ø§Ø±ÙØ§</b>", "ð ï¸ <b>Tools</b>"),
+        "vip": ("ð <b>VIP Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§</b>", "ð <b>VIP & Rewards</b>"),
+        "account": ("ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>", "ð¤ <b>My Account</b>"),
+        "support": ("ð« <b>Ù¾Ø´ØªÛØ¨Ø§ÙÛ</b>", "ð« <b>Support</b>"),
     }
     text = titles.get(section, titles["goals"])[0 if fa else 1]
     q = update.callback_query
@@ -10764,23 +10741,23 @@ async def general_guide(update, context):
     uid = update.effective_user.id
     fa = lang(uid) == "fa"
     text = (
-        "📚 <b>راهنمای ربات</b>\n\n"
-        "🎯 برنامه و اهداف: ساخت و پیگیری هدف‌ها\n"
-        "📊 گزارش و پیشرفت: مشاهده آمار و گزارش‌ها\n"
-        "🧠 مرکز من: یادآوری، تقویم، سرمایه‌ها، اقساط و پروفایل\n"
-        "👥 مدیریت مشتری و نوبت‌دهی: برای حساب‌های مجاز\n\n"
-        "برای برگشت از دکمه «⬅️ بازگشت» استفاده کن."
+        "ð <b>Ø±Ø§ÙÙÙØ§Û Ø±Ø¨Ø§Øª</b>\n\n"
+        "ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù: Ø³Ø§Ø®Øª Ù Ù¾ÛÚ¯ÛØ±Û ÙØ¯ÙâÙØ§\n"
+        "ð Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª: ÙØ´Ø§ÙØ¯Ù Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´âÙØ§\n"
+        "ð§  ÙØ±Ú©Ø² ÙÙ: ÛØ§Ø¯Ø¢ÙØ±ÛØ ØªÙÙÛÙØ Ø³Ø±ÙØ§ÛÙâÙØ§Ø Ø§ÙØ³Ø§Ø· Ù Ù¾Ø±ÙÙØ§ÛÙ\n"
+        "ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±Û Ù ÙÙØ¨ØªâØ¯ÙÛ: Ø¨Ø±Ø§Û Ø­Ø³Ø§Ø¨âÙØ§Û ÙØ¬Ø§Ø²\n\n"
+        "Ø¨Ø±Ø§Û Ø¨Ø±Ú¯Ø´Øª Ø§Ø² Ø¯Ú©ÙÙ Â«â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´ØªÂ» Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù."
         if fa else
-        "📚 <b>Bot Guide</b>\n\n"
-        "🎯 My Plan: create and track goals\n"
-        "📊 Reports: view progress and statistics\n"
-        "🤖 Smart Tools: AI chat, voice assistant and prices\n"
-        "🧠 My Center: reminders, calendar, portfolio, installments and profile\n"
-        "👥 Customers & Appointments: for eligible accounts\n\n"
-        "Use «⬅️ Back» to return."
+        "ð <b>Bot Guide</b>\n\n"
+        "ð¯ My Plan: create and track goals\n"
+        "ð Reports: view progress and statistics\n"
+        "ð¤ Smart Tools: AI chat, voice assistant and prices\n"
+        "ð§  My Center: reminders, calendar, portfolio, installments and profile\n"
+        "ð¥ Customers & Appointments: for eligible accounts\n\n"
+        "Use Â«â¬ï¸ BackÂ» to return."
     )
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:tools"),
+        InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="cm:tools"),
         main_menu_button(uid),
     ]])
     if update.callback_query:
@@ -10800,7 +10777,7 @@ class _SectionProxyMessage:
 
     def _decorated(self, reply_markup):
         fa = lang(self._uid) == "fa"
-        back_btn = InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data=self._back)
+        back_btn = InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data=self._back)
         main_btn = main_menu_button(self._uid)
         rows = []
         if reply_markup is not None and getattr(reply_markup, "inline_keyboard", None):
@@ -10877,8 +10854,8 @@ async def compact_menu_callback(update, context):
         return
     if data == "cm:calendar":
         await q.message.edit_text(
-            "📅 <b>تقویم من</b>\n\nاین بخش از «🧠 مرکز من» قابل مدیریت است." if lang(uid) == "fa"
-            else "📅 <b>My Calendar</b>\n\nManage it from My Center.",
+            "ð <b>ØªÙÙÛÙ ÙÙ</b>\n\nØ§ÛÙ Ø¨Ø®Ø´ Ø§Ø² Â«ð§  ÙØ±Ú©Ø² ÙÙÂ» ÙØ§Ø¨Ù ÙØ¯ÛØ±ÛØª Ø§Ø³Øª." if lang(uid) == "fa"
+            else "ð <b>My Calendar</b>\n\nManage it from My Center.",
             parse_mode="HTML",
             reply_markup=v25_hub_keyboard(uid)
         )
@@ -10902,19 +10879,19 @@ async def compact_menu_callback(update, context):
             # Never hide a route failure by resetting the whole bot to the home menu.
             # Offer a direct retry and a controlled back path instead.
             retry_text = (
-                "⚠️ این بخش با خطا روبه‌رو شد.\n\n"
-                f"کد خطا: <code>{type(exc).__name__}</code>\n"
-                "می‌توانی دوباره همین بخش را امتحان کنی یا به ابزارهای هوشمند برگردی."
+                "â ï¸ Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Ø®Ø·Ø§ Ø±ÙØ¨ÙâØ±Ù Ø´Ø¯.\n\n"
+                f"Ú©Ø¯ Ø®Ø·Ø§: <code>{type(exc).__name__}</code>\n"
+                "ÙÛâØªÙØ§ÙÛ Ø¯ÙØ¨Ø§Ø±Ù ÙÙÛÙ Ø¨Ø®Ø´ Ø±Ø§ Ø§ÙØªØ­Ø§Ù Ú©ÙÛ ÛØ§ Ø¨Ù Ø§Ø¨Ø²Ø§Ø±ÙØ§Û ÙÙØ´ÙÙØ¯ Ø¨Ø±Ú¯Ø±Ø¯Û."
                 if lang(uid) == "fa" else
-                "⚠️ This section encountered an error.\n\n"
+                "â ï¸ This section encountered an error.\n\n"
                 f"Error: <code>{type(exc).__name__}</code>\n"
                 "Retry this section or return to Smart Tools."
             )
             await q.message.reply_text(
                 retry_text, parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 تلاش دوباره" if lang(uid)=="fa" else "🔄 Retry", callback_data=data)],
-                    [InlineKeyboardButton("🤖 ابزارهای هوشمند" if lang(uid)=="fa" else "🤖 Smart Tools", callback_data="menu:tools")],
+                    [InlineKeyboardButton("ð ØªÙØ§Ø´ Ø¯ÙØ¨Ø§Ø±Ù" if lang(uid)=="fa" else "ð Retry", callback_data=data)],
+                    [InlineKeyboardButton("ð¤ Ø§Ø¨Ø²Ø§Ø±ÙØ§Û ÙÙØ´ÙÙØ¯" if lang(uid)=="fa" else "ð¤ Smart Tools", callback_data="menu:tools")],
                     [main_menu_button(uid)],
                 ]),
             )
@@ -10926,21 +10903,21 @@ def _compact_root_inline(uid):
     fa = lang(uid) == "fa"
     if fa:
         rows = [
-            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
-            [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
-             InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
-            [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
+            [InlineKeyboardButton("ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ", callback_data="menu:goals")],
+            [InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª", callback_data="menu:reports"),
+             InlineKeyboardButton("ð¤ Ø§Ø¨Ø²Ø§Ø±ÙØ§", callback_data="menu:tools")],
+            [InlineKeyboardButton("ð VIP Ù XP", callback_data="menu:vip"),
+             InlineKeyboardButton("ð¤ Ø­Ø³Ø§Ø¨ ÙÙ", callback_data="menu:account")],
+            [InlineKeyboardButton("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", callback_data="menu:support")],
         ]
     else:
         rows = [
-            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
-            [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
-             InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
-            [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
+            [InlineKeyboardButton("ð¯ My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("ð Reports", callback_data="menu:reports"),
+             InlineKeyboardButton("ð¤ Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("ð VIP & XP", callback_data="menu:vip"),
+             InlineKeyboardButton("ð¤ My Account", callback_data="menu:account")],
+            [InlineKeyboardButton("ð« Support", callback_data="menu:support")],
         ]
     return InlineKeyboardMarkup(rows)
 
@@ -10956,12 +10933,12 @@ def _compact_user_keyboard(uid):
     """User main menu - 8 categories as per Master List."""
     fa = lang(uid) == "fa"
     rows = [
-        ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
-        ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
-        ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
-        ["🎁 پاداش‌های من" if fa else "🎁 My Rewards", "📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
-        ["🛠️ ابزارها" if fa else "🛠️ Tools", "🎫 پشتیبانی" if fa else "🎫 Support"],
-        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["â¡ Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹" if fa else "â¡ Quick Access", "ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù" if fa else "ð¯ Goals & Plan"],
+        ["ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ" if fa else "ð Online Prices", "ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û" if fa else "ð Calendar & Reminders"],
+        ["ð¤ Ø­Ø³Ø§Ø¨ ÙÙ" if fa else "ð¤ My Account", "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Invite Friends"],
+        ["ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ" if fa else "ð My Rewards", "ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´" if fa else "ð Stats & Reports"],
+        ["ð ï¸ Ø§Ø¨Ø²Ø§Ø±ÙØ§" if fa else "ð ï¸ Tools", "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ" if fa else "ð« Support"],
+        ["âï¸ ØªÙØ¸ÛÙØ§Øª" if fa else "âï¸ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -10971,18 +10948,18 @@ def _compact_admin_management_keyboard(uid):
     Categories match the Master List structure."""
     fa=lang(uid)=="fa"
     rows=[
-        ["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
-        ["👥 کاربران و پاداش‌ها" if fa else "👥 Users & Rewards", "💎 اشتراک و دسترسی‌ها" if fa else "💎 Subscriptions & Access"],
-        ["📢 مدیریت کانال" if fa else "📢 Channel Management", "🔒 عضویت اجباری کانال" if fa else "🔒 Mandatory Channel Subscription"],
-        ["🎂 تولد و مناسبت‌ها" if fa else "🎂 Birthday & Events", "🎯 اهداف و یادآوری" if fa else "🎯 Goals & Reminders"],
-        ["📈 قیمت و بازار" if fa else "📈 Prices & Market", "💳 پرداخت‌ها" if fa else "💳 Payments"],
-        ["🎫 پشتیبانی و تیکت" if fa else "🎫 Support & Tickets", "🎁 هدیه مدیریتی" if fa else "🎁 Admin Gifts"],
-        ["🩺 Health Check" if fa else "🩺 Health Check", "📣 دعوت و رفرال" if fa else "📣 Referrals"],
-        ["🧪 مرکز تست" if fa else "🧪 Test Center", "🧩 قابلیت‌ها" if fa else "🧩 Features"],
-        ["⚙️ تنظیمات سیستم" if fa else "⚙️ System Settings", "🔐 امنیت" if fa else "🔐 Security"],
-        ["💾 بکاپ و بازیابی" if fa else "💾 Backup & Recovery", "📦 ماژول‌های دیگر" if fa else "📦 Other Modules"],
-        ["👤 استفاده از ربات" if fa else "👤 Use Bot"],
-        ["🏠 منوی اصلی" if fa else "🏠 Main Menu"],
+        ["ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Ú¯Ø²Ø§Ø±Ø´" if fa else "ð Dashboard & Reports"],
+        ["ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§" if fa else "ð¥ Users & Rewards", "ð Ø§Ø´ØªØ±Ø§Ú© Ù Ø¯Ø³ØªØ±Ø³ÛâÙØ§" if fa else "ð Subscriptions & Access"],
+        ["ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù" if fa else "ð¢ Channel Management", "ð Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û Ú©Ø§ÙØ§Ù" if fa else "ð Mandatory Channel Subscription"],
+        ["ð ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§" if fa else "ð Birthday & Events", "ð¯ Ø§ÙØ¯Ø§Ù Ù ÛØ§Ø¯Ø¢ÙØ±Û" if fa else "ð¯ Goals & Reminders"],
+        ["ð ÙÛÙØª Ù Ø¨Ø§Ø²Ø§Ø±" if fa else "ð Prices & Market", "ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§" if fa else "ð³ Payments"],
+        ["ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ Ù ØªÛÚ©Øª" if fa else "ð« Support & Tickets", "ð ÙØ¯ÛÙ ÙØ¯ÛØ±ÛØªÛ" if fa else "ð Admin Gifts"],
+        ["ð©º Health Check" if fa else "ð©º Health Check", "ð£ Ø¯Ø¹ÙØª Ù Ø±ÙØ±Ø§Ù" if fa else "ð£ Referrals"],
+        ["ð§ª ÙØ±Ú©Ø² ØªØ³Øª" if fa else "ð§ª Test Center", "ð§© ÙØ§Ø¨ÙÛØªâÙØ§" if fa else "ð§© Features"],
+        ["âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ" if fa else "âï¸ System Settings", "ð Ø§ÙÙÛØª" if fa else "ð Security"],
+        ["ð¾ Ø¨Ú©Ø§Ù¾ Ù Ø¨Ø§Ø²ÛØ§Ø¨Û" if fa else "ð¾ Backup & Recovery", "ð¦ ÙØ§ÚÙÙâÙØ§Û Ø¯ÛÚ¯Ø±" if fa else "ð¦ Other Modules"],
+        ["ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª" if fa else "ð¤ Use Bot"],
+        ["ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu"],
     ]
     return ReplyKeyboardMarkup(rows,resize_keyboard=True,one_time_keyboard=False)
 
@@ -10991,16 +10968,16 @@ def _compact_admin_root_keyboard(uid):
     """Admin root: exactly two choices, user area or management area."""
     fa=lang(uid)=="fa"
     return ReplyKeyboardMarkup([
-        ["👤 استفاده از ربات" if fa else "👤 Use Bot"],
-        ["🛡 مدیریت ربات" if fa else "🛡 Bot Management"],
+        ["ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª" if fa else "ð¤ Use Bot"],
+        ["ð¡ ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª" if fa else "ð¡ Bot Management"],
     ],resize_keyboard=True,one_time_keyboard=False)
 
 
 def _show_admin_management(update, context):
     uid=update.effective_user.id
     return update.message.reply_text(
-        "🛡 <b>مدیریت ربات</b>\n\nبخش مدیریت را انتخاب کن." if lang(uid)=="fa" else
-        "🛡 <b>Bot Management</b>\n\nChoose a management section.",
+        "ð¡ <b>ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª</b>\n\nØ¨Ø®Ø´ ÙØ¯ÛØ±ÛØª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù." if lang(uid)=="fa" else
+        "ð¡ <b>Bot Management</b>\n\nChoose a management section.",
         parse_mode="HTML", reply_markup=_compact_admin_management_keyboard(uid)
     )
 
@@ -11027,59 +11004,59 @@ async def text_router(update, context):
     # That NameError caused menu/AI actions to fall into the global error handler.
     text = txt
     category_map = {
-        "🎯 برنامه من": "goals", "🎯 My Plan": "goals",
-        "📊 گزارش و پیشرفت": "reports", "📊 Reports": "reports",
-        "🤖 ابزارهای هوشمند": "tools", "🤖 Smart Tools": "tools",
-        "💎 VIP و XP": "vip", "💎 VIP & XP": "vip",
-        "👤 حساب من": "account", "👤 My Account": "account",
-        "🎫 پشتیبانی": "support", "🎫 Support": "support",
+        "ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ": "goals", "ð¯ My Plan": "goals",
+        "ð Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª": "reports", "ð Reports": "reports",
+        "ð¤ Ø§Ø¨Ø²Ø§Ø±ÙØ§Û ÙÙØ´ÙÙØ¯": "tools", "ð¤ Smart Tools": "tools",
+        "ð VIP Ù XP": "vip", "ð VIP & XP": "vip",
+        "ð¤ Ø­Ø³Ø§Ø¨ ÙÙ": "account", "ð¤ My Account": "account",
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ": "support", "ð« Support": "support",
     }
     if txt in category_map:
         await _compact_menu_show(update, context, category_map[txt])
         return
-    if txt in ("🛡 پنل مدیریت", "🛡 Admin Panel"):
+    if txt in ("ð¡ Ù¾ÙÙ ÙØ¯ÛØ±ÛØª", "ð¡ Admin Panel"):
         await admin_command(update, context)
         return
-    if txt in ("📊 گزارش مدیریت", "📊 Admin Reports"):
+    if txt in ("ð Ú¯Ø²Ø§Ø±Ø´ ÙØ¯ÛØ±ÛØª", "ð Admin Reports"):
         await admin_command(update, context)
         return
-    if txt in ("🎫 تیکت‌ها", "🎫 Tickets"):
+    if txt in ("ð« ØªÛÚ©ØªâÙØ§", "ð« Tickets"):
         await admin_command(update, context)
         return
-    if txt in ("🧩 قابلیت‌ها", "🧩 Features"):
+    if txt in ("ð§© ÙØ§Ø¨ÙÛØªâÙØ§", "ð§© Features"):
         await admin_command(update, context)
         return
 
-    if txt in ("👥 کاربران", "👥 Users"):
+    if txt in ("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù", "ð¥ Users"):
         await admin_command(update, context)
         return
-    if txt in ("💰 مالی", "💰 Finance"):
+    if txt in ("ð° ÙØ§ÙÛ", "ð° Finance"):
         await admin_command(update, context)
         return
-    if txt in ("🧭 کنترل کامل سیستم", "🧭 Full System Control"):
+    if txt in ("ð§­ Ú©ÙØªØ±Ù Ú©Ø§ÙÙ Ø³ÛØ³ØªÙ", "ð§­ Full System Control"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=keyboard(uid))
             return
         await update.message.reply_text(
-            "🧭 <b>مرکز کنترل کامل سیستم</b>\n\nاز دکمه زیر وارد مرکز مدیریت کامل شو.",
+            "ð§­ <b>ÙØ±Ú©Ø² Ú©ÙØªØ±Ù Ú©Ø§ÙÙ Ø³ÛØ³ØªÙ</b>\n\nØ§Ø² Ø¯Ú©ÙÙ Ø²ÛØ± ÙØ§Ø±Ø¯ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª Ú©Ø§ÙÙ Ø´Ù.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🧭 ورود به مرکز مدیریت", callback_data="v25:master:home")],
+                [InlineKeyboardButton("ð§­ ÙØ±ÙØ¯ Ø¨Ù ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª", callback_data="v25:master:home")],
                 [main_menu_button(uid)],
             ]),
         )
         return
-    if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
+    if txt in ("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù", "ð¢ Channel Management"):
         if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", reply_markup=keyboard(uid))
             return
         await update.message.reply_text(
-            "📢 <b>مدیریت کانال و پست‌گذاری</b>",
+            "ð¢ <b>ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù Ù Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±Û</b>",
             parse_mode="HTML",
             reply_markup=channel_keyboard(),
         )
         return
-    if txt == "⚙️ تنظیمات" or txt == "⚙️ Settings":
+    if txt == "âï¸ ØªÙØ¸ÛÙØ§Øª" or txt == "âï¸ Settings":
         await settings(update, context)
         return
     return await _OLD_TEXT_ROUTER_COMPACT(update, context)
@@ -11102,13 +11079,13 @@ async def v25_callback(update, context):
 # Added after the legacy layers so the new management UI is additive and does
 # not replace existing user features, payments, VIP, channel, or customer flows.
 MASTER_RBAC_ROLES = {
-    "owner": "👑 Owner",
-    "senior_manager": "🛡 مدیر ارشد",
-    "general_manager": "👤 مدیر عمومی",
-    "technical_manager": "🧰 مدیر فنی",
-    "finance_manager": "💰 مدیر مالی",
-    "ticket_manager": "🎫 مدیر تیکت",
-    "channel_manager": "📢 مدیر کانال",
+    "owner": "ð Owner",
+    "senior_manager": "ð¡ ÙØ¯ÛØ± Ø§Ø±Ø´Ø¯",
+    "general_manager": "ð¤ ÙØ¯ÛØ± Ø¹ÙÙÙÛ",
+    "technical_manager": "ð§° ÙØ¯ÛØ± ÙÙÛ",
+    "finance_manager": "ð° ÙØ¯ÛØ± ÙØ§ÙÛ",
+    "ticket_manager": "ð« ÙØ¯ÛØ± ØªÛÚ©Øª",
+    "channel_manager": "ð¢ ÙØ¯ÛØ± Ú©Ø§ÙØ§Ù",
 }
 
 MASTER_PERMISSION_KEYS = [
@@ -11270,30 +11247,30 @@ def master_dashboard_text():
     tests=int(c.execute("SELECT COUNT(*) n FROM system_test_runs").fetchone()["n"])
     ai_errors=int(c.execute("SELECT COUNT(*) n FROM service_events WHERE service LIKE '%ai%' AND status IN ('ERROR','error')").fetchone()["n"])
     c.close()
-    return ("📊 <b>داشبورد مرکزی مدیریت</b>\n\n"
-            f"👥 کاربران: <b>{s['users']}</b>\n🟢 فعال امروز: <b>{s['active_today']}</b>\n🆕 جدید امروز: <b>{s['new_today']}</b>\n"
-            f"💎 VIP فعال: <b>{s['vip_users']}</b>\n🎫 تیکت باز: <b>{s['open_tickets']}</b>\n"
-            f"🚨 Incident باز: <b>{incidents}</b>\n👤 مدیر فعال: <b>{managers}</b>\n"
-            f"🤖 خطای ثبت‌شده AI: <b>{ai_errors}</b>\n🧪 تست‌های اجراشده: <b>{tests}</b>")
+    return ("ð <b>Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ ÙØ±Ú©Ø²Û ÙØ¯ÛØ±ÛØª</b>\n\n"
+            f"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù: <b>{s['users']}</b>\nð¢ ÙØ¹Ø§Ù Ø§ÙØ±ÙØ²: <b>{s['active_today']}</b>\nð Ø¬Ø¯ÛØ¯ Ø§ÙØ±ÙØ²: <b>{s['new_today']}</b>\n"
+            f"ð VIP ÙØ¹Ø§Ù: <b>{s['vip_users']}</b>\nð« ØªÛÚ©Øª Ø¨Ø§Ø²: <b>{s['open_tickets']}</b>\n"
+            f"ð¨ Incident Ø¨Ø§Ø²: <b>{incidents}</b>\nð¤ ÙØ¯ÛØ± ÙØ¹Ø§Ù: <b>{managers}</b>\n"
+            f"ð¤ Ø®Ø·Ø§Û Ø«Ø¨ØªâØ´Ø¯Ù AI: <b>{ai_errors}</b>\nð§ª ØªØ³ØªâÙØ§Û Ø§Ø¬Ø±Ø§Ø´Ø¯Ù: <b>{tests}</b>")
 
 
 def master_root_keyboard(uid):
     fa=lang(uid)=="fa"
     items=[
-        ("📊 داشبورد و Analytics","📊 Dashboard & Analytics","dashboard"),
-        ("👥 کاربران و نقش‌ها","👥 Users & Roles","users"),
-        ("🎫 تیکت و Incident","🎫 Tickets & Incidents","tickets"),
-        ("💰 مالی و پرداخت","💰 Finance & Payments","finance"),
-        ("💎 VIP / XP / Token","💎 VIP / XP / Token","vip"),
-        ("📢 کانال و انتشار","📢 Channels & Publishing","channels"),
-        ("🤖 AI و Voice","🤖 AI & Voice","ai"),
-        ("🩺 سلامت و Diagnostics","🩺 Health & Diagnostics","health"),
-        ("💾 Backup و Recovery","💾 Backup & Recovery","backup"),
-        ("🧩 قابلیت‌ها و Feature Flags","🧩 Features & Flags","features"),
-        ("🔐 امنیت و Audit","🔐 Security & Audit","audit"),
-        ("🧪 مرکز تست و Regression","🧪 Test & Regression","tests"),
-        ("⚙️ تنظیمات سیستم","⚙️ System Settings","system"),
-        ("📦 سایر ماژول‌های مدیریتی","📦 Other Admin Modules","other"),
+        ("ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Analytics","ð Dashboard & Analytics","dashboard"),
+        ("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§","ð¥ Users & Roles","users"),
+        ("ð« ØªÛÚ©Øª Ù Incident","ð« Tickets & Incidents","tickets"),
+        ("ð° ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª","ð° Finance & Payments","finance"),
+        ("ð VIP / XP / Token","ð VIP / XP / Token","vip"),
+        ("ð¢ Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±","ð¢ Channels & Publishing","channels"),
+        ("ð¤ AI Ù Voice","ð¤ AI & Voice","ai"),
+        ("ð©º Ø³ÙØ§ÙØª Ù Diagnostics","ð©º Health & Diagnostics","health"),
+        ("ð¾ Backup Ù Recovery","ð¾ Backup & Recovery","backup"),
+        ("ð§© ÙØ§Ø¨ÙÛØªâÙØ§ Ù Feature Flags","ð§© Features & Flags","features"),
+        ("ð Ø§ÙÙÛØª Ù Audit","ð Security & Audit","audit"),
+        ("ð§ª ÙØ±Ú©Ø² ØªØ³Øª Ù Regression","ð§ª Test & Regression","tests"),
+        ("âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ","âï¸ System Settings","system"),
+        ("ð¦ Ø³Ø§ÛØ± ÙØ§ÚÙÙâÙØ§Û ÙØ¯ÛØ±ÛØªÛ","ð¦ Other Admin Modules","other"),
     ]
     rows=[]
     for ft,et,key in items:
@@ -11301,20 +11278,20 @@ def master_root_keyboard(uid):
         if perm and not master_has_permission(uid,perm):
             continue
         rows.append([InlineKeyboardButton(ft if fa else et,callback_data=f"v25:master:{key}")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="v25:master:main")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",callback_data="v25:master:main")])
     return InlineKeyboardMarkup(rows)
 
 
 def master_back_keyboard(uid):
     fa=lang(uid)=="fa"
-    return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",callback_data="v25:master:home"),main_menu_button(uid)]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª" if fa else "â¬ï¸ Management Center",callback_data="v25:master:home"),main_menu_button(uid)]])
 
 
 def master_feature_text():
     c=db(); rows=c.execute("SELECT key,enabled FROM feature_flags ORDER BY key").fetchall(); c.close()
-    lines=["🧩 <b>Feature Flags</b>",""]
+    lines=["ð§© <b>Feature Flags</b>",""]
     for r in rows:
-        lines.append(f"{'🟢' if r['enabled'] else '🔴'} {html.escape(r['key'])}")
+        lines.append(f"{'ð¢' if r['enabled'] else 'ð´'} {html.escape(r['key'])}")
     return "\n".join(lines)
 
 
@@ -11324,18 +11301,18 @@ def master_finance_text():
     payments=int(c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"])
     vip=int(c.execute("SELECT COUNT(*) n FROM subscription_history").fetchone()["n"])
     c.close()
-    return f"💰 <b>مالی و پرداخت</b>\n\n💳 تراکنش‌ها: <b>{payments}</b>\n💵 مبلغ ثبت‌شده: <b>{revenue:,}</b>\n💎 سوابق اشتراک: <b>{vip}</b>\n\n🔐 اطلاعات حساس مالی فقط برای Owner نمایش داده می‌شود."
+    return f"ð° <b>ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª</b>\n\nð³ ØªØ±Ø§Ú©ÙØ´âÙØ§: <b>{payments}</b>\nðµ ÙØ¨ÙØº Ø«Ø¨ØªâØ´Ø¯Ù: <b>{revenue:,}</b>\nð Ø³ÙØ§Ø¨Ù Ø§Ø´ØªØ±Ø§Ú©: <b>{vip}</b>\n\nð Ø§Ø·ÙØ§Ø¹Ø§Øª Ø­Ø³Ø§Ø³ ÙØ§ÙÛ ÙÙØ· Ø¨Ø±Ø§Û Owner ÙÙØ§ÛØ´ Ø¯Ø§Ø¯Ù ÙÛâØ´ÙØ¯."
 
 
 def master_users_text():
     c=db(); rows=c.execute("SELECT user_id,first_name,blocked,vip_until FROM users ORDER BY created_at DESC LIMIT 15").fetchall(); roles=c.execute("SELECT role,COUNT(*) n FROM management_roles WHERE active=1 GROUP BY role ORDER BY n DESC").fetchall(); c.close()
-    lines=["👥 <b>کاربران و نقش‌ها</b>","", "<b>نقش‌های مدیریتی</b>"]
-    lines += [f"• {MASTER_RBAC_ROLES.get(r['role'],r['role'])}: {r['n']}" for r in roles]
-    lines += ["","<b>آخرین کاربران</b>"]
+    lines=["ð¥ <b>Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§</b>","", "<b>ÙÙØ´âÙØ§Û ÙØ¯ÛØ±ÛØªÛ</b>"]
+    lines += [f"â¢ {MASTER_RBAC_ROLES.get(r['role'],r['role'])}: {r['n']}" for r in roles]
+    lines += ["","<b>Ø¢Ø®Ø±ÛÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>"]
     for r in rows:
-        vip="💎" if r["vip_until"] else ""
-        blocked="⛔" if r["blocked"] else "🟢"
-        lines.append(f"{blocked} {html.escape(r['first_name'] or 'بدون نام')} | <code>{r['user_id']}</code> {vip}")
+        vip="ð" if r["vip_until"] else ""
+        blocked="â" if r["blocked"] else "ð¢"
+        lines.append(f"{blocked} {html.escape(r['first_name'] or 'Ø¨Ø¯ÙÙ ÙØ§Ù')} | <code>{r['user_id']}</code> {vip}")
     return "\n".join(lines)
 
 
@@ -11348,7 +11325,7 @@ def master_tests():
             ok=bool(fn()); results.append((name,ok,"OK" if ok else "FAIL"))
         except Exception as exc:
             results.append((name,False,type(exc).__name__))
-    check("Time parser", lambda: parse_time("۱۸:۳۰")=="18:30" and parse_time("2360") is None)
+    check("Time parser", lambda: parse_time("Û±Û¸:Û³Û°")=="18:30" and parse_time("2360") is None)
     check("Admin isolation", lambda: (not master_guard(0)) and master_guard(master_owner_id()))
     check("RBAC default deny", lambda: not master_has_permission(999999999,"manage_finance"))
     def _q(sql):
@@ -11367,64 +11344,64 @@ def master_tests():
 
 def master_test_text(uid):
     results=master_tests(); passed=sum(1 for _,ok,_ in results if ok); total=len(results)
-    details="\n".join(f"{'🟢' if ok else '🔴'} {html.escape(name)}: {html.escape(detail)}" for name,ok,detail in results)
+    details="\n".join(f"{'ð¢' if ok else 'ð´'} {html.escape(name)}: {html.escape(detail)}" for name,ok,detail in results)
     c=db(); c.execute("INSERT INTO system_test_runs(admin_id,passed,total,details,created_at) VALUES(?,?,?,?,?)",(uid,passed,total,details,datetime.now(TZ).isoformat())); c.commit(); c.close()
-    return f"🧪 <b>Regression Test</b>\n\n{details}\n\nنتیجه: <b>{passed}/{total}</b>"
+    return f"ð§ª <b>Regression Test</b>\n\n{details}\n\nÙØªÛØ¬Ù: <b>{passed}/{total}</b>"
 
 
 async def master_management_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; data=q.data
     if not master_guard(uid):
-        await q.answer("⛔ دسترسی ندارید.",show_alert=True); return
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True); return
     action=data.split(":",2)[2] if data.count(":")>=2 else "home"
     if action in {"home","dashboard"}:
         await q.answer(); await q.message.edit_text(master_dashboard_text(),parse_mode="HTML",reply_markup=master_root_keyboard(uid)); return
     if action=="main":
-        await q.answer(); clear_flow(context); await q.message.edit_text("🏠 منوی اصلی",reply_markup=None); await q.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid)); return
+        await q.answer(); clear_flow(context); await q.message.edit_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=None); await q.message.reply_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=keyboard(uid)); return
     perm=MASTER_DOMAIN_PERMISSION.get(action)
     if perm and not master_has_permission(uid,perm):
-        await q.answer("⛔ این بخش برای نقش شما مجاز نیست.",show_alert=True); return
+        await q.answer("â Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø±Ø§Û ÙÙØ´ Ø´ÙØ§ ÙØ¬Ø§Ø² ÙÛØ³Øª.",show_alert=True); return
     await q.answer()
     if action=="users":
         await q.message.edit_text(master_users_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
     if action=="tickets":
         c=db(); rows=c.execute("SELECT id,module,severity,occurrences,last_seen_at FROM incident_tickets WHERE status='open' ORDER BY last_seen_at DESC LIMIT 15").fetchall(); open_t=c.execute("SELECT COUNT(*) n FROM tickets WHERE status='open'").fetchone()["n"]; c.close()
-        text="🎫 <b>تیکت و Incident</b>\n\n"+f"تیکت‌های باز: <b>{open_t}</b>\nIncidentهای باز: <b>{len(rows)}</b>\n\n"+"\n".join(f"🚨 #{r['id']} | {html.escape(r['module'])} | {r['severity']} | x{r['occurrences']}" for r in rows) or "مورد بازی نیست."
+        text="ð« <b>ØªÛÚ©Øª Ù Incident</b>\n\n"+f"ØªÛÚ©ØªâÙØ§Û Ø¨Ø§Ø²: <b>{open_t}</b>\nIncidentÙØ§Û Ø¨Ø§Ø²: <b>{len(rows)}</b>\n\n"+"\n".join(f"ð¨ #{r['id']} | {html.escape(r['module'])} | {r['severity']} | x{r['occurrences']}" for r in rows) or "ÙÙØ±Ø¯ Ø¨Ø§Ø²Û ÙÛØ³Øª."
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
     if action=="finance":
         if uid!=master_owner_id():
-            await q.message.edit_text("💰 <b>مالی</b>\n\nاطلاعات حساس مالی فقط برای Owner قابل مشاهده است.\nگزارش‌های غیرحساس سیستم از داشبورد در دسترس نقش‌های مجاز است.",parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
+            await q.message.edit_text("ð° <b>ÙØ§ÙÛ</b>\n\nØ§Ø·ÙØ§Ø¹Ø§Øª Ø­Ø³Ø§Ø³ ÙØ§ÙÛ ÙÙØ· Ø¨Ø±Ø§Û Owner ÙØ§Ø¨Ù ÙØ´Ø§ÙØ¯Ù Ø§Ø³Øª.\nÚ¯Ø²Ø§Ø±Ø´âÙØ§Û ØºÛØ±Ø­Ø³Ø§Ø³ Ø³ÛØ³ØªÙ Ø§Ø² Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÙØ´âÙØ§Û ÙØ¬Ø§Ø² Ø§Ø³Øª.",parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
         await q.message.edit_text(master_finance_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
     if action=="vip":
-        text="💎 <b>VIP / XP / Token</b>\n\nاین بخش به مرکز فعلی VIP، XP و Token متصل است.\n\nمدیریت پلن VIP و Token از پنل فعلی انجام می‌شود."
-        kb=InlineKeyboardMarkup([[InlineKeyboardButton("💎 مرکز VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("🎟️ مدیریت Token",callback_data="v25:tokens_admin")], [InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])
+        text="ð <b>VIP / XP / Token</b>\n\nØ§ÛÙ Ø¨Ø®Ø´ Ø¨Ù ÙØ±Ú©Ø² ÙØ¹ÙÛ VIPØ XP Ù Token ÙØªØµÙ Ø§Ø³Øª.\n\nÙØ¯ÛØ±ÛØª Ù¾ÙÙ VIP Ù Token Ø§Ø² Ù¾ÙÙ ÙØ¹ÙÛ Ø§ÙØ¬Ø§Ù ÙÛâØ´ÙØ¯."
+        kb=InlineKeyboardMarkup([[InlineKeyboardButton("ð ÙØ±Ú©Ø² VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("ðï¸ ÙØ¯ÛØ±ÛØª Token",callback_data="v25:tokens_admin")], [InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=kb); return
     if action=="channels":
-        await q.message.edit_text("📢 <b>کانال و انتشار</b>\n\nمدیریت کانال، پست‌گذاری، زمان‌بندی، انتشار خودکار، تأیید قبل از انتشار و بررسی عضویت در این بخش‌های موجود ربات فعال هستند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 مدیریت کانال",callback_data="adm:channel")],[InlineKeyboardButton("🤖 انتشار خودکار",callback_data="auto:menu")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+        await q.message.edit_text("ð¢ <b>Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±</b>\n\nÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§ÙØ Ù¾Ø³ØªâÚ¯Ø°Ø§Ø±ÛØ Ø²ÙØ§ÙâØ¨ÙØ¯ÛØ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±Ø ØªØ£ÛÛØ¯ ÙØ¨Ù Ø§Ø² Ø§ÙØªØ´Ø§Ø± Ù Ø¨Ø±Ø±Ø³Û Ø¹Ø¶ÙÛØª Ø¯Ø± Ø§ÛÙ Ø¨Ø®Ø´âÙØ§Û ÙÙØ¬ÙØ¯ Ø±Ø¨Ø§Øª ÙØ¹Ø§Ù ÙØ³ØªÙØ¯.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð¢ ÙØ¯ÛØ±ÛØª Ú©Ø§ÙØ§Ù",callback_data="adm:channel")],[InlineKeyboardButton("ð¤ Ø§ÙØªØ´Ø§Ø± Ø®ÙØ¯Ú©Ø§Ø±",callback_data="auto:menu")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
     if action=="health":
         await run_health_checks(context.bot,uid); text=health_text();
-        await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🩺 اجرای دوباره",callback_data="v25:master:health")],[InlineKeyboardButton("🔎 Diagnostics",callback_data="v25:master:diagnostics")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+        await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð©º Ø§Ø¬Ø±Ø§Û Ø¯ÙØ¨Ø§Ø±Ù",callback_data="v25:master:health")],[InlineKeyboardButton("ð Diagnostics",callback_data="v25:master:diagnostics")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
     if action=="diagnostics":
         await q.message.edit_text(_admin_diagnostics_text(),parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
     if action=="backup":
         ok=backup_database_snapshot(keep=20); master_log(uid,"backup",details="success" if ok else "failed");
-        await q.message.edit_text("💾 بکاپ با موفقیت ساخته شد." if ok else "❌ ساخت بکاپ ناموفق بود.",reply_markup=master_back_keyboard(uid)); return
+        await q.message.edit_text("ð¾ Ø¨Ú©Ø§Ù¾ Ø¨Ø§ ÙÙÙÙÛØª Ø³Ø§Ø®ØªÙ Ø´Ø¯." if ok else "â Ø³Ø§Ø®Øª Ø¨Ú©Ø§Ù¾ ÙØ§ÙÙÙÙ Ø¨ÙØ¯.",reply_markup=master_back_keyboard(uid)); return
     if action=="features":
-        await q.message.edit_text(master_feature_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧩 مرکز قابلیت‌های فعلی",callback_data="adm:features")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+        await q.message.edit_text(master_feature_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð§© ÙØ±Ú©Ø² ÙØ§Ø¨ÙÛØªâÙØ§Û ÙØ¹ÙÛ",callback_data="adm:features")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
     if action=="audit":
         c=db(); rows=c.execute("SELECT admin_id,action,target_user,details,created_at FROM admin_logs ORDER BY id DESC LIMIT 30").fetchall(); c.close();
-        text="🔐 <b>Security / Audit</b>\n\n"+"\n".join(f"• {fa_datetime(r['created_at'])} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'}" for r in rows) or "لاگی ثبت نشده."
+        text="ð <b>Security / Audit</b>\n\n"+"\n".join(f"â¢ {fa_datetime(r['created_at'])} | {r['admin_id']} | {html.escape(r['action'])} | {r['target_user'] or '-'}" for r in rows) or "ÙØ§Ú¯Û Ø«Ø¨Øª ÙØ´Ø¯Ù."
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=master_back_keyboard(uid)); return
     if action=="tests":
-        await q.message.edit_text(master_test_text(uid),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 اجرای دوباره",callback_data="v25:master:tests")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+        await q.message.edit_text(master_test_text(uid),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð Ø§Ø¬Ø±Ø§Û Ø¯ÙØ¨Ø§Ø±Ù",callback_data="v25:master:tests")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
     if action=="other":
-        await q.message.edit_text("📦 <b>سایر ماژول‌های مدیریتی</b>\n\nدر این بخش، ماژول‌های موجود نسخه فعلی را بدون حذف مسیرهای قدیمی کنترل می‌کنی.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 پلن‌های VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("💳 پرداخت",callback_data="v25:adminpayment")],[InlineKeyboardButton("📱 پیامک",callback_data="v25:adminsms")],[InlineKeyboardButton("⭐ نظرسنجی",callback_data="v25:adminsurvey")],[InlineKeyboardButton("☀️ صبح/شب",callback_data="v25:adminmorning")],[InlineKeyboardButton("📈 قیمت بازار",callback_data="v25:adminprices")],[InlineKeyboardButton("👥 مشتری و نوبت",callback_data="adm:customers")],[InlineKeyboardButton("📋 گزارش مدیریت",callback_data="adm:report")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
+        await q.message.edit_text("ð¦ <b>Ø³Ø§ÛØ± ÙØ§ÚÙÙâÙØ§Û ÙØ¯ÛØ±ÛØªÛ</b>\n\nØ¯Ø± Ø§ÛÙ Ø¨Ø®Ø´Ø ÙØ§ÚÙÙâÙØ§Û ÙÙØ¬ÙØ¯ ÙØ³Ø®Ù ÙØ¹ÙÛ Ø±Ø§ Ø¨Ø¯ÙÙ Ø­Ø°Ù ÙØ³ÛØ±ÙØ§Û ÙØ¯ÛÙÛ Ú©ÙØªØ±Ù ÙÛâÚ©ÙÛ.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð Ù¾ÙÙâÙØ§Û VIP",callback_data="v25:adminplans")],[InlineKeyboardButton("ð³ Ù¾Ø±Ø¯Ø§Ø®Øª",callback_data="v25:adminpayment")],[InlineKeyboardButton("ð± Ù¾ÛØ§ÙÚ©",callback_data="v25:adminsms")],[InlineKeyboardButton("â­ ÙØ¸Ø±Ø³ÙØ¬Û",callback_data="v25:adminsurvey")],[InlineKeyboardButton("âï¸ ØµØ¨Ø­/Ø´Ø¨",callback_data="v25:adminmorning")],[InlineKeyboardButton("ð ÙÛÙØª Ø¨Ø§Ø²Ø§Ø±",callback_data="v25:adminprices")],[InlineKeyboardButton("ð¥ ÙØ´ØªØ±Û Ù ÙÙØ¨Øª",callback_data="adm:customers")],[InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ ÙØ¯ÛØ±ÛØª",callback_data="adm:report")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
     if action=="system":
         paused=get_system_setting("bot_paused_until","")
         maintenance=feature_enabled("maintenance")
-        text=f"⚙️ <b>تنظیمات سیستم</b>\n\n🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n🗄 Schema: {DB_SCHEMA_VERSION}\n\nمالک اصلی: <code>{master_owner_id() or '-'}</code>"
-        await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧩 تغییر قابلیت‌ها",callback_data="adm:features")],[InlineKeyboardButton("⏸ مدیریت توقف",callback_data="adm:pause")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
-    await q.message.edit_text("این بخش هنوز به عملیات اختصاصی متصل نشده است.",reply_markup=master_back_keyboard(uid))
+        text=f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\nð  Maintenance: {'ð¢' if maintenance else 'ð´'}\nâ¸ ØªÙÙÙ ÙÙÙØª: {html.escape(paused or 'ÙØ¹Ø§Ù ÙÛØ³Øª')}\nð Schema: {DB_SCHEMA_VERSION}\n\nÙØ§ÙÚ© Ø§ØµÙÛ: <code>{master_owner_id() or '-'}</code>"
+        await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("ð§© ØªØºÛÛØ± ÙØ§Ø¨ÙÛØªâÙØ§",callback_data="adm:features")],[InlineKeyboardButton("â¸ ÙØ¯ÛØ±ÛØª ØªÙÙÙ",callback_data="adm:pause")],[InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª",callback_data="v25:master:home")]])); return
+    await q.message.edit_text("Ø§ÛÙ Ø¨Ø®Ø´ ÙÙÙØ² Ø¨Ù Ø¹ÙÙÛØ§Øª Ø§Ø®ØªØµØ§ØµÛ ÙØªØµÙ ÙØ´Ø¯Ù Ø§Ø³Øª.",reply_markup=master_back_keyboard(uid))
 
 _OLD_V25_CALLBACK_MASTER=v25_callback
 async def v25_callback(update,context):
@@ -11438,7 +11415,7 @@ _OLD_FINAL_ADMIN_KEYBOARD_MASTER=final_admin_keyboard
 def final_admin_keyboard():
     base=_OLD_FINAL_ADMIN_KEYBOARD_MASTER().inline_keyboard
     rows=[list(r) for r in base]
-    rows.append([InlineKeyboardButton("🧭 کنترل کامل سیستم",callback_data="v25:master:home")])
+    rows.append([InlineKeyboardButton("ð§­ Ú©ÙØªØ±Ù Ú©Ø§ÙÙ Ø³ÛØ³ØªÙ",callback_data="v25:master:home")])
     return InlineKeyboardMarkup(rows)
 admin_keyboard=final_admin_keyboard
 
@@ -11460,13 +11437,13 @@ def _manager_is_owner(uid):
 
 def _manager_role_label(role, fa=True):
     labels = {
-        "owner": ("👑 مالک", "👑 Owner"),
-        "senior_manager": ("🛡 مدیر ارشد", "🛡 Senior Manager"),
-        "general_manager": ("👤 مدیر عمومی", "👤 General Manager"),
-        "technical_manager": ("🧰 مدیر فنی", "🧰 Technical Manager"),
-        "finance_manager": ("💰 مدیر مالی", "💰 Finance Manager"),
-        "ticket_manager": ("🎫 مدیر تیکت", "🎫 Ticket Manager"),
-        "channel_manager": ("📢 مدیر کانال", "📢 Channel Manager"),
+        "owner": ("ð ÙØ§ÙÚ©", "ð Owner"),
+        "senior_manager": ("ð¡ ÙØ¯ÛØ± Ø§Ø±Ø´Ø¯", "ð¡ Senior Manager"),
+        "general_manager": ("ð¤ ÙØ¯ÛØ± Ø¹ÙÙÙÛ", "ð¤ General Manager"),
+        "technical_manager": ("ð§° ÙØ¯ÛØ± ÙÙÛ", "ð§° Technical Manager"),
+        "finance_manager": ("ð° ÙØ¯ÛØ± ÙØ§ÙÛ", "ð° Finance Manager"),
+        "ticket_manager": ("ð« ÙØ¯ÛØ± ØªÛÚ©Øª", "ð« Ticket Manager"),
+        "channel_manager": ("ð¢ ÙØ¯ÛØ± Ú©Ø§ÙØ§Ù", "ð¢ Channel Manager"),
     }
     fa_label, en_label = labels.get(role, (role, role))
     return fa_label if fa else en_label
@@ -11480,30 +11457,30 @@ def _master_managers_text(uid):
     ).fetchall()
     c.close()
     lines = [
-        "🧑‍💼 <b>مدیریت مدیران</b>" if fa else "🧑‍💼 <b>Manager Management</b>",
+        "ð§âð¼ <b>ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù</b>" if fa else "ð§âð¼ <b>Manager Management</b>",
         "",
     ]
     if not rows:
-        lines.append("مدیری ثبت نشده است." if fa else "No managers are registered.")
+        lines.append("ÙØ¯ÛØ±Û Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª." if fa else "No managers are registered.")
     else:
         active_count = sum(1 for r in rows if r["active"])
         disabled_count = len(rows) - active_count
-        header = f"📊 {active_count} فعال"
+        header = f"ð {active_count} ÙØ¹Ø§Ù"
         if disabled_count:
-            header += f" | {disabled_count} غیرفعال"
+            header += f" | {disabled_count} ØºÛØ±ÙØ¹Ø§Ù"
         if not fa:
-            header = f"📊 {active_count} active"
+            header = f"ð {active_count} active"
             if disabled_count:
                 header += f" | {disabled_count} disabled"
         lines.append(header)
-        lines.append("─" * 20)
+        lines.append("â" * 20)
         for i, r in enumerate(rows, 1):
-            state = "🟢" if r["active"] else "🔴"
+            state = "ð¢" if r["active"] else "ð´"
             role_label = html.escape(_manager_role_label(r["role"], fa))
             lines.append(
-                f"{state} <b>{i}.</b> <code>{r['user_id']}</code> — {role_label}"
+                f"{state} <b>{i}.</b> <code>{r['user_id']}</code> â {role_label}"
             )
-        lines.append("─" * 20)
+        lines.append("â" * 20)
     return "\n".join(lines)
 
 def _master_manager_keyboard(uid):
@@ -11516,12 +11493,12 @@ def _master_manager_keyboard(uid):
 def _master_add_role_keyboard(uid):
     fa = lang(uid) == "fa"
     roles = [
-        ("general_manager", "👤 مدیر عمومی", "👤 General Manager"),
-        ("senior_manager", "🛡 مدیر ارشد", "🛡 Senior Manager"),
-        ("technical_manager", "🧰 مدیر فنی", "🧰 Technical Manager"),
-        ("finance_manager", "💰 مدیر مالی", "💰 Finance Manager"),
-        ("ticket_manager", "🎫 مدیر تیکت", "🎫 Ticket Manager"),
-        ("channel_manager", "📢 مدیر کانال", "📢 Channel Manager"),
+        ("general_manager", "ð¤ ÙØ¯ÛØ± Ø¹ÙÙÙÛ", "ð¤ General Manager"),
+        ("senior_manager", "ð¡ ÙØ¯ÛØ± Ø§Ø±Ø´Ø¯", "ð¡ Senior Manager"),
+        ("technical_manager", "ð§° ÙØ¯ÛØ± ÙÙÛ", "ð§° Technical Manager"),
+        ("finance_manager", "ð° ÙØ¯ÛØ± ÙØ§ÙÛ", "ð° Finance Manager"),
+        ("ticket_manager", "ð« ÙØ¯ÛØ± ØªÛÚ©Øª", "ð« Ticket Manager"),
+        ("channel_manager", "ð¢ ÙØ¯ÛØ± Ú©Ø§ÙØ§Ù", "ð¢ Channel Manager"),
     ]
     rows = []
     for role, fa_label, en_label in roles:
@@ -11530,7 +11507,7 @@ def _master_add_role_keyboard(uid):
             callback_data=f"v25:master:manager_role:{role}"
         )])
     rows.append([InlineKeyboardButton(
-        "⬅️ مدیریت مدیران" if fa else "⬅️ Manager Management",
+        "â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù" if fa else "â¬ï¸ Manager Management",
         callback_data="v25:master:manager_list"
     )])
     return InlineKeyboardMarkup(rows)
@@ -11539,31 +11516,31 @@ def _master_settings_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
         [InlineKeyboardButton(
-            "🧑‍💼 مدیریت مدیران  ›" if fa else "🧑‍💼 Manager Management  ›",
+            "ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù  âº" if fa else "ð§âð¼ Manager Management  âº",
             callback_data="settings:managers"
         )],
         [InlineKeyboardButton(
-            "🤖 تنظیمات AI  ›" if fa else "🤖 AI Settings  ›",
+            "ð¤ ØªÙØ¸ÛÙØ§Øª AI  âº" if fa else "ð¤ AI Settings  âº",
             callback_data="settings:ai"
         )],
         [InlineKeyboardButton(
-            "📢 تنظیمات کانال  ›" if fa else "📢 Channel Settings  ›",
+            "ð¢ ØªÙØ¸ÛÙØ§Øª Ú©Ø§ÙØ§Ù  âº" if fa else "ð¢ Channel Settings  âº",
             callback_data="settings:channel"
         )],
         [InlineKeyboardButton(
-            "🔔 اعلان‌ها  ›" if fa else "🔔 Notifications  ›",
+            "ð Ø§Ø¹ÙØ§ÙâÙØ§  âº" if fa else "ð Notifications  âº",
             callback_data="settings:notifications"
         )],
         [InlineKeyboardButton(
-            "🎯 اهداف  ›" if fa else "🎯 Goals  ›",
+            "ð¯ Ø§ÙØ¯Ø§Ù  âº" if fa else "ð¯ Goals  âº",
             callback_data="settings:goals"
         )],
         [InlineKeyboardButton(
-            "🌐 زبان  ›" if fa else "🌐 Language  ›",
+            "ð Ø²Ø¨Ø§Ù  âº" if fa else "ð Language  âº",
             callback_data="settings:language"
         )],
         [InlineKeyboardButton(
-            "🏠 منوی اصلی" if fa else "🏠 Main Menu",
+            "ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",
             callback_data="settings:main"
         )],
     ]
@@ -11573,20 +11550,20 @@ def _manager_settings_text(uid):
     fa = lang(uid) == "fa"
     if fa:
         return (
-            "🛡️ <b>تنظیمات مدیریتی</b>\n\n"
-            "از این بخش می‌توانی تنظیمات مدیریت را دسته‌بندی‌شده کنترل کنی.\n\n"
-            "🧑‍💼 مدیریت مدیران › افزودن، مشاهده و کنترل نقش مدیران\n"
-            "🤖 تنظیمات AI › وضعیت سرویس‌های هوشمند\n"
-            "📢 تنظیمات کانال › اتصال و انتشار\n"
-            "🔔 اعلان‌ها › تنظیمات اعلان‌های حساب"
+            "ð¡ï¸ <b>ØªÙØ¸ÛÙØ§Øª ÙØ¯ÛØ±ÛØªÛ</b>\n\n"
+            "Ø§Ø² Ø§ÛÙ Ø¨Ø®Ø´ ÙÛâØªÙØ§ÙÛ ØªÙØ¸ÛÙØ§Øª ÙØ¯ÛØ±ÛØª Ø±Ø§ Ø¯Ø³ØªÙâØ¨ÙØ¯ÛâØ´Ø¯Ù Ú©ÙØªØ±Ù Ú©ÙÛ.\n\n"
+            "ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù âº Ø§ÙØ²ÙØ¯ÙØ ÙØ´Ø§ÙØ¯Ù Ù Ú©ÙØªØ±Ù ÙÙØ´ ÙØ¯ÛØ±Ø§Ù\n"
+            "ð¤ ØªÙØ¸ÛÙØ§Øª AI âº ÙØ¶Ø¹ÛØª Ø³Ø±ÙÛØ³âÙØ§Û ÙÙØ´ÙÙØ¯\n"
+            "ð¢ ØªÙØ¸ÛÙØ§Øª Ú©Ø§ÙØ§Ù âº Ø§ØªØµØ§Ù Ù Ø§ÙØªØ´Ø§Ø±\n"
+            "ð Ø§Ø¹ÙØ§ÙâÙØ§ âº ØªÙØ¸ÛÙØ§Øª Ø§Ø¹ÙØ§ÙâÙØ§Û Ø­Ø³Ø§Ø¨"
         )
     return (
-        "🛡️ <b>Management Settings</b>\n\n"
+        "ð¡ï¸ <b>Management Settings</b>\n\n"
         "Use this categorized menu to manage administration settings.\n\n"
-        "🧑‍💼 Manager Management › Add, view and control manager roles\n"
-        "🤖 AI Settings › Smart service status\n"
-        "📢 Channel Settings › Connection and publishing\n"
-        "🔔 Notifications › Account notifications"
+        "ð§âð¼ Manager Management âº Add, view and control manager roles\n"
+        "ð¤ AI Settings âº Smart service status\n"
+        "ð¢ Channel Settings âº Connection and publishing\n"
+        "ð Notifications âº Account notifications"
     )
 
 # New manager access must not depend on the static ADMIN_IDS list.
@@ -11604,7 +11581,7 @@ async def settings_callback(update, context):
         await q.answer()
         if not admin_is_allowed(uid):
             await q.message.edit_text(
-                "⛔ دسترسی ندارید." if fa else "⛔ Access denied."
+                "â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied."
             )
             return
         await q.message.edit_text(
@@ -11618,9 +11595,9 @@ async def settings_callback(update, context):
         await q.answer()
         if not master_guard(uid, "manage_roles"):
             await q.message.edit_text(
-                "⛔ این بخش فقط برای مدیر مجاز است."
+                "â Ø§ÛÙ Ø¨Ø®Ø´ ÙÙØ· Ø¨Ø±Ø§Û ÙØ¯ÛØ± ÙØ¬Ø§Ø² Ø§Ø³Øª."
                 if fa else
-                "⛔ This section is restricted to authorized managers."
+                "â This section is restricted to authorized managers."
             )
             return
         await q.message.edit_text(
@@ -11642,7 +11619,7 @@ def settings_keyboard(uid):
     main_index = len(rows) - 1
     if master_guard(uid, "manage_roles"):
         rows.insert(main_index, [InlineKeyboardButton(
-            "🛡️ تنظیمات مدیریتی  ›" if fa else "🛡️ Management Settings  ›",
+            "ð¡ï¸ ØªÙØ¸ÛÙØ§Øª ÙØ¯ÛØ±ÛØªÛ  âº" if fa else "ð¡ï¸ Management Settings  âº",
             callback_data="settings:admin"
         )])
     return InlineKeyboardMarkup(rows)
@@ -11657,7 +11634,7 @@ async def master_management_callback(update, context):
 
     if not master_guard(uid):
         await q.answer(
-            "⛔ دسترسی ندارید." if fa else "⛔ Access denied.",
+            "â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.",
             show_alert=True
         )
         return
@@ -11665,7 +11642,7 @@ async def master_management_callback(update, context):
     # Manager list.
     if data == "v25:master:manager_list":
         if not master_has_permission(uid, "manage_roles"):
-            await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+            await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
             return
         await q.answer()
         await q.message.edit_text(
@@ -11679,9 +11656,9 @@ async def master_management_callback(update, context):
     if data == "v25:master:manager_add":
         if not _manager_is_owner(uid):
             await q.answer(
-                "⛔ فقط Owner می‌تواند مدیر اضافه کند."
+                "â ÙÙØ· Owner ÙÛâØªÙØ§ÙØ¯ ÙØ¯ÛØ± Ø§Ø¶Ø§ÙÙ Ú©ÙØ¯."
                 if fa else
-                "⛔ Only the Owner can add managers.",
+                "â Only the Owner can add managers.",
                 show_alert=True
             )
             return
@@ -11694,17 +11671,17 @@ async def master_management_callback(update, context):
             context.user_data["master_pending_manager_id"] = _saved_id
         await q.answer()
         await q.message.edit_text(
-            "🆔 آیدی عددی تلگرام مدیر جدید را ارسال کن.\n\n"
-            "💡 برای پیدا کردن آیدی، از ربات @userinfobot استفاده کن.\n\n"
-            "مثال: <code>123456789</code>"
+            "ð Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û ØªÙÚ¯Ø±Ø§Ù ÙØ¯ÛØ± Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø§Ø±Ø³Ø§Ù Ú©Ù.\n\n"
+            "ð¡ Ø¨Ø±Ø§Û Ù¾ÛØ¯Ø§ Ú©Ø±Ø¯Ù Ø¢ÛØ¯ÛØ Ø§Ø² Ø±Ø¨Ø§Øª @userinfobot Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.\n\n"
+            "ÙØ«Ø§Ù: <code>123456789</code>"
             if fa else
-            "🆔 Send the new manager's numeric Telegram ID.\n\n"
-            "💡 Use @userinfobot to find the ID.\n\n"
+            "ð Send the new manager's numeric Telegram ID.\n\n"
+            "ð¡ Use @userinfobot to find the ID.\n\n"
             "Example: <code>123456789</code>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    "❌ لغو" if fa else "❌ Cancel",
+                    "â ÙØºÙ" if fa else "â Cancel",
                     callback_data="v25:master:manager_list"
                 )
             ]])
@@ -11714,21 +11691,21 @@ async def master_management_callback(update, context):
     # Role selection after the ID is received.
     if data.startswith("v25:master:manager_role:"):
         if not _manager_is_owner(uid):
-            await q.answer("⛔ Owner only.", show_alert=True)
+            await q.answer("â Owner only.", show_alert=True)
             return
         role = data.split(":", 3)[3].strip()
         if role not in MASTER_RBAC_ROLES or role == "owner":
             await q.answer(
-                "❌ نقش نامعتبر است." if fa else "❌ Invalid role.",
+                "â ÙÙØ´ ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª." if fa else "â Invalid role.",
                 show_alert=True
             )
             return
         target = int(context.user_data.get("targeted_pending_manager_id") or context.user_data.get("master_pending_manager_id") or 0)
         if not target:
             await q.answer(
-                "❌ آیدی مدیر پیدا نشد. دوباره شروع کن."
+                "â Ø¢ÛØ¯Û ÙØ¯ÛØ± Ù¾ÛØ¯Ø§ ÙØ´Ø¯. Ø¯ÙØ¨Ø§Ø±Ù Ø´Ø±ÙØ¹ Ú©Ù."
                 if fa else
-                "❌ Manager ID was not found. Please start again.",
+                "â Manager ID was not found. Please start again.",
                 show_alert=True
             )
             return
@@ -11752,12 +11729,12 @@ async def master_management_callback(update, context):
         await q.answer()
         await q.message.edit_text(
             (
-                f"✅ مدیر <code>{target}</code> با نقش "
-                f"<b>{html.escape(_manager_role_label(role, True))}</b> اضافه شد."
+                f"â ÙØ¯ÛØ± <code>{target}</code> Ø¨Ø§ ÙÙØ´ "
+                f"<b>{html.escape(_manager_role_label(role, True))}</b> Ø§Ø¶Ø§ÙÙ Ø´Ø¯."
             )
             if fa else
             (
-                f"✅ Manager <code>{target}</code> added as "
+                f"â Manager <code>{target}</code> added as "
                 f"<b>{html.escape(_manager_role_label(role, False))}</b>."
             ),
             parse_mode="HTML",
@@ -11768,19 +11745,19 @@ async def master_management_callback(update, context):
     # Disable manager help: keep it deliberate to avoid accidental lockouts.
     if data == "v25:master:manager_disable_help":
         if not _manager_is_owner(uid):
-            await q.answer("⛔ Owner only.", show_alert=True)
+            await q.answer("â Owner only.", show_alert=True)
             return
         await q.answer()
         await q.message.edit_text(
-            "🗑️ <b>غیرفعال‌سازی مدیر</b>\n\n"
-            "برای جلوگیری از حذف اشتباهی، در این مرحله آیدی مدیر را به صورت پیام ارسال کن."
+            "ðï¸ <b>ØºÛØ±ÙØ¹Ø§ÙâØ³Ø§Ø²Û ÙØ¯ÛØ±</b>\n\n"
+            "Ø¨Ø±Ø§Û Ø¬ÙÙÚ¯ÛØ±Û Ø§Ø² Ø­Ø°Ù Ø§Ø´ØªØ¨Ø§ÙÛØ Ø¯Ø± Ø§ÛÙ ÙØ±Ø­ÙÙ Ø¢ÛØ¯Û ÙØ¯ÛØ± Ø±Ø§ Ø¨Ù ØµÙØ±Øª Ù¾ÛØ§Ù Ø§Ø±Ø³Ø§Ù Ú©Ù."
             if fa else
-            "🗑️ <b>Disable Manager</b>\n\n"
+            "ðï¸ <b>Disable Manager</b>\n\n"
             "To avoid accidental lockouts, send the manager's numeric ID as a message.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    "⬅️ مدیریت مدیران" if fa else "⬅️ Manager Management",
+                    "â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù" if fa else "â¬ï¸ Manager Management",
                     callback_data="v25:master:manager_list"
                 )
             ]])
@@ -11805,22 +11782,22 @@ async def text_router(update, context):
         if not _manager_is_owner(uid):
             clear_flow(context)
             await update.message.reply_text(
-                "⛔ فقط Owner می‌تواند مدیر اضافه کند."
-                if fa else "⛔ Only the Owner can add managers."
+                "â ÙÙØ· Owner ÙÛâØªÙØ§ÙØ¯ ÙØ¯ÛØ± Ø§Ø¶Ø§ÙÙ Ú©ÙØ¯."
+                if fa else "â Only the Owner can add managers."
             )
             return
         if not txt.isdigit():
             await update.message.reply_text(
-                "❌ فقط آیدی عددی تلگرام را بفرست."
-                if fa else "❌ Send a numeric Telegram ID."
+                "â ÙÙØ· Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û ØªÙÚ¯Ø±Ø§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª."
+                if fa else "â Send a numeric Telegram ID."
             )
             return
         target = int(txt)
         context.user_data["master_add_manager"] = False
         context.user_data["master_pending_manager_id"] = target
         await update.message.reply_text(
-            "🎯 نقش مدیر را انتخاب کن:"
-            if fa else "🎯 Choose the manager role:",
+            "ð¯ ÙÙØ´ ÙØ¯ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:"
+            if fa else "ð¯ Choose the manager role:",
             reply_markup=_master_add_role_keyboard(uid)
         )
         return
@@ -11829,20 +11806,20 @@ async def text_router(update, context):
         if not _manager_is_owner(uid):
             clear_flow(context)
             await update.message.reply_text(
-                "⛔ فقط Owner مجاز است." if fa else "⛔ Owner only."
+                "â ÙÙØ· Owner ÙØ¬Ø§Ø² Ø§Ø³Øª." if fa else "â Owner only."
             )
             return
         if not txt.isdigit():
             await update.message.reply_text(
-                "❌ فقط آیدی عددی را بفرست."
-                if fa else "❌ Send a numeric ID."
+                "â ÙÙØ· Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û Ø±Ø§ Ø¨ÙØ±Ø³Øª."
+                if fa else "â Send a numeric ID."
             )
             return
         target = int(txt)
         if target == master_owner_id():
             await update.message.reply_text(
-                "❌ مالک اصلی قابل غیرفعال‌سازی نیست."
-                if fa else "❌ The Owner cannot be disabled."
+                "â ÙØ§ÙÚ© Ø§ØµÙÛ ÙØ§Ø¨Ù ØºÛØ±ÙØ¹Ø§ÙâØ³Ø§Ø²Û ÙÛØ³Øª."
+                if fa else "â The Owner cannot be disabled."
             )
             return
         c = db()
@@ -11857,15 +11834,15 @@ async def text_router(update, context):
         master_log(uid, "manager_disabled", target)
         await update.message.reply_text(
             (
-                f"✅ مدیر <code>{target}</code> غیرفعال شد."
+                f"â ÙØ¯ÛØ± <code>{target}</code> ØºÛØ±ÙØ¹Ø§Ù Ø´Ø¯."
                 if changed else
-                f"ℹ️ مدیری با آیدی <code>{target}</code> پیدا نشد."
+                f"â¹ï¸ ÙØ¯ÛØ±Û Ø¨Ø§ Ø¢ÛØ¯Û <code>{target}</code> Ù¾ÛØ¯Ø§ ÙØ´Ø¯."
             )
             if fa else
             (
-                f"✅ Manager <code>{target}</code> disabled."
+                f"â Manager <code>{target}</code> disabled."
                 if changed else
-                f"ℹ️ No manager found for <code>{target}</code>."
+                f"â¹ï¸ No manager found for <code>{target}</code>."
             ),
             parse_mode="HTML",
             reply_markup=keyboard(uid)
@@ -11882,13 +11859,13 @@ def final_admin_keyboard():
     fa = True  # Existing admin keyboard is Persian-first; English is handled inside master UI.
     # Avoid duplicates if this patch is applied to an already patched source.
     if not any(
-        any("مدیر" in getattr(btn, "text", "") for btn in row)
+        any("ÙØ¯ÛØ±" in getattr(btn, "text", "") for btn in row)
         for row in rows
     ):
         insert_at = max(0, len(rows) - 1)
         rows.insert(insert_at, [
             InlineKeyboardButton(
-                "🧑‍💼 مدیریت مدیران",
+                "ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù",
                 callback_data="v25:master:manager_list"
             )
         ])
@@ -11955,24 +11932,24 @@ async def text_router(update, context):
         # Navigation buttons must always win over any pending text-input state
         # (for example waiting for an admin ID/username).  Otherwise a stale
         # manager-add/disable state can incorrectly consume normal menu taps.
-        if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+        if txt in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu"):
             clear_flow(context)
             title, markup = _manager_main_keyboard(uid)
             await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
             return
 
-        if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+        if txt in ("ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot"):
             clear_flow(context)
             await update.message.reply_text(
-                "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+                "ð¤ <b>Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±</b>\n\nÙØ§Ø¨ÙÛØªâÙØ§Û Ø¹Ø§Ø¯Û Ø±Ø¨Ø§Øª Ø¯Ø± Ø§ÛÙ Ø¨Ø®Ø´ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø§Ø³Øª."
                 if fa else
-                "👤 <b>User Area</b>\n\nNormal user features are available here.",
+                "ð¤ <b>User Area</b>\n\nNormal user features are available here.",
                 parse_mode="HTML",
                 reply_markup=_compact_user_keyboard(uid)
             )
             return
 
-        if txt in ("⚙️ تنظیمات سیستم", "⚙️ System Settings"):
+        if txt in ("âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ", "âï¸ System Settings"):
             # Entering settings must also cancel any pending admin ID/username
             # input mode.  Show the same system-settings view as the management
             # center callback, without routing the label through the legacy
@@ -11981,36 +11958,36 @@ async def text_router(update, context):
             paused = get_system_setting("bot_paused_until", "")
             maintenance = feature_enabled("maintenance")
             text = (
-                f"⚙️ <b>تنظیمات سیستم</b>\n\n"
-                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-                f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
-                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
-                f"مالک اصلی: <code>{master_owner_id() or '-'}</code>"
+                f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\n"
+                f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+                f"â¸ ØªÙÙÙ ÙÙÙØª: {html.escape(paused or 'ÙØ¹Ø§Ù ÙÛØ³Øª')}\n"
+                f"ð Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"ÙØ§ÙÚ© Ø§ØµÙÛ: <code>{master_owner_id() or '-'}</code>"
             ) if fa else (
-                f"⚙️ <b>System Settings</b>\n\n"
-                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-                f"⏸ Temporary pause: {html.escape(paused or 'Not active')}\n"
-                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"âï¸ <b>System Settings</b>\n\n"
+                f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+                f"â¸ Temporary pause: {html.escape(paused or 'Not active')}\n"
+                f"ð Schema: {DB_SCHEMA_VERSION}\n\n"
                 f"Owner: <code>{master_owner_id() or '-'}</code>"
             )
             kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
-                [InlineKeyboardButton("⏸ مدیریت توقف" if fa else "⏸ Pause Management", callback_data="adm:pause")],
-                [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")]
+                [InlineKeyboardButton("ð§© ØªØºÛÛØ± ÙØ§Ø¨ÙÛØªâÙØ§" if fa else "ð§© Feature Flags", callback_data="adm:features")],
+                [InlineKeyboardButton("â¸ ÙØ¯ÛØ±ÛØª ØªÙÙÙ" if fa else "â¸ Pause Management", callback_data="adm:pause")],
+                [InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª" if fa else "â¬ï¸ Management Center", callback_data="v25:master:home")]
             ])
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return
 
-        if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
+        if txt in ("ð¡ ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª", "ð¡ Bot Management"):
             clear_flow(context)
             await _show_admin_management(update, context)
             return
 
-        if txt in ("📊 داشبورد و گزارش", "📊 Dashboard & Reports"):
+        if txt in ("ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Ú¯Ø²Ø§Ø±Ø´", "ð Dashboard & Reports"):
             await _show_admin_section(update, context, "dashboard")
             return
 
-        if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles"):
+        if txt in ("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§", "ð¥ Users & Roles"):
             await update.message.reply_text(
                 master_users_text(),
                 parse_mode="HTML",
@@ -12019,10 +11996,10 @@ async def text_router(update, context):
             return
 
 
-        if txt in ("🧑‍💼 مدیریت مدیران", "🧑‍💼 Manager Management"):
+        if txt in ("ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù", "ð§âð¼ Manager Management"):
             if not master_has_permission(uid, "manage_roles"):
                 await update.message.reply_text(
-                    "⛔ دسترسی ندارید." if fa else "⛔ Access denied.",
+                    "â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.",
                     reply_markup=compact_keyboard(uid)
                 )
                 return
@@ -12035,16 +12012,16 @@ async def text_router(update, context):
 
         # Section map for unhandled admin buttons
         _mgr_section_map = {
-            "🎫 تیکت‌ها و Incident": "tickets", "🎫 Tickets & Incidents": "tickets",
-            "💰 مالی و پرداخت": "finance", "💰 Finance & Payments": "finance",
-            "💎 VIP / XP / Token": "xpvip",
-            "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
-            "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
-            "💾 Backup و Recovery": "backup", "💾 Backup & Recovery": "backup",
-            "🧩 قابلیت‌ها و Feature Flags": "features", "🧩 Features & Flags": "features",
-            "🔐 امنیت و Audit": "security", "🔐 Security & Audit": "security",
-            "🧪 مرکز تست و Regression": "test", "🧪 Test & Regression": "test",
-            "📦 سایر ماژول‌های مدیریتی": "other", "📦 Other Admin Modules": "other",
+            "ð« ØªÛÚ©ØªâÙØ§ Ù Incident": "tickets", "ð« Tickets & Incidents": "tickets",
+            "ð° ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª": "finance", "ð° Finance & Payments": "finance",
+            "ð VIP / XP / Token": "xpvip",
+            "ð¢ Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±": "channel", "ð¢ Channels & Publishing": "channel",
+            "ð©º Ø³ÙØ§ÙØª Ù Diagnostics": "health", "ð©º Health & Diagnostics": "health",
+            "ð¾ Backup Ù Recovery": "backup", "ð¾ Backup & Recovery": "backup",
+            "ð§© ÙØ§Ø¨ÙÛØªâÙØ§ Ù Feature Flags": "features", "ð§© Features & Flags": "features",
+            "ð Ø§ÙÙÛØª Ù Audit": "security", "ð Security & Audit": "security",
+            "ð§ª ÙØ±Ú©Ø² ØªØ³Øª Ù Regression": "test", "ð§ª Test & Regression": "test",
+            "ð¦ Ø³Ø§ÛØ± ÙØ§ÚÙÙâÙØ§Û ÙØ¯ÛØ±ÛØªÛ": "other", "ð¦ Other Admin Modules": "other",
         }
         if txt in _mgr_section_map:
             await _show_admin_section(update, context, _mgr_section_map[txt])
@@ -12084,11 +12061,11 @@ async def master_management_callback(update, context):
                 target_fa = lang(target) == "fa"
                 role = master_role(target)
                 title = (
-                    f"🛡️ <b>پنل مدیریت برای شما فعال شد</b>\n\n"
-                    f"نقش شما: <b>{html.escape(_manager_role_label(role, True))}</b>\n\n"
-                    "از این به بعد با ورود به ربات، منوی مدیریتی اختصاصی خودت را می‌بینی."
+                    f"ð¡ï¸ <b>Ù¾ÙÙ ÙØ¯ÛØ±ÛØª Ø¨Ø±Ø§Û Ø´ÙØ§ ÙØ¹Ø§Ù Ø´Ø¯</b>\n\n"
+                    f"ÙÙØ´ Ø´ÙØ§: <b>{html.escape(_manager_role_label(role, True))}</b>\n\n"
+                    "Ø§Ø² Ø§ÛÙ Ø¨Ù Ø¨Ø¹Ø¯ Ø¨Ø§ ÙØ±ÙØ¯ Ø¨Ù Ø±Ø¨Ø§ØªØ ÙÙÙÛ ÙØ¯ÛØ±ÛØªÛ Ø§Ø®ØªØµØ§ØµÛ Ø®ÙØ¯Øª Ø±Ø§ ÙÛâØ¨ÛÙÛ."
                     if target_fa else
-                    f"🛡️ <b>Your manager panel is active</b>\n\n"
+                    f"ð¡ï¸ <b>Your manager panel is active</b>\n\n"
                     f"Role: <b>{html.escape(_manager_role_label(role, False))}</b>\n\n"
                     "From now on, your bot entry will use the dedicated manager menu."
                 )
@@ -12257,22 +12234,22 @@ def admin_is_allowed(uid):
 
 # ---------- Manager list / permissions UI ----------
 TARGETED_PERMISSION_LABELS = {
-    "view_dashboard":"📊 داشبورد",
-    "manage_users":"👥 کاربران",
-    "manage_roles":"🧑‍💼 مدیریت مدیران",
-    "manage_vip":"💎 VIP",
-    "manage_xp":"⭐ XP / Token",
-    "manage_tickets":"🎫 تیکت‌ها",
-    "manage_finance":"💰 مالی",
-    "manage_channels":"📢 کانال",
-    "manage_features":"🧩 قابلیت‌ها",
-    "run_health":"🩺 Health Check",
-    "run_diagnostics":"🔎 عیب‌یابی",
-    "backup":"💾 بکاپ",
-    "restore":"♻️ بازیابی",
-    "view_audit":"📝 لاگ مدیران",
-    "run_tests":"🧪 تست‌ها",
-    "manage_system":"⚙️ سیستم",
+    "view_dashboard":"ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯",
+    "manage_users":"ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù",
+    "manage_roles":"ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù",
+    "manage_vip":"ð VIP",
+    "manage_xp":"â­ XP / Token",
+    "manage_tickets":"ð« ØªÛÚ©ØªâÙØ§",
+    "manage_finance":"ð° ÙØ§ÙÛ",
+    "manage_channels":"ð¢ Ú©Ø§ÙØ§Ù",
+    "manage_features":"ð§© ÙØ§Ø¨ÙÛØªâÙØ§",
+    "run_health":"ð©º Health Check",
+    "run_diagnostics":"ð Ø¹ÛØ¨âÛØ§Ø¨Û",
+    "backup":"ð¾ Ø¨Ú©Ø§Ù¾",
+    "restore":"â»ï¸ Ø¨Ø§Ø²ÛØ§Ø¨Û",
+    "view_audit":"ð ÙØ§Ú¯ ÙØ¯ÛØ±Ø§Ù",
+    "run_tests":"ð§ª ØªØ³ØªâÙØ§",
+    "manage_system":"âï¸ Ø³ÛØ³ØªÙ",
 }
 
 def _targeted_manager_rows():
@@ -12282,57 +12259,57 @@ def _targeted_manager_rows():
 
 def _targeted_manager_text(uid):
     fa=lang(uid)=="fa"; rows=_targeted_manager_rows()
-    lines=["🧑‍💼 <b>مدیریت مدیران</b>" if fa else "🧑‍💼 <b>Manager Management</b>",""]
-    if not rows: lines.append("مدیری ثبت نشده است." if fa else "No managers registered.")
+    lines=["ð§âð¼ <b>ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù</b>" if fa else "ð§âð¼ <b>Manager Management</b>",""]
+    if not rows: lines.append("ÙØ¯ÛØ±Û Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª." if fa else "No managers registered.")
     for r in rows:
-        uname=("@"+r["username"]) if r["username"] else "—"
-        state="🟢 فعال" if r["active"] else "🔴 غیرفعال"
-        if not fa: state="🟢 Active" if r["active"] else "🔴 Disabled"
+        uname=("@"+r["username"]) if r["username"] else "â"
+        state="ð¢ ÙØ¹Ø§Ù" if r["active"] else "ð´ ØºÛØ±ÙØ¹Ø§Ù"
+        if not fa: state="ð¢ Active" if r["active"] else "ð´ Disabled"
         lines.append(f"{state}  {html.escape(uname)}  <code>{r['user_id']}</code>  {html.escape(_manager_role_label(r['role'],fa))}")
     return "\n".join(lines)
 
 def _targeted_manager_keyboard(uid):
     fa=lang(uid)=="fa"; rows=[]
     if _manager_is_owner(uid):
-        rows.append([InlineKeyboardButton("➕ افزودن مدیر" if fa else "➕ Add Manager",callback_data="v25:targeted:manager_add")])
-        rows.append([InlineKeyboardButton("🗑️ لغو/حذف مدیر از لیست" if fa else "🗑️ Disable Manager",callback_data="v25:targeted:manager_disable_list")])
+        rows.append([InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù ÙØ¯ÛØ±" if fa else "â Add Manager",callback_data="v25:targeted:manager_add")])
+        rows.append([InlineKeyboardButton("ðï¸ ÙØºÙ/Ø­Ø°Ù ÙØ¯ÛØ± Ø§Ø² ÙÛØ³Øª" if fa else "ðï¸ Disable Manager",callback_data="v25:targeted:manager_disable_list")])
     for r in _targeted_manager_rows():
         uname=("@"+r["username"]) if r["username"] else str(r["user_id"])
-        label=f"{'🟢' if r['active'] else '🔴'} {uname} | {r['user_id']}"
+        label=f"{'ð¢' if r['active'] else 'ð´'} {uname} | {r['user_id']}"
         rows.append([InlineKeyboardButton(label,callback_data=f"v25:targeted:manager_detail:{r['user_id']}")])
-    rows.append([InlineKeyboardButton("🔄 به‌روزرسانی" if fa else "🔄 Refresh",callback_data="v25:targeted:manager_list")])
-    rows.append([InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center",callback_data="v25:master:home")])
+    rows.append([InlineKeyboardButton("ð Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ" if fa else "ð Refresh",callback_data="v25:targeted:manager_list")])
+    rows.append([InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª" if fa else "â¬ï¸ Management Center",callback_data="v25:master:home")])
     return InlineKeyboardMarkup(rows)
 
 def _targeted_manager_detail(uid,target):
     c=db(); r=c.execute("SELECT user_id,username,role,permissions_json,active FROM management_roles WHERE user_id=?",(int(target),)).fetchone(); c.close()
-    if not r: return "مدیر پیدا نشد.", InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت مدیران",callback_data="v25:targeted:manager_list")]])
-    fa=lang(uid)=="fa"; uname=("@"+r["username"]) if r["username"] else "—"
+    if not r: return "ÙØ¯ÛØ± Ù¾ÛØ¯Ø§ ÙØ´Ø¯.", InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù",callback_data="v25:targeted:manager_list")]])
+    fa=lang(uid)=="fa"; uname=("@"+r["username"]) if r["username"] else "â"
     try: perms=set(json.loads(r["permissions_json"] or "[]"))
     except Exception: perms=set()
-    lines=[f"🧑‍💼 <b>{html.escape(uname)}</b>",f"🆔 <code>{r['user_id']}</code>",f"🎭 {html.escape(_manager_role_label(r['role'],fa))}",f"{'🟢 فعال' if r['active'] else '🔴 غیرفعال'}" if fa else ("🟢 Active" if r['active'] else "🔴 Disabled"),"","🔐 دسترسی‌ها:" if fa else "🔐 Permissions:"]
+    lines=[f"ð§âð¼ <b>{html.escape(uname)}</b>",f"ð <code>{r['user_id']}</code>",f"ð­ {html.escape(_manager_role_label(r['role'],fa))}",f"{'ð¢ ÙØ¹Ø§Ù' if r['active'] else 'ð´ ØºÛØ±ÙØ¹Ø§Ù'}" if fa else ("ð¢ Active" if r['active'] else "ð´ Disabled"),"","ð Ø¯Ø³ØªØ±Ø³ÛâÙØ§:" if fa else "ð Permissions:"]
     for key in MASTER_PERMISSION_KEYS:
-        lines.append(("🟢 " if key in perms else "🔴 ")+TARGETED_PERMISSION_LABELS.get(key,key))
+        lines.append(("ð¢ " if key in perms else "ð´ ")+TARGETED_PERMISSION_LABELS.get(key,key))
     rows=[]
     if _manager_is_owner(uid) and int(target)!=master_owner_id():
-        rows.append([InlineKeyboardButton("🔄 فعال/غیرفعال مدیر" if fa else "🔄 Toggle Manager",callback_data=f"v25:targeted:manager_toggle:{target}")])
-        rows.append([InlineKeyboardButton("🛡 تغییر نقش" if fa else "🛡 Change Role",callback_data=f"v25:targeted:manager_role:{target}")])
-        rows.append([InlineKeyboardButton("🗑️ لغو مدیریت" if fa else "🗑️ Disable",callback_data=f"v25:targeted:manager_disable_confirm:{target}")])
+        rows.append([InlineKeyboardButton("ð ÙØ¹Ø§Ù/ØºÛØ±ÙØ¹Ø§Ù ÙØ¯ÛØ±" if fa else "ð Toggle Manager",callback_data=f"v25:targeted:manager_toggle:{target}")])
+        rows.append([InlineKeyboardButton("ð¡ ØªØºÛÛØ± ÙÙØ´" if fa else "ð¡ Change Role",callback_data=f"v25:targeted:manager_role:{target}")])
+        rows.append([InlineKeyboardButton("ðï¸ ÙØºÙ ÙØ¯ÛØ±ÛØª" if fa else "ðï¸ Disable",callback_data=f"v25:targeted:manager_disable_confirm:{target}")])
     if _manager_is_owner(uid):
-        rows.append([InlineKeyboardButton("🔐 مدیریت دسترسی‌ها" if fa else "🔐 Manage Permissions",callback_data=f"v25:targeted:manager_perms:{target}")])
-    rows.append([InlineKeyboardButton("⬅️ مدیریت مدیران" if fa else "⬅️ Managers",callback_data="v25:targeted:manager_list")])
+        rows.append([InlineKeyboardButton("ð ÙØ¯ÛØ±ÛØª Ø¯Ø³ØªØ±Ø³ÛâÙØ§" if fa else "ð Manage Permissions",callback_data=f"v25:targeted:manager_perms:{target}")])
+    rows.append([InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù" if fa else "â¬ï¸ Managers",callback_data="v25:targeted:manager_list")])
     return "\n".join(lines),InlineKeyboardMarkup(rows)
 
 def _targeted_permissions_keyboard(uid,target):
     c=db(); r=c.execute("SELECT permissions_json FROM management_roles WHERE user_id=?",(int(target),)).fetchone(); c.close()
-    if not r: return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ مدیریت مدیران",callback_data="v25:targeted:manager_list")]])
+    if not r: return InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù",callback_data="v25:targeted:manager_list")]])
     try: perms=set(json.loads(r["permissions_json"] or "[]"))
     except Exception: perms=set()
     fa=lang(uid)=="fa"; rows=[]
     for key in MASTER_PERMISSION_KEYS:
-        mark="🟢" if key in perms else "🔴"
+        mark="ð¢" if key in perms else "ð´"
         rows.append([InlineKeyboardButton(f"{mark} {TARGETED_PERMISSION_LABELS.get(key,key)}",callback_data=f"v25:targeted:manager_perm:{target}:{key}")])
-    rows.append([InlineKeyboardButton("⬅️ پرونده مدیر" if fa else "⬅️ Manager",callback_data=f"v25:targeted:manager_detail:{target}")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ù¾Ø±ÙÙØ¯Ù ÙØ¯ÛØ±" if fa else "â¬ï¸ Manager",callback_data=f"v25:targeted:manager_detail:{target}")])
     return InlineKeyboardMarkup(rows)
 
 # ---------- Add/disable manager by username OR numeric ID ----------
@@ -12362,12 +12339,12 @@ def _targeted_set_price_enabled(asset,enabled):
 
 def prices_keyboard(uid):
     fa=lang(uid)=="fa"
-    all_labels=[('usd','💵 دلار','💵 USD'),('eur','💶 یورو','💶 EUR'),('gold18','🥇 طلای ۱۸ عیار','🥇 18K Gold'),('coin','🪙 سکه امامی','🪙 Emami Coin'),('silver','🥈 نقره','🥈 Silver'),('copper','🟠 مس','🟠 Copper'),('aluminum','⚙️ آلومینیوم','⚙️ Aluminum'),('nickel','🔩 نیکل','🔩 Nickel'),('zinc','🔘 روی','🔘 Zinc'),('lead','⛓️ سرب','⛓️ Lead')]
+    all_labels=[('usd','ðµ Ø¯ÙØ§Ø±','ðµ USD'),('eur','ð¶ ÛÙØ±Ù','ð¶ EUR'),('gold18','ð¥ Ø·ÙØ§Û Û±Û¸ Ø¹ÛØ§Ø±','ð¥ 18K Gold'),('coin','ðª Ø³Ú©Ù Ø§ÙØ§ÙÛ','ðª Emami Coin'),('silver','ð¥ ÙÙØ±Ù','ð¥ Silver'),('copper','ð  ÙØ³','ð  Copper'),('aluminum','âï¸ Ø¢ÙÙÙÛÙÛÙÙ','âï¸ Aluminum'),('nickel','ð© ÙÛÚ©Ù','ð© Nickel'),('zinc','ð Ø±ÙÛ','ð Zinc'),('lead','âï¸ Ø³Ø±Ø¨','âï¸ Lead')]
     enabled=set(_targeted_enabled_prices()); labels=[x for x in all_labels if x[0] in enabled]
     rows=[[InlineKeyboardButton((x[1] if fa else x[2]),callback_data=f"price:{x[0]}") for x in labels[i:i+2]] for i in range(0,len(labels),2)]
-    rows.append([InlineKeyboardButton("🔄 بروزرسانی همه" if fa else "🔄 Refresh all",callback_data="price:all")])
-    rows.append([InlineKeyboardButton("💰 سرمایه‌های من" if fa else "💰 My Portfolio",callback_data="v25:portfolio")])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if fa else "🏠 Main Menu",callback_data="price:main")])
+    rows.append([InlineKeyboardButton("ð Ø¨Ø±ÙØ²Ø±Ø³Ø§ÙÛ ÙÙÙ" if fa else "ð Refresh all",callback_data="price:all")])
+    rows.append([InlineKeyboardButton("ð° Ø³Ø±ÙØ§ÛÙâÙØ§Û ÙÙ" if fa else "ð° My Portfolio",callback_data="v25:portfolio")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu",callback_data="price:main")])
     return InlineKeyboardMarkup(rows)
 
 _ORIGINAL_FETCH_PRICE_V25_TARGETED = fetch_price_v25
@@ -12385,30 +12362,30 @@ async def fetch_price_v25(asset):
     if asset in ("gold18","coin"):
         url={"gold18":"https://www.tgju.org/profile/geram18/today","coin":"https://www.tgju.org/profile/sekee/today"}[asset]
         raw=await asyncio.to_thread(tgju_value,url)
-        return float(raw.replace(",","").replace("٫",".").replace("٬","")),"ریال","single"
+        return float(raw.replace(",","").replace("Ù«",".").replace("Ù¬","")),"Ø±ÛØ§Ù","single"
     return await _ORIGINAL_FETCH_PRICE_V25(asset)
 
 async def v25_show_price(update,context,asset):
-    uid=update.effective_user.id; fa=lang(uid)=="fa"; names={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب','btc':'BTC (بازار ایران)','eth':'ETH (بازار ایران)','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}; names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead','btc':'BTC','eth':'ETH','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}
+    uid=update.effective_user.id; fa=lang(uid)=="fa"; names={'usd':'Ø¯ÙØ§Ø±','eur':'ÛÙØ±Ù','gold18':'Ø·ÙØ§Û Û±Û¸ Ø¹ÛØ§Ø±','coin':'Ø³Ú©Ù Ø§ÙØ§ÙÛ','silver':'ÙÙØ±Ù','copper':'ÙØ³','aluminum':'Ø¢ÙÙÙÛÙÛÙÙ','nickel':'ÙÛÚ©Ù','zinc':'Ø±ÙÛ','lead':'Ø³Ø±Ø¨','btc':'BTC (Ø¨Ø§Ø²Ø§Ø± Ø§ÛØ±Ø§Ù)','eth':'ETH (Ø¨Ø§Ø²Ø§Ø± Ø§ÛØ±Ø§Ù)','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}; names_en={'usd':'USD','eur':'EUR','gold18':'18K Gold','coin':'Emami Coin','silver':'Silver','copper':'Copper','aluminum':'Aluminum','nickel':'Nickel','zinc':'Zinc','lead':'Lead','btc':'BTC','eth':'ETH','usdt':'USDT','bnb':'BNB','sol':'Solana','xrp':'XRP','sp500':'S&P 500','nasdaq':'Nasdaq','dow':'Dow Jones'}
     enabled=set(_targeted_enabled_prices())
     assets=_targeted_enabled_prices() if asset=='all' else [asset]
     if asset!='all' and asset not in enabled:
-        if update.callback_query: await update.callback_query.answer("⛔ این قیمت فعلاً توسط مدیر غیرفعال است." if fa else "⛔ This price is disabled by the admin.",show_alert=True)
+        if update.callback_query: await update.callback_query.answer("â Ø§ÛÙ ÙÛÙØª ÙØ¹ÙØ§Ù ØªÙØ³Ø· ÙØ¯ÛØ± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª." if fa else "â This price is disabled by the admin.",show_alert=True)
         return
-    lines=[('📈 <b>قیمت آنلاین</b>' if fa else '📈 <b>Live Prices</b>'),'']
+    lines=[('ð <b>ÙÛÙØª Ø¢ÙÙØ§ÛÙ</b>' if fa else 'ð <b>Live Prices</b>'),'']
     for a in assets:
         try:
             val,unit,confidence=await fetch_price_v25(a); label=names[a] if fa else names_en[a]; lines.append(f"{label}: <b>{val:,.0f}</b> {unit}")
         except Exception:
-            label=names[a] if fa else names_en[a]; lines.append(f"{label}: ⚠️ {'داده آنلاین در دسترس نیست' if fa else 'Live data unavailable'}")
-    lines += ['',('🕐 آخرین بررسی: '+fa_datetime(datetime.now(TZ),True) if fa else '🕐 Checked: '+fa_datetime(datetime.now(TZ),True))]
+            label=names[a] if fa else names_en[a]; lines.append(f"{label}: â ï¸ {'Ø¯Ø§Ø¯Ù Ø¢ÙÙØ§ÛÙ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ ÙÛØ³Øª' if fa else 'Live data unavailable'}")
+    lines += ['',('ð Ø¢Ø®Ø±ÛÙ Ø¨Ø±Ø±Ø³Û: '+fa_datetime(datetime.now(TZ),True) if fa else 'ð Checked: '+fa_datetime(datetime.now(TZ),True))]
     if update.callback_query: await update.callback_query.message.edit_text("\n".join(lines),parse_mode='HTML',reply_markup=prices_keyboard(uid))
     else: await update.message.reply_text("\n".join(lines),parse_mode='HTML',reply_markup=prices_keyboard(uid))
 
 async def price_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; asset=q.data.split(':',1)[1]
     if asset=='main':
-        try: await q.message.edit_text("🏠 منوی اصلی",reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+        try: await q.message.edit_text("ð  ÙÙÙÛ Ø§ØµÙÛ",reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
         except Exception: pass
         return
     await v25_show_price(update,context,asset)
@@ -12416,9 +12393,9 @@ async def price_callback(update,context):
 # ---------- Recurring goal reminders ----------
 def _targeted_repeat_keyboard(uid):
     fa=lang(uid)=="fa"
-    labels=[("today_tomorrow","📅 امروز و فردا" if fa else "📅 Today + Tomorrow"),("tomorrow","➡️ فقط فردا" if fa else "➡️ Tomorrow only"),("week","📆 یک هفته" if fa else "📆 One week"),("month","🗓️ یک ماه" if fa else "🗓️ One month"),("two_months","🗓️ دو ماه" if fa else "🗓️ Two months"),("daily","🔁 روزانه تا پایان هدف" if fa else "🔁 Daily until goal ends")]
+    labels=[("today_tomorrow","ð Ø§ÙØ±ÙØ² Ù ÙØ±Ø¯Ø§" if fa else "ð Today + Tomorrow"),("tomorrow","â¡ï¸ ÙÙØ· ÙØ±Ø¯Ø§" if fa else "â¡ï¸ Tomorrow only"),("week","ð ÛÚ© ÙÙØªÙ" if fa else "ð One week"),("month","ðï¸ ÛÚ© ÙØ§Ù" if fa else "ðï¸ One month"),("two_months","ðï¸ Ø¯Ù ÙØ§Ù" if fa else "ðï¸ Two months"),("daily","ð Ø±ÙØ²Ø§ÙÙ ØªØ§ Ù¾Ø§ÛØ§Ù ÙØ¯Ù" if fa else "ð Daily until goal ends")]
     rows=[[InlineKeyboardButton(t,callback_data=f"goalrepeat:{k}")] for k,t in labels]
-    rows.append([InlineKeyboardButton("❌ بدون تکرار" if fa else "❌ No repeat",callback_data="goalrepeat:none")])
+    rows.append([InlineKeyboardButton("â Ø¨Ø¯ÙÙ ØªÚ©Ø±Ø§Ø±" if fa else "â No repeat",callback_data="goalrepeat:none")])
     return InlineKeyboardMarkup(rows)
 
 def _targeted_apply_repeat(uid,gid,mode,base_date=None):
@@ -12439,7 +12416,7 @@ async def targeted_goalrepeat_callback(update,context):
     _targeted_apply_repeat(uid,gid,mode)
     context.user_data.pop('pending_repeat_goal_id',None)
     g=get_goal(uid,gid); fa=lang(uid)=='fa'
-    await q.message.edit_text((f"✅ هدف «{html.escape(g['name'])}» ثبت شد.\n⏰ ساعت: {g['reminder_time'] or 'خاموش'}\n🔁 تکرار یادآوری تنظیم شد." if fa else f"✅ Goal '{html.escape(g['name'])}' saved.\n⏰ Time: {g['reminder_time'] or 'Off'}\n🔁 Reminder repetition configured."),parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
+    await q.message.edit_text((f"â ÙØ¯Ù Â«{html.escape(g['name'])}Â» Ø«Ø¨Øª Ø´Ø¯.\nâ° Ø³Ø§Ø¹Øª: {g['reminder_time'] or 'Ø®Ø§ÙÙØ´'}\nð ØªÚ©Ø±Ø§Ø± ÛØ§Ø¯Ø¢ÙØ±Û ØªÙØ¸ÛÙ Ø´Ø¯." if fa else f"â Goal '{html.escape(g['name'])}' saved.\nâ° Time: {g['reminder_time'] or 'Off'}\nð Reminder repetition configured."),parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
 
 async def time_callback(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; value=q.data.split(':',1)[1]
@@ -12452,7 +12429,7 @@ async def time_callback(update,context):
     add_goal(uid,name,category,reminder,priority,duration)
     if reminder:
         c=db(); gid=c.execute("SELECT id FROM goals WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone()['id']; c.close(); context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid)
-        await q.message.edit_text("🔁 چند روز/چه مدت یادآوری شود؟" if lang(uid)=='fa' else "🔁 How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return
+        await q.message.edit_text("ð ÚÙØ¯ Ø±ÙØ²/ÚÙ ÙØ¯Øª ÛØ§Ø¯Ø¢ÙØ±Û Ø´ÙØ¯Ø" if lang(uid)=='fa' else "ð How long should reminders repeat?",reply_markup=_targeted_repeat_keyboard(uid)); return
     context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
 
 
@@ -12465,7 +12442,7 @@ async def reminder_job(context):
             sc=db(); rr=sc.execute("SELECT reminders_enabled FROM user_settings WHERE user_id=?",(uid,)).fetchone(); sc.close()
             if rr and not rr['reminders_enabled']: continue
             if get_status(uid,g['id'],today)=='done': continue
-            await context.bot.send_message(uid,T[lang(uid)]['reminder'].format(name=display_name(uid),goal=g['name']),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ انجام دادم' if lang(uid)=='fa' else '✅ Done',callback_data=f"done:{g['id']}"),InlineKeyboardButton('❌ انجام ندادم' if lang(uid)=='fa' else '❌ Not done',callback_data=f"miss:{g['id']}")],[InlineKeyboardButton('⏰ یادآوری فردا' if lang(uid)=='fa' else '⏰ Tomorrow',callback_data=f"goalrem:{g['id']}:menu")]]))
+            await context.bot.send_message(uid,T[lang(uid)]['reminder'].format(name=display_name(uid),goal=g['name']),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù' if lang(uid)=='fa' else 'â Done',callback_data=f"done:{g['id']}"),InlineKeyboardButton('â Ø§ÙØ¬Ø§Ù ÙØ¯Ø§Ø¯Ù' if lang(uid)=='fa' else 'â Not done',callback_data=f"miss:{g['id']}")],[InlineKeyboardButton('â° ÛØ§Ø¯Ø¢ÙØ±Û ÙØ±Ø¯Ø§' if lang(uid)=='fa' else 'â° Tomorrow',callback_data=f"goalrem:{g['id']}:menu")]]))
             log_activity(uid,'reminder_sent')
         except Exception as e: logger.error('Reminder error: %s',e)
 
@@ -12478,34 +12455,34 @@ async def v25_callback(update,context):
     if data.startswith('v25:targeted:'):
         fa=lang(uid)=='fa'
         if not master_guard(uid,'manage_roles'):
-            await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
+            await q.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True); return
         parts=data.split(':'); action=parts[2]
         if action=='manager_list':
             await q.answer(); await q.message.edit_text(_targeted_manager_text(uid),parse_mode='HTML',reply_markup=_targeted_manager_keyboard(uid)); return
         if action=='manager_add':
-            if not _manager_is_owner(uid): await q.answer('⛔ Owner only.',show_alert=True); return
-            context.user_data.clear(); context.user_data['targeted_add_manager']=True; await q.answer(); await q.message.edit_text('🆔 @username یا آیدی عددی مدیر جدید را بفرست.\n\n💡 نکته: کاربر باید قبلاً ربات را Start کرده باشد.\nبرای پیدا کردن آیدی عددی از @userinfobot استفاده کن.' if fa else '🆔 Send the new manager @username or numeric ID.\n\n💡 Note: The user must have started the bot first.\nUse @userinfobot to find their numeric ID.'); return
+            if not _manager_is_owner(uid): await q.answer('â Owner only.',show_alert=True); return
+            context.user_data.clear(); context.user_data['targeted_add_manager']=True; await q.answer(); await q.message.edit_text('ð @username ÛØ§ Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û ÙØ¯ÛØ± Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª.\n\nð¡ ÙÚ©ØªÙ: Ú©Ø§Ø±Ø¨Ø± Ø¨Ø§ÛØ¯ ÙØ¨ÙØ§Ù Ø±Ø¨Ø§Øª Ø±Ø§ Start Ú©Ø±Ø¯Ù Ø¨Ø§Ø´Ø¯.\nØ¨Ø±Ø§Û Ù¾ÛØ¯Ø§ Ú©Ø±Ø¯Ù Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û Ø§Ø² @userinfobot Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.' if fa else 'ð Send the new manager @username or numeric ID.\n\nð¡ Note: The user must have started the bot first.\nUse @userinfobot to find their numeric ID.'); return
         if action=='manager_disable_list':
             await q.answer(); rows=[]
             for r in _targeted_manager_rows():
                 if int(r['user_id'])==master_owner_id() or not r['active']: continue
                 label=(('@'+r['username']) if r['username'] else str(r['user_id']))
-                rows.append([InlineKeyboardButton('🗑️ '+label,callback_data=f'v25:targeted:manager_disable_confirm:{r["user_id"]}')])
-            rows.append([InlineKeyboardButton('⬅️ مدیریت مدیران',callback_data='v25:targeted:manager_list')]); await q.message.edit_text('مدیری را برای لغو مدیریت انتخاب کن:' if fa else 'Choose a manager to disable:',reply_markup=InlineKeyboardMarkup(rows)); return
+                rows.append([InlineKeyboardButton('ðï¸ '+label,callback_data=f'v25:targeted:manager_disable_confirm:{r["user_id"]}')])
+            rows.append([InlineKeyboardButton('â¬ï¸ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù',callback_data='v25:targeted:manager_list')]); await q.message.edit_text('ÙØ¯ÛØ±Û Ø±Ø§ Ø¨Ø±Ø§Û ÙØºÙ ÙØ¯ÛØ±ÛØª Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:' if fa else 'Choose a manager to disable:',reply_markup=InlineKeyboardMarkup(rows)); return
         if action=='manager_disable_confirm':
-            target=int(parts[3]); await q.answer(); await q.message.edit_text(f'⚠️ مدیریت این مدیر لغو شود؟\n🆔 <code>{target}</code>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ بله',callback_data=f'v25:targeted:manager_disable:{target}'),InlineKeyboardButton('❌ خیر',callback_data=f'v25:targeted:manager_detail:{target}')]])); return
+            target=int(parts[3]); await q.answer(); await q.message.edit_text(f'â ï¸ ÙØ¯ÛØ±ÛØª Ø§ÛÙ ÙØ¯ÛØ± ÙØºÙ Ø´ÙØ¯Ø\nð <code>{target}</code>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('â Ø¨ÙÙ',callback_data=f'v25:targeted:manager_disable:{target}'),InlineKeyboardButton('â Ø®ÛØ±',callback_data=f'v25:targeted:manager_detail:{target}')]])); return
         if action=='manager_disable':
             target=int(parts[3]);
-            if target==master_owner_id(): await q.answer('❌ Owner قابل لغو نیست.',show_alert=True); return
+            if target==master_owner_id(): await q.answer('â Owner ÙØ§Ø¨Ù ÙØºÙ ÙÛØ³Øª.',show_alert=True); return
             c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); master_log(uid,'manager_disabled',target); await q.answer(); await q.message.edit_text(_targeted_manager_text(uid),parse_mode='HTML',reply_markup=_targeted_manager_keyboard(uid)); return
         if action=='manager_toggle':
             target=int(parts[3]);
-            if target==master_owner_id(): await q.answer('Owner همیشه فعال است.',show_alert=True); return
+            if target==master_owner_id(): await q.answer('Owner ÙÙÛØ´Ù ÙØ¹Ø§Ù Ø§Ø³Øª.',show_alert=True); return
             c=db(); c.execute('UPDATE management_roles SET active=CASE WHEN active=1 THEN 0 ELSE 1 END,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); await q.answer(); text,kb=_targeted_manager_detail(uid,target); await q.message.edit_text(text,parse_mode='HTML',reply_markup=kb); return
         if action=='manager_detail':
             target=int(parts[3]); text,kb=_targeted_manager_detail(uid,target); await q.answer(); await q.message.edit_text(text,parse_mode='HTML',reply_markup=kb); return
         if action=='manager_perms':
-            target=int(parts[3]); await q.answer(); await q.message.edit_text('🔐 دسترسی‌های مدیر را روشن/خاموش کن:',reply_markup=_targeted_permissions_keyboard(uid,target)); return
+            target=int(parts[3]); await q.answer(); await q.message.edit_text('ð Ø¯Ø³ØªØ±Ø³ÛâÙØ§Û ÙØ¯ÛØ± Ø±Ø§ Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ Ú©Ù:',reply_markup=_targeted_permissions_keyboard(uid,target)); return
         if action=='manager_perm':
             target=int(parts[3]); perm=parts[4]
             if perm not in MASTER_PERMISSION_KEYS: await q.answer('Invalid permission',show_alert=True); return
@@ -12525,12 +12502,12 @@ async def text_router(update,context):
         _targeted_record_username(update.effective_user)
     uid=update.effective_user.id if update.effective_user else 0; txt=(update.message.text or '').strip() if update.message else ''; fa=lang(uid)=='fa'
     # Navigation buttons must cancel any pending manager-add/disable input mode
-    _nav_labels = ('🏠 منوی اصلی','🏠 Main Menu','⬅️ برگشت','⬅️ Back',
-                    '👥 کاربران و نقش‌ها','👥 Users & Roles',
-                    '🛡 مدیریت ربات','🛡 Bot Management',
-                    '⚙️ تنظیمات سیستم','⚙️ System Settings',
-                    '📊 داشبورد و گزارش','📊 Dashboard & Reports',
-                    '👤 استفاده از ربات','👤 Use Bot',
+    _nav_labels = ('ð  ÙÙÙÛ Ø§ØµÙÛ','ð  Main Menu','â¬ï¸ Ø¨Ø±Ú¯Ø´Øª','â¬ï¸ Back',
+                    'ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§','ð¥ Users & Roles',
+                    'ð¡ ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª','ð¡ Bot Management',
+                    'âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ','âï¸ System Settings',
+                    'ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Ú¯Ø²Ø§Ø±Ø´','ð Dashboard & Reports',
+                    'ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª','ð¤ Use Bot',
                     )
     if context.user_data.get('targeted_add_manager') and txt in _nav_labels:
         context.user_data.pop('targeted_add_manager', None)
@@ -12539,26 +12516,26 @@ async def text_router(update,context):
     if context.user_data.get('master_disable_manager') and txt in _nav_labels:
         context.user_data.pop('master_disable_manager', None)
     if context.user_data.get('targeted_add_manager'):
-        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('â Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
         if not target:
-            await update.message.reply_text('❌ کاربر <b>@'+txt.lstrip('@')+'</b> پیدا نشد.\n\n🔍 بررسی کنید:\n• آیا کاربر @username رو دقیق فرستاده؟\n• آیا کاربر قبلاً ربات رو Start کرده و یه پیام فرستاده؟\n\n✅ ساده‌ترین راه: از کاربر بخواهید آیدی عددی خود رو از @userinfobot بگیره و همون رو بفرسته.',parse_mode='HTML'); return
+            await update.message.reply_text('â Ú©Ø§Ø±Ø¨Ø± <b>@'+txt.lstrip('@')+'</b> Ù¾ÛØ¯Ø§ ÙØ´Ø¯.\n\nð Ø¨Ø±Ø±Ø³Û Ú©ÙÛØ¯:\nâ¢ Ø¢ÛØ§ Ú©Ø§Ø±Ø¨Ø± @username Ø±Ù Ø¯ÙÛÙ ÙØ±Ø³ØªØ§Ø¯ÙØ\nâ¢ Ø¢ÛØ§ Ú©Ø§Ø±Ø¨Ø± ÙØ¨ÙØ§Ù Ø±Ø¨Ø§Øª Ø±Ù Start Ú©Ø±Ø¯Ù Ù ÛÙ Ù¾ÛØ§Ù ÙØ±Ø³ØªØ§Ø¯ÙØ\n\nâ Ø³Ø§Ø¯ÙâØªØ±ÛÙ Ø±Ø§Ù: Ø§Ø² Ú©Ø§Ø±Ø¨Ø± Ø¨Ø®ÙØ§ÙÛØ¯ Ø¢ÛØ¯Û Ø¹Ø¯Ø¯Û Ø®ÙØ¯ Ø±Ù Ø§Ø² @userinfobot Ø¨Ú¯ÛØ±Ù Ù ÙÙÙÙ Ø±Ù Ø¨ÙØ±Ø³ØªÙ.',parse_mode='HTML'); return
         context.user_data['targeted_add_manager']=False; context.user_data['targeted_pending_manager_id']=target; context.user_data['targeted_pending_manager_username']=uname
-        await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
+        await update.message.reply_text('ð­ ÙÙØ´ ÙØ¯ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:',reply_markup=_master_add_role_keyboard(uid)); return
     # Fix legacy add-manager flow too: accept username and store it.
     if context.user_data.get('master_add_manager'):
-        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('â Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
+        if not target: await update.message.reply_text('â @username ÛØ§ ID ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.'); return
         context.user_data['master_add_manager']=False; context.user_data['master_pending_manager_id']=target; context.user_data['master_pending_manager_username']=uname
-        await update.message.reply_text('🎭 نقش مدیر را انتخاب کن:',reply_markup=_master_add_role_keyboard(uid)); return
+        await update.message.reply_text('ð­ ÙÙØ´ ÙØ¯ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:',reply_markup=_master_add_role_keyboard(uid)); return
     # Legacy disable flow: accept username too.
     if context.user_data.get('master_disable_manager'):
-        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('⛔ Owner only.'); return
+        if not _manager_is_owner(uid): context.user_data.clear(); await update.message.reply_text('â Owner only.'); return
         target,uname=await _targeted_resolve_manager_ref(context,context.bot,txt)
-        if not target: await update.message.reply_text('❌ @username یا ID معتبر نیست.'); return
-        if target==master_owner_id(): await update.message.reply_text('❌ Owner قابل لغو نیست.'); return
-        c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('✅ مدیریت این کاربر لغو شد.',reply_markup=keyboard(uid)); return
+        if not target: await update.message.reply_text('â @username ÛØ§ ID ÙØ¹ØªØ¨Ø± ÙÛØ³Øª.'); return
+        if target==master_owner_id(): await update.message.reply_text('â Owner ÙØ§Ø¨Ù ÙØºÙ ÙÛØ³Øª.'); return
+        c=db(); c.execute('UPDATE management_roles SET active=0,updated_at=? WHERE user_id=?',(datetime.now(TZ).isoformat(),target)); c.commit(); c.close(); clear_flow(context); await update.message.reply_text('â ÙØ¯ÛØ±ÛØª Ø§ÛÙ Ú©Ø§Ø±Ø¨Ø± ÙØºÙ Ø´Ø¯.',reply_markup=keyboard(uid)); return
     return await _OLD_TEXT_ROUTER_TARGETED(update,context)
 
 # When role is selected after targeted username add, persist username as well.
@@ -12586,7 +12563,7 @@ _ORIGINAL_MASTER_ROOT_KEYBOARD_TARGETED=master_root_keyboard
 def master_root_keyboard(uid):
     kb=_ORIGINAL_MASTER_ROOT_KEYBOARD_TARGETED(uid); rows=[list(r) for r in kb.inline_keyboard]
     if master_has_permission(uid,'manage_features'):
-        rows.insert(max(0,len(rows)-1),[InlineKeyboardButton('📈 مدیریت قیمت‌های آنلاین' if lang(uid)=='fa' else '📈 Live Price Management',callback_data='v25:targeted:prices')])
+        rows.insert(max(0,len(rows)-1),[InlineKeyboardButton('ð ÙØ¯ÛØ±ÛØª ÙÛÙØªâÙØ§Û Ø¢ÙÙØ§ÛÙ' if lang(uid)=='fa' else 'ð Live Price Management',callback_data='v25:targeted:prices')])
     return InlineKeyboardMarkup(rows)
 
 # Extend the callback one final time for live-price settings.
@@ -12594,17 +12571,17 @@ _PREV_V25_CALLBACK_PRICE_PANEL=v25_callback
 async def v25_callback(update,context):
     data=update.callback_query.data if update.callback_query else ''; uid=update.effective_user.id; q=update.callback_query
     if data=='v25:targeted:prices':
-        if not master_has_permission(uid,'manage_features'): await q.answer('⛔ دسترسی ندارید.',show_alert=True); return
-        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
+        if not master_has_permission(uid,'manage_features'): await q.answer('â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.',show_alert=True); return
+        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'Ø¯ÙØ§Ø±','eur':'ÛÙØ±Ù','gold18':'Ø·ÙØ§Û Û±Û¸ Ø¹ÛØ§Ø±','coin':'Ø³Ú©Ù Ø§ÙØ§ÙÛ','silver':'ÙÙØ±Ù','copper':'ÙØ³','aluminum':'Ø¢ÙÙÙÛÙÛÙÙ','nickel':'ÙÛÚ©Ù','zinc':'Ø±ÙÛ','lead':'Ø³Ø±Ø¨'}
         for r in all_rows:
-            rows.append([InlineKeyboardButton(('🟢 ' if r['enabled'] else '🔴 ')+labels.get(r['asset'],r['asset']),callback_data=f"v25:targeted:price_toggle:{r['asset']}")])
-        rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.answer(); await q.message.edit_text('📈 <b>مدیریت قیمت‌های آنلاین</b>\n\nسبز = نمایش در ربات\nقرمز = مخفی از کاربران',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows)); return
+            rows.append([InlineKeyboardButton(('ð¢ ' if r['enabled'] else 'ð´ ')+labels.get(r['asset'],r['asset']),callback_data=f"v25:targeted:price_toggle:{r['asset']}")])
+        rows.append([InlineKeyboardButton('â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª',callback_data='v25:master:home')]); await q.answer(); await q.message.edit_text('ð <b>ÙØ¯ÛØ±ÛØª ÙÛÙØªâÙØ§Û Ø¢ÙÙØ§ÛÙ</b>\n\nØ³Ø¨Ø² = ÙÙØ§ÛØ´ Ø¯Ø± Ø±Ø¨Ø§Øª\nÙØ±ÙØ² = ÙØ®ÙÛ Ø§Ø² Ú©Ø§Ø±Ø¨Ø±Ø§Ù',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows)); return
     if data.startswith('v25:targeted:price_toggle:'):
-        if not master_has_permission(uid,'manage_features'): await q.answer('⛔',show_alert=True); return
-        asset=data.rsplit(':',1)[1]; c=db(); r=c.execute('SELECT enabled FROM price_asset_settings WHERE asset=?',(asset,)).fetchone(); new=0 if r and r['enabled'] else 1; c.execute('UPDATE price_asset_settings SET enabled=?,updated_at=? WHERE asset=?',(new,datetime.now(TZ).isoformat(),asset)); c.commit(); c.close(); await q.answer('روشن شد' if new else 'خاموش شد');
-        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'دلار','eur':'یورو','gold18':'طلای ۱۸ عیار','coin':'سکه امامی','silver':'نقره','copper':'مس','aluminum':'آلومینیوم','nickel':'نیکل','zinc':'روی','lead':'سرب'}
-        for rr in all_rows: rows.append([InlineKeyboardButton(('🟢 ' if rr['enabled'] else '🔴 ')+labels.get(rr['asset'],rr['asset']),callback_data=f"v25:targeted:price_toggle:{rr['asset']}")])
-        rows.append([InlineKeyboardButton('⬅️ مرکز مدیریت',callback_data='v25:master:home')]); await q.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(rows)); return
+        if not master_has_permission(uid,'manage_features'): await q.answer('â',show_alert=True); return
+        asset=data.rsplit(':',1)[1]; c=db(); r=c.execute('SELECT enabled FROM price_asset_settings WHERE asset=?',(asset,)).fetchone(); new=0 if r and r['enabled'] else 1; c.execute('UPDATE price_asset_settings SET enabled=?,updated_at=? WHERE asset=?',(new,datetime.now(TZ).isoformat(),asset)); c.commit(); c.close(); await q.answer('Ø±ÙØ´Ù Ø´Ø¯' if new else 'Ø®Ø§ÙÙØ´ Ø´Ø¯');
+        rows=[]; c=db(); all_rows=c.execute('SELECT asset,enabled FROM price_asset_settings ORDER BY rowid').fetchall(); c.close(); labels={'usd':'Ø¯ÙØ§Ø±','eur':'ÛÙØ±Ù','gold18':'Ø·ÙØ§Û Û±Û¸ Ø¹ÛØ§Ø±','coin':'Ø³Ú©Ù Ø§ÙØ§ÙÛ','silver':'ÙÙØ±Ù','copper':'ÙØ³','aluminum':'Ø¢ÙÙÙÛÙÛÙÙ','nickel':'ÙÛÚ©Ù','zinc':'Ø±ÙÛ','lead':'Ø³Ø±Ø¨'}
+        for rr in all_rows: rows.append([InlineKeyboardButton(('ð¢ ' if rr['enabled'] else 'ð´ ')+labels.get(rr['asset'],rr['asset']),callback_data=f"v25:targeted:price_toggle:{rr['asset']}")])
+        rows.append([InlineKeyboardButton('â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª',callback_data='v25:master:home')]); await q.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(rows)); return
     return await _PREV_V25_CALLBACK_PRICE_PANEL(update,context)
 
 
@@ -12632,17 +12609,17 @@ def _manager_main_keyboard(uid):
     role_label = _manager_role_label(role, fa)
 
     specs = [
-        ("manage_bot", "🛡 مدیریت ربات", "🛡 Bot Management"),
-        ("view_dashboard", "📊 داشبورد و گزارش", "📊 Dashboard & Reports"),
-        ("manage_users", "👥 کاربران و نقش‌ها", "👥 Users & Roles"),
-        ("manage_tickets", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents"),
-        ("manage_channels", "📢 کانال و انتشار", "📢 Channels & Publishing"),
-        ("manage_finance", "💰 مالی و پرداخت", "💰 Finance & Payments"),
-        ("manage_vip", "💎 VIP / XP / Token", "💎 VIP / XP / Token"),
-        ("run_health", "🩺 سلامت و Diagnostics", "🩺 Health & Diagnostics"),
-        ("manage_system", "⚙️ تنظیمات سیستم", "⚙️ System Settings"),
-        ("manage_roles", "🧑‍💼 مدیریت مدیران", "🧑‍💼 Manager Management"),
-        ("use_bot", "👤 استفاده از ربات", "👤 Use Bot"),
+        ("manage_bot", "ð¡ ÙØ¯ÛØ±ÛØª Ø±Ø¨Ø§Øª", "ð¡ Bot Management"),
+        ("view_dashboard", "ð Ø¯Ø§Ø´Ø¨ÙØ±Ø¯ Ù Ú¯Ø²Ø§Ø±Ø´", "ð Dashboard & Reports"),
+        ("manage_users", "ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ù ÙÙØ´âÙØ§", "ð¥ Users & Roles"),
+        ("manage_tickets", "ð« ØªÛÚ©ØªâÙØ§ Ù Incident", "ð« Tickets & Incidents"),
+        ("manage_channels", "ð¢ Ú©Ø§ÙØ§Ù Ù Ø§ÙØªØ´Ø§Ø±", "ð¢ Channels & Publishing"),
+        ("manage_finance", "ð° ÙØ§ÙÛ Ù Ù¾Ø±Ø¯Ø§Ø®Øª", "ð° Finance & Payments"),
+        ("manage_vip", "ð VIP / XP / Token", "ð VIP / XP / Token"),
+        ("run_health", "ð©º Ø³ÙØ§ÙØª Ù Diagnostics", "ð©º Health & Diagnostics"),
+        ("manage_system", "âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ", "âï¸ System Settings"),
+        ("manage_roles", "ð§âð¼ ÙØ¯ÛØ±ÛØª ÙØ¯ÛØ±Ø§Ù", "ð§âð¼ Manager Management"),
+        ("use_bot", "ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot"),
     ]
 
     labels = []
@@ -12652,12 +12629,12 @@ def _manager_main_keyboard(uid):
 
     # Two buttons per row, like the requested compact reference layout.
     rows = [labels[i:i + 2] for i in range(0, len(labels), 2)]
-    rows.append(["🏠 منوی اصلی" if fa else "🏠 Main Menu"])
+    rows.append(["ð  ÙÙÙÛ Ø§ØµÙÛ" if fa else "ð  Main Menu"])
 
     title = (
-        f"🛡️ پنل مدیر\nنقش: <b>{html.escape(role_label)}</b>"
+        f"ð¡ï¸ Ù¾ÙÙ ÙØ¯ÛØ±\nÙÙØ´: <b>{html.escape(role_label)}</b>"
         if fa else
-        f"🛡️ Manager Panel\nRole: <b>{html.escape(role_label)}</b>"
+        f"ð¡ï¸ Manager Panel\nRole: <b>{html.escape(role_label)}</b>"
     )
     return title, ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 # ===================== FINAL NAVIGATION / VALUEERROR REPAIR =====================
@@ -12670,7 +12647,7 @@ async def _set_root_keyboard_silently(update, uid):
 
     Reply keyboards are persistent in Telegram. The current keyboard therefore
     stays visible after the user's navigation message is removed. Sending a new
-    "🏠 منوی اصلی" carrier here was the source of the duplicate text bubbles.
+    "ð  ÙÙÙÛ Ø§ØµÙÛ" carrier here was the source of the duplicate text bubbles.
     No bot message is created by this helper.
     No message is deleted here.
     No user data is changed here.
@@ -12686,7 +12663,7 @@ async def _set_root_keyboard_silently(update, uid):
 
 
 # Keep the settings callback on the same message and never emit a duplicate
-# "🏠 منوی اصلی" message when the user chooses Main Menu.
+# "ð  ÙÙÙÛ Ø§ØµÙÛ" message when the user chooses Main Menu.
 _OLD_SETTINGS_CALLBACK_FINAL_NAV_REPAIR = settings_callback
 async def settings_callback(update, context):
     q = update.callback_query
@@ -12699,7 +12676,7 @@ async def settings_callback(update, context):
             await q.message.delete()
         except Exception:
             try:
-                await q.message.edit_text("‎")
+                await q.message.edit_text("â")
             except Exception:
                 pass
         return
@@ -12714,7 +12691,7 @@ async def text_router(update, context):
     txt = update.message.text.strip()
     uid = update.effective_user.id
 
-    if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+    if txt in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu", "â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
         clear_flow(context)
         try:
             await update.message.delete()
@@ -12725,12 +12702,12 @@ async def text_router(update, context):
         if parent and parent in ("goals", "reports", "tools", "vip", "account", "support"):
             fa = lang(uid) == "fa"
             titles = {
-                "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
-                "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-                "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
-                "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
-                "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
-                "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+                "goals": ("ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>", "ð¯ <b>Goals & Plan</b>"),
+                "reports": ("ð <b>Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª</b>", "ð <b>Reports & Progress</b>"),
+                "tools": ("ð ï¸ <b>Ø§Ø¨Ø²Ø§Ø±ÙØ§</b>", "ð ï¸ <b>Tools</b>"),
+                "vip": ("ð <b>VIP Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§</b>", "ð <b>VIP & Rewards</b>"),
+                "account": ("ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>", "ð¤ <b>My Account</b>"),
+                "support": ("ð« <b>Ù¾Ø´ØªÛØ¨Ø§ÙÛ</b>", "ð« <b>Support</b>"),
             }
             await update.message.reply_text(
                 titles.get(parent, titles["goals"])[0 if fa else 1],
@@ -12740,41 +12717,41 @@ async def text_router(update, context):
             return
         return
 
-    if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+    if txt in ("ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot"):
         clear_flow(context)
         fa = lang(uid) == "fa"
         await update.message.reply_text(
-            "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+            "ð¤ <b>Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±</b>\n\nÙØ§Ø¨ÙÛØªâÙØ§Û Ø¹Ø§Ø¯Û Ø±Ø¨Ø§Øª Ø¯Ø± Ø§ÛÙ Ø¨Ø®Ø´ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø§Ø³Øª."
             if fa else
-            "👤 <b>User Area</b>\n\nNormal user features are available here.",
+            "ð¤ <b>User Area</b>\n\nNormal user features are available here.",
             parse_mode="HTML",
             reply_markup=_compact_user_keyboard(uid),
         )
         return
 
-    if txt in ("⚙️ تنظیمات سیستم", "⚙️ System Settings"):
+    if txt in ("âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ", "âï¸ System Settings"):
         clear_flow(context)
         if _is_active_manager(uid):
             fa = lang(uid) == "fa"
             paused = get_system_setting("bot_paused_until", "")
             maintenance = feature_enabled("maintenance")
             text = (
-                f"⚙️ <b>تنظیمات سیستم</b>\n\n"
-                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-                f"⏸ توقف موقت: {html.escape(paused or 'فعال نیست')}\n"
-                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
-                f"مالک اصلی: <code>{master_owner_id() or '-'}</code>"
+                f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\n"
+                f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+                f"â¸ ØªÙÙÙ ÙÙÙØª: {html.escape(paused or 'ÙØ¹Ø§Ù ÙÛØ³Øª')}\n"
+                f"ð Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"ÙØ§ÙÚ© Ø§ØµÙÛ: <code>{master_owner_id() or '-'}</code>"
             ) if fa else (
-                f"⚙️ <b>System Settings</b>\n\n"
-                f"🛠 Maintenance: {'🟢' if maintenance else '🔴'}\n"
-                f"⏸ Temporary pause: {html.escape(paused or 'Not active')}\n"
-                f"🗄 Schema: {DB_SCHEMA_VERSION}\n\n"
+                f"âï¸ <b>System Settings</b>\n\n"
+                f"ð  Maintenance: {'ð¢' if maintenance else 'ð´'}\n"
+                f"â¸ Temporary pause: {html.escape(paused or 'Not active')}\n"
+                f"ð Schema: {DB_SCHEMA_VERSION}\n\n"
                 f"Owner: <code>{master_owner_id() or '-'}</code>"
             )
             kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
-                [InlineKeyboardButton("⏸ مدیریت توقف" if fa else "⏸ Pause Management", callback_data="adm:pause")],
-                [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")],
+                [InlineKeyboardButton("ð§© ØªØºÛÛØ± ÙØ§Ø¨ÙÛØªâÙØ§" if fa else "ð§© Feature Flags", callback_data="adm:features")],
+                [InlineKeyboardButton("â¸ ÙØ¯ÛØ±ÛØª ØªÙÙÙ" if fa else "â¸ Pause Management", callback_data="adm:pause")],
+                [InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª" if fa else "â¬ï¸ Management Center", callback_data="v25:master:home")],
             ])
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return
@@ -12790,27 +12767,27 @@ async def error_handler(update, context):
     uid = update.effective_user.id if update and update.effective_user else None
     txt = (update.message.text or "").strip() if update and update.message else ""
     if isinstance(err, ValueError) and uid and txt in (
-        "👤 استفاده از ربات", "👤 Use Bot", "⚙️ تنظیمات سیستم", "⚙️ System Settings"
+        "ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot", "âï¸ ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ", "âï¸ System Settings"
     ):
         try:
             clear_flow(context)
-            if txt in ("👤 استفاده از ربات", "👤 Use Bot"):
+            if txt in ("ð¤ Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª", "ð¤ Use Bot"):
                 fa = lang(uid) == "fa"
                 await update.message.reply_text(
-                    "👤 <b>بخش کاربر</b>\n\nقابلیت‌های عادی ربات در این بخش در دسترس است."
+                    "ð¤ <b>Ø¨Ø®Ø´ Ú©Ø§Ø±Ø¨Ø±</b>\n\nÙØ§Ø¨ÙÛØªâÙØ§Û Ø¹Ø§Ø¯Û Ø±Ø¨Ø§Øª Ø¯Ø± Ø§ÛÙ Ø¨Ø®Ø´ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø§Ø³Øª."
                     if fa else
-                    "👤 <b>User Area</b>\n\nNormal user features are available here.",
+                    "ð¤ <b>User Area</b>\n\nNormal user features are available here.",
                     parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
                 )
             else:
                 fa = lang(uid) == "fa"
                 await update.message.reply_text(
-                    "⚙️ <b>تنظیمات سیستم</b>\n\nوضعیت تنظیمات سیستم را از این بخش مدیریت کن."
+                    "âï¸ <b>ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ</b>\n\nÙØ¶Ø¹ÛØª ØªÙØ¸ÛÙØ§Øª Ø³ÛØ³ØªÙ Ø±Ø§ Ø§Ø² Ø§ÛÙ Ø¨Ø®Ø´ ÙØ¯ÛØ±ÛØª Ú©Ù."
                     if fa else
-                    "⚙️ <b>System Settings</b>\n\nManage the system settings from this section.",
+                    "âï¸ <b>System Settings</b>\n\nManage the system settings from this section.",
                     parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🧩 تغییر قابلیت‌ها" if fa else "🧩 Feature Flags", callback_data="adm:features")],
-                        [InlineKeyboardButton("⬅️ مرکز مدیریت" if fa else "⬅️ Management Center", callback_data="v25:master:home")],
+                        [InlineKeyboardButton("ð§© ØªØºÛÛØ± ÙØ§Ø¨ÙÛØªâÙØ§" if fa else "ð§© Feature Flags", callback_data="adm:features")],
+                        [InlineKeyboardButton("â¬ï¸ ÙØ±Ú©Ø² ÙØ¯ÛØ±ÛØª" if fa else "â¬ï¸ Management Center", callback_data="v25:master:home")],
                     ])
                 )
             logger.warning("Recovered stale ValueError route for uid=%s text=%r", uid, txt)
@@ -12826,73 +12803,73 @@ async def error_handler(update, context):
 # are preserved. This layer only extends the goals/reminders experience.
 
 READY_CATALOG_FA = {
-    "👤 شخصی": {
-        "🩺 سلامت": [
-            "🩺 وقت دکتر", "🧪 آزمایش دوره‌ای", "🩸 آزمایش کامل خون", "📋 چکاپ ماهانه", "📅 چکاپ سالانه",
-            "🦷 دندانپزشکی", "👁️ معاینه چشم", "💊 خرید/تمدید دارو", "💉 واکسن"
+    "ð¤ Ø´Ø®ØµÛ": {
+        "ð©º Ø³ÙØ§ÙØª": [
+            "ð©º ÙÙØª Ø¯Ú©ØªØ±", "ð§ª Ø¢Ø²ÙØ§ÛØ´ Ø¯ÙØ±ÙâØ§Û", "ð©¸ Ø¢Ø²ÙØ§ÛØ´ Ú©Ø§ÙÙ Ø®ÙÙ", "ð ÚÚ©Ø§Ù¾ ÙØ§ÙØ§ÙÙ", "ð ÚÚ©Ø§Ù¾ Ø³Ø§ÙØ§ÙÙ",
+            "ð¦· Ø¯ÙØ¯Ø§ÙÙ¾Ø²Ø´Ú©Û", "ðï¸ ÙØ¹Ø§ÛÙÙ ÚØ´Ù", "ð Ø®Ø±ÛØ¯/ØªÙØ¯ÛØ¯ Ø¯Ø§Ø±Ù", "ð ÙØ§Ú©Ø³Ù"
         ],
-        "🏠 خانه": [
-            "🧹 نظافت خانه", "🔧 تعمیرات خانه", "❄️ سرویس کولر", "🔥 سرویس پکیج/بخاری", "💧 تعویض فیلتر آب",
-            "🛒 خرید لوازم خانه", "📦 خرید ماهانه خانه"
+        "ð  Ø®Ø§ÙÙ": [
+            "ð§¹ ÙØ¸Ø§ÙØª Ø®Ø§ÙÙ", "ð§ ØªØ¹ÙÛØ±Ø§Øª Ø®Ø§ÙÙ", "âï¸ Ø³Ø±ÙÛØ³ Ú©ÙÙØ±", "ð¥ Ø³Ø±ÙÛØ³ Ù¾Ú©ÛØ¬/Ø¨Ø®Ø§Ø±Û", "ð§ ØªØ¹ÙÛØ¶ ÙÛÙØªØ± Ø¢Ø¨",
+            "ð Ø®Ø±ÛØ¯ ÙÙØ§Ø²Ù Ø®Ø§ÙÙ", "ð¦ Ø®Ø±ÛØ¯ ÙØ§ÙØ§ÙÙ Ø®Ø§ÙÙ"
         ],
-        "👨‍👩‍👧 خانواده": [
-            "☎️ تماس با خانواده", "❤️ وقت خانوادگی", "🎂 تولد", "💍 سالگرد", "🏫 پیگیری مدرسه/کلاس",
-            "🩺 وقت دکتر عضو خانواده", "🎁 خرید هدیه"
+        "ð¨âð©âð§ Ø®Ø§ÙÙØ§Ø¯Ù": [
+            "âï¸ ØªÙØ§Ø³ Ø¨Ø§ Ø®Ø§ÙÙØ§Ø¯Ù", "â¤ï¸ ÙÙØª Ø®Ø§ÙÙØ§Ø¯Ú¯Û", "ð ØªÙÙØ¯", "ð Ø³Ø§ÙÚ¯Ø±Ø¯", "ð« Ù¾ÛÚ¯ÛØ±Û ÙØ¯Ø±Ø³Ù/Ú©ÙØ§Ø³",
+            "ð©º ÙÙØª Ø¯Ú©ØªØ± Ø¹Ø¶Ù Ø®Ø§ÙÙØ§Ø¯Ù", "ð Ø®Ø±ÛØ¯ ÙØ¯ÛÙ"
         ],
-        "✈️ سفر": [
-            "✈️ سفر کاری", "🏖 سفر تفریحی", "👨‍👩‍👧 سفر خانوادگی", "🌍 سفر خارجی", "🎒 آماده‌سازی سفر"
+        "âï¸ Ø³ÙØ±": [
+            "âï¸ Ø³ÙØ± Ú©Ø§Ø±Û", "ð Ø³ÙØ± ØªÙØ±ÛØ­Û", "ð¨âð©âð§ Ø³ÙØ± Ø®Ø§ÙÙØ§Ø¯Ú¯Û", "ð Ø³ÙØ± Ø®Ø§Ø±Ø¬Û", "ð Ø¢ÙØ§Ø¯ÙâØ³Ø§Ø²Û Ø³ÙØ±"
         ],
-        "📌 شخصی و اداری": [
-            "📝 کار شخصی", "🏢 کار اداری", "📞 تماس مهم", "🤝 قرار", "🎯 پیگیری یک کار", "⭐ کار مهم"
+        "ð Ø´Ø®ØµÛ Ù Ø§Ø¯Ø§Ø±Û": [
+            "ð Ú©Ø§Ø± Ø´Ø®ØµÛ", "ð¢ Ú©Ø§Ø± Ø§Ø¯Ø§Ø±Û", "ð ØªÙØ§Ø³ ÙÙÙ", "ð¤ ÙØ±Ø§Ø±", "ð¯ Ù¾ÛÚ¯ÛØ±Û ÛÚ© Ú©Ø§Ø±", "â­ Ú©Ø§Ø± ÙÙÙ"
         ],
     },
-    "💰 مالی": {
-        "🧾 چک و سررسید": ["🧾 چک پرداختی", "🧾 چک دریافتی", "📅 سررسید چک", "💵 طلب", "💳 بدهی"],
-        "💳 پرداخت‌ها": ["💳 قسط", "🏦 وام", "🏠 اجاره", "💡 قبض", "🛡️ بیمه", "🧮 مالیات", "🎓 شهریه"],
-        "🔄 دوره‌ای": ["🔄 پرداخت ماهانه", "🔄 پرداخت سالانه", "📺 تمدید اشتراک", "🌐 تمدید سرویس آنلاین"],
-        "📊 مدیریت مالی": ["📒 ثبت هزینه", "🏦 بررسی حساب", "💰 پس‌انداز", "📈 بررسی هزینه ماهانه"],
+    "ð° ÙØ§ÙÛ": {
+        "ð§¾ ÚÚ© Ù Ø³Ø±Ø±Ø³ÛØ¯": ["ð§¾ ÚÚ© Ù¾Ø±Ø¯Ø§Ø®ØªÛ", "ð§¾ ÚÚ© Ø¯Ø±ÛØ§ÙØªÛ", "ð Ø³Ø±Ø±Ø³ÛØ¯ ÚÚ©", "ðµ Ø·ÙØ¨", "ð³ Ø¨Ø¯ÙÛ"],
+        "ð³ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§": ["ð³ ÙØ³Ø·", "ð¦ ÙØ§Ù", "ð  Ø§Ø¬Ø§Ø±Ù", "ð¡ ÙØ¨Ø¶", "ð¡ï¸ Ø¨ÛÙÙ", "ð§® ÙØ§ÙÛØ§Øª", "ð Ø´ÙØ±ÛÙ"],
+        "ð Ø¯ÙØ±ÙâØ§Û": ["ð Ù¾Ø±Ø¯Ø§Ø®Øª ÙØ§ÙØ§ÙÙ", "ð Ù¾Ø±Ø¯Ø§Ø®Øª Ø³Ø§ÙØ§ÙÙ", "ðº ØªÙØ¯ÛØ¯ Ø§Ø´ØªØ±Ø§Ú©", "ð ØªÙØ¯ÛØ¯ Ø³Ø±ÙÛØ³ Ø¢ÙÙØ§ÛÙ"],
+        "ð ÙØ¯ÛØ±ÛØª ÙØ§ÙÛ": ["ð Ø«Ø¨Øª ÙØ²ÛÙÙ", "ð¦ Ø¨Ø±Ø±Ø³Û Ø­Ø³Ø§Ø¨", "ð° Ù¾Ø³âØ§ÙØ¯Ø§Ø²", "ð Ø¨Ø±Ø±Ø³Û ÙØ²ÛÙÙ ÙØ§ÙØ§ÙÙ"],
     },
-    "🚗 خودرو": {
-        "🛢 سرویس": ["🛢 تعویض روغن", "🔧 سرویس دوره‌ای", "🧰 تعمیر خودرو", "🔩 تعویض شمع", "〰️ تعویض تسمه"],
-        "🛑 ترمز و لاستیک": ["🛑 تعویض لنت", "🔍 بررسی ترمز", "🛞 تعویض لاستیک", "💨 تنظیم باد", "🔄 جابه‌جایی لاستیک"],
-        "💧 مایعات و فیلترها": ["💧 ضدیخ/آب رادیاتور", "🧴 روغن ترمز", "🌬 فیلتر هوا", "❄️ فیلتر کابین", "🛢 فیلتر روغن"],
-        "📄 مدارک و نگهداری": ["📄 معاینه فنی", "🛡️ تمدید بیمه خودرو", "🔋 بررسی باتری", "❄️ سرویس کولر", "🧽 کارواش"],
+    "ð Ø®ÙØ¯Ø±Ù": {
+        "ð¢ Ø³Ø±ÙÛØ³": ["ð¢ ØªØ¹ÙÛØ¶ Ø±ÙØºÙ", "ð§ Ø³Ø±ÙÛØ³ Ø¯ÙØ±ÙâØ§Û", "ð§° ØªØ¹ÙÛØ± Ø®ÙØ¯Ø±Ù", "ð© ØªØ¹ÙÛØ¶ Ø´ÙØ¹", "ã°ï¸ ØªØ¹ÙÛØ¶ ØªØ³ÙÙ"],
+        "ð ØªØ±ÙØ² Ù ÙØ§Ø³ØªÛÚ©": ["ð ØªØ¹ÙÛØ¶ ÙÙØª", "ð Ø¨Ø±Ø±Ø³Û ØªØ±ÙØ²", "ð ØªØ¹ÙÛØ¶ ÙØ§Ø³ØªÛÚ©", "ð¨ ØªÙØ¸ÛÙ Ø¨Ø§Ø¯", "ð Ø¬Ø§Ø¨ÙâØ¬Ø§ÛÛ ÙØ§Ø³ØªÛÚ©"],
+        "ð§ ÙØ§ÛØ¹Ø§Øª Ù ÙÛÙØªØ±ÙØ§": ["ð§ Ø¶Ø¯ÛØ®/Ø¢Ø¨ Ø±Ø§Ø¯ÛØ§ØªÙØ±", "ð§´ Ø±ÙØºÙ ØªØ±ÙØ²", "ð¬ ÙÛÙØªØ± ÙÙØ§", "âï¸ ÙÛÙØªØ± Ú©Ø§Ø¨ÛÙ", "ð¢ ÙÛÙØªØ± Ø±ÙØºÙ"],
+        "ð ÙØ¯Ø§Ø±Ú© Ù ÙÚ¯ÙØ¯Ø§Ø±Û": ["ð ÙØ¹Ø§ÛÙÙ ÙÙÛ", "ð¡ï¸ ØªÙØ¯ÛØ¯ Ø¨ÛÙÙ Ø®ÙØ¯Ø±Ù", "ð Ø¨Ø±Ø±Ø³Û Ø¨Ø§ØªØ±Û", "âï¸ Ø³Ø±ÙÛØ³ Ú©ÙÙØ±", "ð§½ Ú©Ø§Ø±ÙØ§Ø´"],
     },
-    "💼 کار": {
-        "📅 برنامه": ["📅 جلسه", "📋 وظیفه کاری", "🎯 پروژه", "📊 گزارش روزانه", "📆 گزارش هفتگی", "🗓 گزارش ماهانه"],
-        "👥 مشتری": ["📞 تماس با مشتری", "🔔 پیگیری مشتری", "🤝 قرار با مشتری", "📨 ارسال پیام", "🧾 ارسال فاکتور"],
-        "📄 قرارداد و مالی": ["📄 قرارداد", "🔄 تمدید قرارداد", "💵 پیگیری پرداخت", "🧾 پیگیری فاکتور"],
+    "ð¼ Ú©Ø§Ø±": {
+        "ð Ø¨Ø±ÙØ§ÙÙ": ["ð Ø¬ÙØ³Ù", "ð ÙØ¸ÛÙÙ Ú©Ø§Ø±Û", "ð¯ Ù¾Ø±ÙÚÙ", "ð Ú¯Ø²Ø§Ø±Ø´ Ø±ÙØ²Ø§ÙÙ", "ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û", "ð Ú¯Ø²Ø§Ø±Ø´ ÙØ§ÙØ§ÙÙ"],
+        "ð¥ ÙØ´ØªØ±Û": ["ð ØªÙØ§Ø³ Ø¨Ø§ ÙØ´ØªØ±Û", "ð Ù¾ÛÚ¯ÛØ±Û ÙØ´ØªØ±Û", "ð¤ ÙØ±Ø§Ø± Ø¨Ø§ ÙØ´ØªØ±Û", "ð¨ Ø§Ø±Ø³Ø§Ù Ù¾ÛØ§Ù", "ð§¾ Ø§Ø±Ø³Ø§Ù ÙØ§Ú©ØªÙØ±"],
+        "ð ÙØ±Ø§Ø±Ø¯Ø§Ø¯ Ù ÙØ§ÙÛ": ["ð ÙØ±Ø§Ø±Ø¯Ø§Ø¯", "ð ØªÙØ¯ÛØ¯ ÙØ±Ø§Ø±Ø¯Ø§Ø¯", "ðµ Ù¾ÛÚ¯ÛØ±Û Ù¾Ø±Ø¯Ø§Ø®Øª", "ð§¾ Ù¾ÛÚ¯ÛØ±Û ÙØ§Ú©ØªÙØ±"],
     },
-    "📚 تحصیل": {
-        "📖 مطالعه": ["📖 مطالعه", "🔁 مرور درس", "🔤 یادگیری لغت", "📝 جزوه"],
-        "🎓 دانشگاه/مدرسه": ["🏫 کلاس", "📝 امتحان", "📋 تکلیف", "💻 پروژه", "🎓 ثبت‌نام", "💳 شهریه"],
+    "ð ØªØ­ØµÛÙ": {
+        "ð ÙØ·Ø§ÙØ¹Ù": ["ð ÙØ·Ø§ÙØ¹Ù", "ð ÙØ±ÙØ± Ø¯Ø±Ø³", "ð¤ ÛØ§Ø¯Ú¯ÛØ±Û ÙØºØª", "ð Ø¬Ø²ÙÙ"],
+        "ð Ø¯Ø§ÙØ´Ú¯Ø§Ù/ÙØ¯Ø±Ø³Ù": ["ð« Ú©ÙØ§Ø³", "ð Ø§ÙØªØ­Ø§Ù", "ð ØªÚ©ÙÛÙ", "ð» Ù¾Ø±ÙÚÙ", "ð Ø«Ø¨ØªâÙØ§Ù", "ð³ Ø´ÙØ±ÛÙ"],
     },
-    "🏋️ ورزش": {
-        "🏋️ تمرین": ["🏋️ بدنسازی", "🏃 دویدن", "🚶 پیاده‌روی", "🏠 ورزش خانگی", "🧘 یوگا", "🤸 کشش و نرمش"],
-        "⚽ ورزش‌های گروهی": ["⚽ فوتبال", "🥅 فوتسال", "🏐 والیبال", "🏀 بسکتبال", "🎾 تنیس"],
-        "🏊 فضای باز": ["🏊 شنا", "🚴 دوچرخه‌سواری", "🥾 کوهنوردی"],
+    "ðï¸ ÙØ±Ø²Ø´": {
+        "ðï¸ ØªÙØ±ÛÙ": ["ðï¸ Ø¨Ø¯ÙØ³Ø§Ø²Û", "ð Ø¯ÙÛØ¯Ù", "ð¶ Ù¾ÛØ§Ø¯ÙâØ±ÙÛ", "ð  ÙØ±Ø²Ø´ Ø®Ø§ÙÚ¯Û", "ð§ ÛÙÚ¯Ø§", "ð¤¸ Ú©Ø´Ø´ Ù ÙØ±ÙØ´"],
+        "â½ ÙØ±Ø²Ø´âÙØ§Û Ú¯Ø±ÙÙÛ": ["â½ ÙÙØªØ¨Ø§Ù", "ð¥ ÙÙØªØ³Ø§Ù", "ð ÙØ§ÙÛØ¨Ø§Ù", "ð Ø¨Ø³Ú©ØªØ¨Ø§Ù", "ð¾ ØªÙÛØ³"],
+        "ð ÙØ¶Ø§Û Ø¨Ø§Ø²": ["ð Ø´ÙØ§", "ð´ Ø¯ÙÚØ±Ø®ÙâØ³ÙØ§Ø±Û", "ð¥¾ Ú©ÙÙÙÙØ±Ø¯Û"],
     },
-    "📄 مدارک": {
-        "🪪 شناسایی": ["🪪 گواهینامه", "🛂 پاسپورت", "💳 کارت بانکی"],
-        "🔄 تمدیدها": ["🛡️ تمدید بیمه", "📄 تمدید مجوز", "📝 تمدید قرارداد", "🌐 تمدید دامنه", "💻 تمدید هاست"],
-        "🏢 اداری": ["🏢 مراجعه اداری", "📑 تکمیل مدرک", "📬 پیگیری پرونده"],
+    "ð ÙØ¯Ø§Ø±Ú©": {
+        "ðªª Ø´ÙØ§Ø³Ø§ÛÛ": ["ðªª Ú¯ÙØ§ÙÛÙØ§ÙÙ", "ð Ù¾Ø§Ø³Ù¾ÙØ±Øª", "ð³ Ú©Ø§Ø±Øª Ø¨Ø§ÙÚ©Û"],
+        "ð ØªÙØ¯ÛØ¯ÙØ§": ["ð¡ï¸ ØªÙØ¯ÛØ¯ Ø¨ÛÙÙ", "ð ØªÙØ¯ÛØ¯ ÙØ¬ÙØ²", "ð ØªÙØ¯ÛØ¯ ÙØ±Ø§Ø±Ø¯Ø§Ø¯", "ð ØªÙØ¯ÛØ¯ Ø¯Ø§ÙÙÙ", "ð» ØªÙØ¯ÛØ¯ ÙØ§Ø³Øª"],
+        "ð¢ Ø§Ø¯Ø§Ø±Û": ["ð¢ ÙØ±Ø§Ø¬Ø¹Ù Ø§Ø¯Ø§Ø±Û", "ð ØªÚ©ÙÛÙ ÙØ¯Ø±Ú©", "ð¬ Ù¾ÛÚ¯ÛØ±Û Ù¾Ø±ÙÙØ¯Ù"],
     },
-    "📌 سایر": {
-        "💻 فناوری": ["💻 بکاپ اطلاعات", "🔐 بررسی امنیت حساب", "📱 تعمیر موبایل", "🖥 تعمیر کامپیوتر", "🔄 به‌روزرسانی نرم‌افزار"],
-        "🐾 حیوانات": ["🐾 دامپزشک", "💉 واکسن حیوان", "💊 دارو", "🪱 ضدانگل", "🛁 حمام", "✂️ اصلاح", "🍖 خرید غذا"],
-        "🛒 خرید": ["🛒 خرید روزانه", "🛒 خرید هفتگی", "🛒 خرید ماهانه", "🎁 خرید هدیه", "🧴 خرید لوازم مصرفی"],
-        "🗒 متفرقه": ["🗒 کار متفرقه", "🔔 یادآوری سفارشی", "📌 پیگیری", "⏳ کار عقب‌افتاده"],
+    "ð Ø³Ø§ÛØ±": {
+        "ð» ÙÙØ§ÙØ±Û": ["ð» Ø¨Ú©Ø§Ù¾ Ø§Ø·ÙØ§Ø¹Ø§Øª", "ð Ø¨Ø±Ø±Ø³Û Ø§ÙÙÛØª Ø­Ø³Ø§Ø¨", "ð± ØªØ¹ÙÛØ± ÙÙØ¨Ø§ÛÙ", "ð¥ ØªØ¹ÙÛØ± Ú©Ø§ÙÙ¾ÛÙØªØ±", "ð Ø¨ÙâØ±ÙØ²Ø±Ø³Ø§ÙÛ ÙØ±ÙâØ§ÙØ²Ø§Ø±"],
+        "ð¾ Ø­ÛÙØ§ÙØ§Øª": ["ð¾ Ø¯Ø§ÙÙ¾Ø²Ø´Ú©", "ð ÙØ§Ú©Ø³Ù Ø­ÛÙØ§Ù", "ð Ø¯Ø§Ø±Ù", "ðª± Ø¶Ø¯Ø§ÙÚ¯Ù", "ð Ø­ÙØ§Ù", "âï¸ Ø§ØµÙØ§Ø­", "ð Ø®Ø±ÛØ¯ ØºØ°Ø§"],
+        "ð Ø®Ø±ÛØ¯": ["ð Ø®Ø±ÛØ¯ Ø±ÙØ²Ø§ÙÙ", "ð Ø®Ø±ÛØ¯ ÙÙØªÚ¯Û", "ð Ø®Ø±ÛØ¯ ÙØ§ÙØ§ÙÙ", "ð Ø®Ø±ÛØ¯ ÙØ¯ÛÙ", "ð§´ Ø®Ø±ÛØ¯ ÙÙØ§Ø²Ù ÙØµØ±ÙÛ"],
+        "ð ÙØªÙØ±ÙÙ": ["ð Ú©Ø§Ø± ÙØªÙØ±ÙÙ", "ð ÛØ§Ø¯Ø¢ÙØ±Û Ø³ÙØ§Ø±Ø´Û", "ð Ù¾ÛÚ¯ÛØ±Û", "â³ Ú©Ø§Ø± Ø¹ÙØ¨âØ§ÙØªØ§Ø¯Ù"],
     },
 }
 READY_CATALOG_EN = {
-    "👤 Personal": {"🩺 Health":["🩺 Doctor appointment","🧪 Periodic lab test","🩸 Full blood test","📋 Monthly checkup","📅 Annual checkup","🦷 Dentist","👁️ Eye exam","💊 Medication refill","💉 Vaccine"],"🏠 Home":["🧹 House cleaning","🔧 Home repair","❄️ AC service","🔥 Heater/boiler service","💧 Water filter change","🛒 Home supplies","📦 Monthly home shopping"],"👨‍👩‍👧 Family":["☎️ Call family","❤️ Family time","🎂 Birthday","💍 Anniversary","🏫 School/class follow-up","🩺 Family doctor appointment","🎁 Buy a gift"],"✈️ Travel":["✈️ Business trip","🏖 Vacation","👨‍👩‍👧 Family trip","🌍 International trip","🎒 Prepare for travel"],"📌 Personal & Admin":["📝 Personal task","🏢 Administrative task","📞 Important call","🤝 Appointment","🎯 Follow-up","⭐ Important task"]},
-    "💰 Finance": {"🧾 Checks & Due Dates":["🧾 Pay a check","🧾 Receive a check","📅 Check due date","💵 Receivable","💳 Debt"],"💳 Payments":["💳 Installment","🏦 Loan","🏠 Rent","💡 Bill","🛡️ Insurance","🧮 Tax","🎓 Tuition"],"🔄 Recurring":["🔄 Monthly payment","🔄 Annual payment","📺 Subscription renewal","🌐 Online service renewal"],"📊 Finance Management":["📒 Record expense","🏦 Check bank account","💰 Save money","📈 Review monthly expenses"]},
-    "🚗 Car": {"🛢 Service":["🛢 Oil change","🔧 Periodic service","🧰 Car repair","🔩 Spark plug change","〰️ Belt change"],"🛑 Brakes & Tires":["🛑 Brake pad change","🔍 Brake check","🛞 Tire change","💨 Tire pressure","🔄 Tire rotation"],"💧 Fluids & Filters":["💧 Coolant","🧴 Brake fluid","🌬 Air filter","❄️ Cabin filter","🛢 Oil filter"],"📄 Documents & Care":["📄 Inspection","🛡️ Car insurance renewal","🔋 Battery check","❄️ AC service","🧽 Car wash"]},
-    "💼 Work": {"📅 Planning":["📅 Meeting","📋 Work task","🎯 Project","📊 Daily report","📆 Weekly report","🗓 Monthly report"],"👥 Customers":["📞 Call customer","🔔 Follow up customer","🤝 Customer appointment","📨 Send message","🧾 Send invoice"],"📄 Contract & Finance":["📄 Contract","🔄 Renew contract","💵 Payment follow-up","🧾 Invoice follow-up"]},
-    "📚 Study": {"📖 Study":["📖 Study","🔁 Review","🔤 Learn vocabulary","📝 Notes"],"🎓 School/University":["🏫 Class","📝 Exam","📋 Homework","💻 Project","🎓 Registration","💳 Tuition"]},
-    "🏋️ Fitness": {"🏋️ Training":["🏋️ Gym","🏃 Running","🚶 Walking","🏠 Home workout","🧘 Yoga","🤸 Stretching"],"⚽ Team Sports":["⚽ Football","🥅 Futsal","🏐 Volleyball","🏀 Basketball","🎾 Tennis"],"🏊 Outdoor":["🏊 Swimming","🚴 Cycling","🥾 Hiking"]},
-    "📄 Documents": {"🪪 Identity":["🪪 Driver license","🛂 Passport","💳 Bank card"],"🔄 Renewals":["🛡️ Insurance renewal","📄 Permit renewal","📝 Contract renewal","🌐 Domain renewal","💻 Hosting renewal"],"🏢 Admin":["🏢 Office visit","📑 Complete document","📬 Case follow-up"]},
-    "📌 Other": {"💻 Technology":["💻 Backup data","🔐 Account security check","📱 Phone repair","🖥 Computer repair","🔄 Software update"],"🐾 Pets":["🐾 Vet","💉 Pet vaccine","💊 Medication","🪱 Deworming","🛁 Bath","✂️ Grooming","🍖 Pet food"],"🛒 Shopping":["🛒 Daily shopping","🛒 Weekly shopping","🛒 Monthly shopping","🎁 Gift shopping","🧴 Supplies"],"🗒 Misc":["🗒 Misc task","🔔 Custom reminder","📌 Follow-up","⏳ Overdue task"]},
+    "ð¤ Personal": {"ð©º Health":["ð©º Doctor appointment","ð§ª Periodic lab test","ð©¸ Full blood test","ð Monthly checkup","ð Annual checkup","ð¦· Dentist","ðï¸ Eye exam","ð Medication refill","ð Vaccine"],"ð  Home":["ð§¹ House cleaning","ð§ Home repair","âï¸ AC service","ð¥ Heater/boiler service","ð§ Water filter change","ð Home supplies","ð¦ Monthly home shopping"],"ð¨âð©âð§ Family":["âï¸ Call family","â¤ï¸ Family time","ð Birthday","ð Anniversary","ð« School/class follow-up","ð©º Family doctor appointment","ð Buy a gift"],"âï¸ Travel":["âï¸ Business trip","ð Vacation","ð¨âð©âð§ Family trip","ð International trip","ð Prepare for travel"],"ð Personal & Admin":["ð Personal task","ð¢ Administrative task","ð Important call","ð¤ Appointment","ð¯ Follow-up","â­ Important task"]},
+    "ð° Finance": {"ð§¾ Checks & Due Dates":["ð§¾ Pay a check","ð§¾ Receive a check","ð Check due date","ðµ Receivable","ð³ Debt"],"ð³ Payments":["ð³ Installment","ð¦ Loan","ð  Rent","ð¡ Bill","ð¡ï¸ Insurance","ð§® Tax","ð Tuition"],"ð Recurring":["ð Monthly payment","ð Annual payment","ðº Subscription renewal","ð Online service renewal"],"ð Finance Management":["ð Record expense","ð¦ Check bank account","ð° Save money","ð Review monthly expenses"]},
+    "ð Car": {"ð¢ Service":["ð¢ Oil change","ð§ Periodic service","ð§° Car repair","ð© Spark plug change","ã°ï¸ Belt change"],"ð Brakes & Tires":["ð Brake pad change","ð Brake check","ð Tire change","ð¨ Tire pressure","ð Tire rotation"],"ð§ Fluids & Filters":["ð§ Coolant","ð§´ Brake fluid","ð¬ Air filter","âï¸ Cabin filter","ð¢ Oil filter"],"ð Documents & Care":["ð Inspection","ð¡ï¸ Car insurance renewal","ð Battery check","âï¸ AC service","ð§½ Car wash"]},
+    "ð¼ Work": {"ð Planning":["ð Meeting","ð Work task","ð¯ Project","ð Daily report","ð Weekly report","ð Monthly report"],"ð¥ Customers":["ð Call customer","ð Follow up customer","ð¤ Customer appointment","ð¨ Send message","ð§¾ Send invoice"],"ð Contract & Finance":["ð Contract","ð Renew contract","ðµ Payment follow-up","ð§¾ Invoice follow-up"]},
+    "ð Study": {"ð Study":["ð Study","ð Review","ð¤ Learn vocabulary","ð Notes"],"ð School/University":["ð« Class","ð Exam","ð Homework","ð» Project","ð Registration","ð³ Tuition"]},
+    "ðï¸ Fitness": {"ðï¸ Training":["ðï¸ Gym","ð Running","ð¶ Walking","ð  Home workout","ð§ Yoga","ð¤¸ Stretching"],"â½ Team Sports":["â½ Football","ð¥ Futsal","ð Volleyball","ð Basketball","ð¾ Tennis"],"ð Outdoor":["ð Swimming","ð´ Cycling","ð¥¾ Hiking"]},
+    "ð Documents": {"ðªª Identity":["ðªª Driver license","ð Passport","ð³ Bank card"],"ð Renewals":["ð¡ï¸ Insurance renewal","ð Permit renewal","ð Contract renewal","ð Domain renewal","ð» Hosting renewal"],"ð¢ Admin":["ð¢ Office visit","ð Complete document","ð¬ Case follow-up"]},
+    "ð Other": {"ð» Technology":["ð» Backup data","ð Account security check","ð± Phone repair","ð¥ Computer repair","ð Software update"],"ð¾ Pets":["ð¾ Vet","ð Pet vaccine","ð Medication","ðª± Deworming","ð Bath","âï¸ Grooming","ð Pet food"],"ð Shopping":["ð Daily shopping","ð Weekly shopping","ð Monthly shopping","ð Gift shopping","ð§´ Supplies"],"ð Misc":["ð Misc task","ð Custom reminder","ð Follow-up","â³ Overdue task"]},
 }
 
 GOALS_FA = READY_CATALOG_FA
@@ -12942,7 +12919,7 @@ def categories_keyboard(uid, prefix="newcat"):
     keys=_goal_top_keys(uid); rows=[]
     for i in range(0,len(keys),2):
         rows.append([InlineKeyboardButton(keys[j],callback_data=f"{prefix}:{j}") for j in range(i,min(i+2,len(keys)))])
-    rows.append([InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu",callback_data="goals:main")])
+    rows.append([InlineKeyboardButton("ð  ÙÙÙÛ Ø§ØµÙÛ" if lang(uid)=="fa" else "ð  Main Menu",callback_data="goals:main")])
     return InlineKeyboardMarkup(rows)
 
 def category_by_index(uid,index):
@@ -12968,8 +12945,8 @@ async def new_category(update, context):
         rows=[]
         catidx=_goal_top_keys(uid).index(category)
         for i in range(0,len(keys),2): rows.append([InlineKeyboardButton(keys[j],callback_data=f"readysub:{catidx}:{j}") for j in range(i,min(i+2,len(keys)))])
-        rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data="newback")])
-        await q.message.edit_text("📂 یک زیرگروه را انتخاب کن:" if lang(uid)=="fa" else "📂 Choose a subgroup:",reply_markup=InlineKeyboardMarkup(rows)); return
+        rows.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª" if lang(uid)=="fa" else "â¬ï¸ Back",callback_data="newback")])
+        await q.message.edit_text("ð ÛÚ© Ø²ÛØ±Ú¯Ø±ÙÙ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid)=="fa" else "ð Choose a subgroup:",reply_markup=InlineKeyboardMarkup(rows)); return
     await _show_ready_goals(update,context,category)
 
 async def ready_subcategory_callback(update,context):
@@ -12981,29 +12958,29 @@ async def ready_subcategory_callback(update,context):
     goals=_goal_catalog_data(uid)[category][sub]
     rows=[]
     for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j],callback_data=f"newgoal:{j}") for j in range(i,min(i+2,len(goals)))])
-    rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data=f"newcat:{catidx}")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª" if lang(uid)=="fa" else "â¬ï¸ Back",callback_data=f"newcat:{catidx}")])
     await q.message.edit_text(T[lang(uid)]["choose_goal"],reply_markup=InlineKeyboardMarkup(rows))
 
 async def _show_ready_goals(update,context,category):
     uid=update.effective_user.id; goals=goals_by_category(uid,category); rows=[]
     for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j],callback_data=f"newgoal:{j}") for j in range(i,min(i+2,len(goals)))])
-    rows.append([InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back",callback_data="newback")])
+    rows.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª" if lang(uid)=="fa" else "â¬ï¸ Back",callback_data="newback")])
     await update.callback_query.message.edit_text(T[lang(uid)]["choose_goal"],reply_markup=InlineKeyboardMarkup(rows))
 
 
 def _ready_template(name,category):
     n=name.lower()
-    if 'تعویض روغن' in name or 'oil change' in n:
-        return [('last_date','📅 تاریخ تعویض قبلی را بفرست:'),('last_km','🚗 کیلومتر خودرو در زمان تعویض:'),('next_km','🔢 کیلومتر سرویس بعدی:'),('next_date','📅 تاریخ تقریبی سرویس بعدی:'),('oil_type','🛢 نوع/ویسکوزیته روغن:'),('shop','🔧 تعمیرگاه یا شخص انجام‌دهنده (اختیاری):')]
-    if 'چک' in name and ('پرداختی' in name or 'دریافتی' in name):
-        return [('amount','💰 مبلغ چک:'),('check_date','📅 تاریخ سررسید:'),('counterparty','👤 نام شخص/شرکت:'),('bank','🏦 بانک:'),('check_no','🔢 شماره چک (اختیاری):')]
-    if 'آزمایش' in name or 'چکاپ' in name or 'دکتر' in name or 'doctor' in n or 'checkup' in n or 'blood' in n:
-        return [('last_date','📅 تاریخ مراجعه/آزمایش قبلی:'),('next_date','📅 تاریخ بعدی:'),('doctor','👨‍⚕️ پزشک/مرکز (اختیاری):'),('note','📝 توضیحات (اختیاری):')]
-    if 'سفر' in name or 'trip' in n or 'vacation' in n:
-        return [('destination','📍 مقصد:'),('depart_date','📅 تاریخ حرکت:'),('depart_time','⏰ ساعت حرکت:'),('return_date','📅 تاریخ برگشت:'),('note','📝 توضیحات (اختیاری):')]
-    if 'بدنسازی' in name or 'gym' in n or 'دویدن' in name or 'running' in n or 'فوتبال' in name or 'football' in n or 'والیبال' in name or 'volleyball' in n or 'بسکتبال' in name or 'basketball' in n or 'شنا' in name or 'swimming' in n:
-        return [('start_date','📅 تاریخ شروع برنامه:'),('location','📍 محل تمرین (اختیاری):'),('duration','⏱ مدت تمرین به دقیقه:')]
-    return [('note','📝 توضیحات این هدف (اختیاری):')]
+    if 'ØªØ¹ÙÛØ¶ Ø±ÙØºÙ' in name or 'oil change' in n:
+        return [('last_date','ð ØªØ§Ø±ÛØ® ØªØ¹ÙÛØ¶ ÙØ¨ÙÛ Ø±Ø§ Ø¨ÙØ±Ø³Øª:'),('last_km','ð Ú©ÛÙÙÙØªØ± Ø®ÙØ¯Ø±Ù Ø¯Ø± Ø²ÙØ§Ù ØªØ¹ÙÛØ¶:'),('next_km','ð¢ Ú©ÛÙÙÙØªØ± Ø³Ø±ÙÛØ³ Ø¨Ø¹Ø¯Û:'),('next_date','ð ØªØ§Ø±ÛØ® ØªÙØ±ÛØ¨Û Ø³Ø±ÙÛØ³ Ø¨Ø¹Ø¯Û:'),('oil_type','ð¢ ÙÙØ¹/ÙÛØ³Ú©ÙØ²ÛØªÙ Ø±ÙØºÙ:'),('shop','ð§ ØªØ¹ÙÛØ±Ú¯Ø§Ù ÛØ§ Ø´Ø®Øµ Ø§ÙØ¬Ø§ÙâØ¯ÙÙØ¯Ù (Ø§Ø®ØªÛØ§Ø±Û):')]
+    if 'ÚÚ©' in name and ('Ù¾Ø±Ø¯Ø§Ø®ØªÛ' in name or 'Ø¯Ø±ÛØ§ÙØªÛ' in name):
+        return [('amount','ð° ÙØ¨ÙØº ÚÚ©:'),('check_date','ð ØªØ§Ø±ÛØ® Ø³Ø±Ø±Ø³ÛØ¯:'),('counterparty','ð¤ ÙØ§Ù Ø´Ø®Øµ/Ø´Ø±Ú©Øª:'),('bank','ð¦ Ø¨Ø§ÙÚ©:'),('check_no','ð¢ Ø´ÙØ§Ø±Ù ÚÚ© (Ø§Ø®ØªÛØ§Ø±Û):')]
+    if 'Ø¢Ø²ÙØ§ÛØ´' in name or 'ÚÚ©Ø§Ù¾' in name or 'Ø¯Ú©ØªØ±' in name or 'doctor' in n or 'checkup' in n or 'blood' in n:
+        return [('last_date','ð ØªØ§Ø±ÛØ® ÙØ±Ø§Ø¬Ø¹Ù/Ø¢Ø²ÙØ§ÛØ´ ÙØ¨ÙÛ:'),('next_date','ð ØªØ§Ø±ÛØ® Ø¨Ø¹Ø¯Û:'),('doctor','ð¨ââï¸ Ù¾Ø²Ø´Ú©/ÙØ±Ú©Ø² (Ø§Ø®ØªÛØ§Ø±Û):'),('note','ð ØªÙØ¶ÛØ­Ø§Øª (Ø§Ø®ØªÛØ§Ø±Û):')]
+    if 'Ø³ÙØ±' in name or 'trip' in n or 'vacation' in n:
+        return [('destination','ð ÙÙØµØ¯:'),('depart_date','ð ØªØ§Ø±ÛØ® Ø­Ø±Ú©Øª:'),('depart_time','â° Ø³Ø§Ø¹Øª Ø­Ø±Ú©Øª:'),('return_date','ð ØªØ§Ø±ÛØ® Ø¨Ø±Ú¯Ø´Øª:'),('note','ð ØªÙØ¶ÛØ­Ø§Øª (Ø§Ø®ØªÛØ§Ø±Û):')]
+    if 'Ø¨Ø¯ÙØ³Ø§Ø²Û' in name or 'gym' in n or 'Ø¯ÙÛØ¯Ù' in name or 'running' in n or 'ÙÙØªØ¨Ø§Ù' in name or 'football' in n or 'ÙØ§ÙÛØ¨Ø§Ù' in name or 'volleyball' in n or 'Ø¨Ø³Ú©ØªØ¨Ø§Ù' in name or 'basketball' in n or 'Ø´ÙØ§' in name or 'swimming' in n:
+        return [('start_date','ð ØªØ§Ø±ÛØ® Ø´Ø±ÙØ¹ Ø¨Ø±ÙØ§ÙÙ:'),('location','ð ÙØ­Ù ØªÙØ±ÛÙ (Ø§Ø®ØªÛØ§Ø±Û):'),('duration','â± ÙØ¯Øª ØªÙØ±ÛÙ Ø¨Ù Ø¯ÙÛÙÙ:')]
+    return [('note','ð ØªÙØ¶ÛØ­Ø§Øª Ø§ÛÙ ÙØ¯Ù (Ø§Ø®ØªÛØ§Ø±Û):')]
 
 
 def _ready_detail_nav_keyboard(uid, idx, total):
@@ -13012,11 +12989,11 @@ def _ready_detail_nav_keyboard(uid, idx, total):
     rows = []
     nav = []
     if idx > 0:
-        nav.append(InlineKeyboardButton('⬅️ قبلی' if fa else '⬅️ Previous', callback_data='rdetail:prev'))
+        nav.append(InlineKeyboardButton('â¬ï¸ ÙØ¨ÙÛ' if fa else 'â¬ï¸ Previous', callback_data='rdetail:prev'))
     if idx < total - 1:
-        nav.append(InlineKeyboardButton('⏭️ رد شدن' if fa else '⏭️ Skip', callback_data='rdetail:next'))
+        nav.append(InlineKeyboardButton('â­ï¸ Ø±Ø¯ Ø´Ø¯Ù' if fa else 'â­ï¸ Skip', callback_data='rdetail:next'))
     else:
-        nav.append(InlineKeyboardButton('✅ تمام' if fa else '✅ Done', callback_data='rdetail:next'))
+        nav.append(InlineKeyboardButton('â ØªÙØ§Ù' if fa else 'â Done', callback_data='rdetail:next'))
     if nav:
         rows.append(nav)
     return InlineKeyboardMarkup(rows) if rows else None
@@ -13040,8 +13017,8 @@ async def ready_detail_callback(update, context):
         context.user_data['ready_detail_key'] = key
         fa = lang(uid) == 'fa'
         kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-        progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
-        text = prompt + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
+        progress = f"\n\nð ÙØ±Ø­ÙÙ {idx+1} Ø§Ø² {len(fields)}" if fa else f"\n\nð Step {idx+1} of {len(fields)}"
+        text = prompt + progress + ("\n\n(Ø¨Ø±Ø§Û ÙÙØ±Ø¯ Ø§Ø®ØªÛØ§Ø±Û ÙÛâØªÙØ§ÙÛ Â«-Â» Ø¨ÙØ±Ø³ØªÛ.)" if fa else "\n\n(For optional fields, send '-'.)")
         if kb:
             await q.message.edit_text(text, reply_markup=kb)
         else:
@@ -13061,8 +13038,8 @@ async def ready_detail_callback(update, context):
             context.user_data['ready_detail_key'] = nk
             fa = lang(uid) == 'fa'
             kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-            progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
-            prompt_text = np + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
+            progress = f"\n\nð ÙØ±Ø­ÙÙ {idx+1} Ø§Ø² {len(fields)}" if fa else f"\n\nð Step {idx+1} of {len(fields)}"
+            prompt_text = np + progress + ("\n\n(Ø¨Ø±Ø§Û ÙÙØ±Ø¯ Ø§Ø®ØªÛØ§Ø±Û ÙÛâØªÙØ§ÙÛ Â«-Â» Ø¨ÙØ±Ø³ØªÛ.)" if fa else "\n\n(For optional fields, send '-'.)")
             if kb:
                 await q.message.edit_text(prompt_text, reply_markup=kb)
             else:
@@ -13073,7 +13050,7 @@ async def ready_detail_callback(update, context):
             context.user_data.pop('ready_detail_key', None)
             context.user_data.pop('ready_detail_index', None)
             await q.message.edit_text(
-                "⭐ اولویت هدف را انتخاب کن:" if lang(uid) == 'fa' else "⭐ Choose goal priority:",
+                "â­ Ø§ÙÙÙÛØª ÙØ¯Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid) == 'fa' else "â­ Choose goal priority:",
                 reply_markup=priority_keyboard(uid)
             )
 
@@ -13094,8 +13071,8 @@ async def new_goal_pick(update,context):
     key,prompt=fields[0]; context.user_data['ready_detail_key']=key; context.user_data['ready_detail_mode']=True
     fa = lang(uid) == 'fa'
     kb = _ready_detail_nav_keyboard(uid, 0, len(fields))
-    progress = f"\n\n📊 مرحله 1 از {len(fields)}" if fa else f"\n\n📊 Step 1 of {len(fields)}"
-    text = prompt + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
+    progress = f"\n\nð ÙØ±Ø­ÙÙ 1 Ø§Ø² {len(fields)}" if fa else f"\n\nð Step 1 of {len(fields)}"
+    text = prompt + progress + ("\n\n(Ø¨Ø±Ø§Û ÙÙØ±Ø¯ Ø§Ø®ØªÛØ§Ø±Û ÙÛâØªÙØ§ÙÛ Â«-Â» Ø¨ÙØ±Ø³ØªÛ.)" if fa else "\n\n(For optional fields, send '-'.)")
     if kb:
         await q.message.edit_text(text, reply_markup=kb)
     else:
@@ -13112,15 +13089,15 @@ async def ready_detail_text_save(update,context):
         context.user_data['ready_detail_index']=idx; nk,np=fields[idx]; context.user_data['ready_detail_key']=nk
         fa = lang(uid) == 'fa'
         kb = _ready_detail_nav_keyboard(uid, idx, len(fields))
-        progress = f"\n\n📊 مرحله {idx+1} از {len(fields)}" if fa else f"\n\n📊 Step {idx+1} of {len(fields)}"
-        prompt_text = np + progress + ("\n\n(برای مورد اختیاری می‌توانی «-» بفرستی.)" if fa else "\n\n(For optional fields, send '-'.)")
+        progress = f"\n\nð ÙØ±Ø­ÙÙ {idx+1} Ø§Ø² {len(fields)}" if fa else f"\n\nð Step {idx+1} of {len(fields)}"
+        prompt_text = np + progress + ("\n\n(Ø¨Ø±Ø§Û ÙÙØ±Ø¯ Ø§Ø®ØªÛØ§Ø±Û ÙÛâØªÙØ§ÙÛ Â«-Â» Ø¨ÙØ±Ø³ØªÛ.)" if fa else "\n\n(For optional fields, send '-'.)")
         if kb:
             await update.message.reply_text(prompt_text, reply_markup=kb)
         else:
             await update.message.reply_text(prompt_text)
         return True
     context.user_data.pop('ready_detail_mode',None); context.user_data.pop('ready_detail_fields',None); context.user_data.pop('ready_detail_key',None); context.user_data.pop('ready_detail_index',None)
-    await update.message.reply_text("⭐ اولویت هدف را انتخاب کن:" if lang(uid)=='fa' else "⭐ Choose goal priority:",reply_markup=priority_keyboard(uid))
+    await update.message.reply_text("â­ Ø§ÙÙÙÛØª ÙØ¯Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if lang(uid)=='fa' else "â­ Choose goal priority:",reply_markup=priority_keyboard(uid))
     return True
 
 # Replace the existing generic goal list with an active-only list while preserving history in DB.
@@ -13130,8 +13107,8 @@ async def today(update,context):
         await update.message.reply_text(T[lang(uid)]['no_goals'].format(name=display_name(uid)),reply_markup=keyboard(uid)); return
     rows=[]
     for g in goals:
-        st=get_status(uid,g['id']); icon='✅' if st=='done' else '❌' if st=='missed' else '⬜'; rows.append([InlineKeyboardButton(f"{icon} {g['name']}",callback_data=f"detail:{g['id']}")])
-    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')])
+        st=get_status(uid,g['id']); icon='â' if st=='done' else 'â' if st=='missed' else 'â¬'; rows.append([InlineKeyboardButton(f"{icon} {g['name']}",callback_data=f"detail:{g['id']}")])
+    rows.append([InlineKeyboardButton('ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙ' if fa else 'ð My Reminders',callback_data='goalreminders'),InlineKeyboardButton('ð ØªÙÙÛÙ' if fa else 'ð Calendar',callback_data='goalcalendar:today')])
     rows.append([main_menu_button(uid)])
     await update.message.reply_text(T[lang(uid)]['today'],reply_markup=InlineKeyboardMarkup(rows))
 
@@ -13141,23 +13118,23 @@ async def edit_menu(update,context):
         await update.message.reply_text(T[lang(uid)]['no_goals'].format(name=display_name(uid)),reply_markup=keyboard(uid)); return
     rows=[]
     for i in range(0,len(goals),2): rows.append([InlineKeyboardButton(goals[j]['name'],callback_data=f"edit:{goals[j]['id']}") for j in range(i,min(i+2,len(goals)))])
-    rows.append([InlineKeyboardButton('🔔 یادآوری‌های من' if fa else '🔔 My Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')])
+    rows.append([InlineKeyboardButton('ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙ' if fa else 'ð My Reminders',callback_data='goalreminders'),InlineKeyboardButton('ð ØªÙÙÛÙ' if fa else 'ð Calendar',callback_data='goalcalendar:today')])
     rows.append([main_menu_button(uid)])
     await update.message.reply_text(T[lang(uid)]['edit'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup(rows))
 
 async def goal_reminders_list(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; fa=lang(uid)=='fa'; goals=_active_goals(uid); today=datetime.now(TZ).date()
-    lines=['🔔 <b>یادآوری‌های من</b>',''] if fa else ['🔔 <b>My Reminders</b>','']; rows=[]
-    if not goals: lines.append('یادآوری فعالی نداری.' if fa else 'No active reminders.')
+    lines=['ð <b>ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙ</b>',''] if fa else ['ð <b>My Reminders</b>','']; rows=[]
+    if not goals: lines.append('ÛØ§Ø¯Ø¢ÙØ±Û ÙØ¹Ø§ÙÛ ÙØ¯Ø§Ø±Û.' if fa else 'No active reminders.')
     for g in goals:
         if not g['reminder_time']: continue
-        end=g['reminder_end_date'] or 'بدون پایان'
-        meta=_goal_meta(uid,g['id']); lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time']} — تا {html.escape(end)}")
+        end=g['reminder_end_date'] or 'Ø¨Ø¯ÙÙ Ù¾Ø§ÛØ§Ù'
+        meta=_goal_meta(uid,g['id']); lines.append(f"â¢ {html.escape(g['name'])} â â° {g['reminder_time']} â ØªØ§ {html.escape(end)}")
         if meta:
             details=' | '.join(f'{k}: {v}' for k,v in list(meta.items())[:3] if v)
-            if details: lines.append(f"  📝 {html.escape(details)}")
-        rows.append([InlineKeyboardButton(f"✏️ {g['name']}",callback_data=f"edit:{g['id']}")])
-    rows += [[InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today'),main_menu_button(uid)]]
+            if details: lines.append(f"  ð {html.escape(details)}")
+        rows.append([InlineKeyboardButton(f"âï¸ {g['name']}",callback_data=f"edit:{g['id']}")])
+    rows += [[InlineKeyboardButton('ð ØªÙÙÛÙ' if fa else 'ð Calendar',callback_data='goalcalendar:today'),main_menu_button(uid)]]
     target=q.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 # Minimal Jalali conversion, independent of external packages.
@@ -13203,21 +13180,21 @@ def _jalali_month_days(y,m): return 31 if m<=6 else 30 if m<=11 else (30 if (y%3
 async def goal_calendar(update,context,year=None,month=None):
     q=update.callback_query; uid=q.from_user.id; fa=lang(uid)=='fa'; today=datetime.now(TZ).date(); jy,jm,jd=_g2j(today.year,today.month,today.day); year=year or jy; month=month or jm
     if q: await q.answer()
-    names=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند']
+    names=['ÙØ±ÙØ±Ø¯ÛÙ','Ø§Ø±Ø¯ÛØ¨ÙØ´Øª','Ø®Ø±Ø¯Ø§Ø¯','ØªÛØ±','ÙØ±Ø¯Ø§Ø¯','Ø´ÙØ±ÛÙØ±','ÙÙØ±','Ø¢Ø¨Ø§Ù','Ø¢Ø°Ø±','Ø¯Û','Ø¨ÙÙÙ','Ø§Ø³ÙÙØ¯']
     en_names=['Farvardin','Ordibehesht','Khordad','Tir','Mordad','Shahrivar','Mehr','Aban','Azar','Dey','Bahman','Esfand']
-    lines=[f"📅 <b>{names[month-1] if fa else en_names[month-1]} {year}</b>",'']
+    lines=[f"ð <b>{names[month-1] if fa else en_names[month-1]} {year}</b>",'']
     rows=[]
     # Six weeks, Monday-based. Convert each Jalali day to Gregorian for lookup.
     first_iso=datetime(*_j2g(year,month,1)).date().isoformat(); first=datetime.fromisoformat(first_iso).date(); offset=(first.weekday())
-    week=[]; header=['ش','ی','د','س','چ','پ','ج'] if fa else ['Mo','Tu','We','Th','Fr','Sa','Su']; rows.append([InlineKeyboardButton(x,callback_data='noop') for x in header])
+    week=[]; header=['Ø´','Û','Ø¯','Ø³','Ú','Ù¾','Ø¬'] if fa else ['Mo','Tu','We','Th','Fr','Sa','Su']; rows.append([InlineKeyboardButton(x,callback_data='noop') for x in header])
     for pos in range(offset): week.append('')
     for day in range(1,_jalali_month_days(year,month)+1):
-        iso=datetime(*_j2g(year,month,day)).date().isoformat(); c=db(); cnt=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=? AND enabled=1 AND (reminder_end_date IS NULL OR reminder_end_date>=?) AND substr(COALESCE(reminder_start_date,created_at),1,10)<=?",(uid,iso,iso)).fetchone()['n']; c.close(); label=f"{day}{'•' if cnt else ''}"; week.append((label,iso))
+        iso=datetime(*_j2g(year,month,day)).date().isoformat(); c=db(); cnt=c.execute("SELECT COUNT(*) n FROM goals WHERE user_id=? AND enabled=1 AND (reminder_end_date IS NULL OR reminder_end_date>=?) AND substr(COALESCE(reminder_start_date,created_at),1,10)<=?",(uid,iso,iso)).fetchone()['n']; c.close(); label=f"{day}{'â¢' if cnt else ''}"; week.append((label,iso))
         if len(week)==7:
             rows.append([InlineKeyboardButton(x if isinstance(x,str) else x[0],callback_data='noop' if isinstance(x,str) else f'goalcalday:{x[1]}') for x in week]); week=[]
     if week: week += ['']*(7-len(week)); rows.append([InlineKeyboardButton(x if isinstance(x,str) else x[0],callback_data='noop' if isinstance(x,str) else f'goalcalday:{x[1]}') for x in week])
     prev_y,prev_m=(year,month-1) if month>1 else (year-1,12); next_y,next_m=(year,month+1) if month<12 else (year+1,1)
-    rows.append([InlineKeyboardButton('⬅️ ماه قبل' if fa else '⬅️ Prev',callback_data=f'goalcalendar:{prev_y}:{prev_m}'),InlineKeyboardButton('📍 امروز' if fa else '📍 Today',callback_data='goalcalendar:today'),InlineKeyboardButton('ماه بعد ➡️' if fa else 'Next ➡️',callback_data=f'goalcalendar:{next_y}:{next_m}')])
+    rows.append([InlineKeyboardButton('â¬ï¸ ÙØ§Ù ÙØ¨Ù' if fa else 'â¬ï¸ Prev',callback_data=f'goalcalendar:{prev_y}:{prev_m}'),InlineKeyboardButton('ð Ø§ÙØ±ÙØ²' if fa else 'ð Today',callback_data='goalcalendar:today'),InlineKeyboardButton('ÙØ§Ù Ø¨Ø¹Ø¯ â¡ï¸' if fa else 'Next â¡ï¸',callback_data=f'goalcalendar:{next_y}:{next_m}')])
     rows.append([main_menu_button(uid)])
     target=q.message if q else update.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
@@ -13227,11 +13204,11 @@ async def goal_calendar_day(update,context):
         if g['reminder_start_date'] and iso<g['reminder_start_date']: continue
         if g['reminder_end_date'] and iso>g['reminder_end_date']: continue
         selected.append(g)
-    jy,jm,jd=_jalali_from_iso(iso); lines=[f"📅 <b>{jy:04d}/{jm:02d}/{jd:02d}</b>",'']; rows=[]
-    if not selected: lines.append('کاری برای این روز ثبت نشده.' if fa else 'No goals for this day.')
+    jy,jm,jd=_jalali_from_iso(iso); lines=[f"ð <b>{jy:04d}/{jm:02d}/{jd:02d}</b>",'']; rows=[]
+    if not selected: lines.append('Ú©Ø§Ø±Û Ø¨Ø±Ø§Û Ø§ÛÙ Ø±ÙØ² Ø«Ø¨Øª ÙØ´Ø¯Ù.' if fa else 'No goals for this day.')
     for g in selected:
-        lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time'] or '—'}"); rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
-    rows.append([InlineKeyboardButton('⬅️ تقویم' if fa else '⬅️ Calendar',callback_data=f'goalcalendar:{jy}:{jm}'),main_menu_button(uid)])
+        lines.append(f"â¢ {html.escape(g['name'])} â â° {g['reminder_time'] or 'â'}"); rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
+    rows.append([InlineKeyboardButton('â¬ï¸ ØªÙÙÛÙ' if fa else 'â¬ï¸ Calendar',callback_data=f'goalcalendar:{jy}:{jm}'),main_menu_button(uid)])
     await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 async def goal_calendar_callback(update,context):
@@ -13245,11 +13222,11 @@ _OLD_DETAIL_GOALS_UPGRADE=detail
 async def detail(update,context):
     q=update.callback_query; await q.answer(); uid=q.from_user.id; gid=int(q.data.split(':')[1]); g=get_goal(uid,gid)
     if not g: return
-    meta=_goal_meta(uid,gid); fa=lang(uid); lines=[f"🎯 <b>{html.escape(g['name'])}</b>",f"📁 {html.escape(g['category'])}",f"⭐ اولویت: {g['priority']}",f"⏰ {g['reminder_time'] or 'خاموش'}"]
-    if g['reminder_end_date']: lines.append(f"📅 پایان تکرار: {html.escape(g['reminder_end_date'])}")
+    meta=_goal_meta(uid,gid); fa=lang(uid); lines=[f"ð¯ <b>{html.escape(g['name'])}</b>",f"ð {html.escape(g['category'])}",f"â­ Ø§ÙÙÙÛØª: {g['priority']}",f"â° {g['reminder_time'] or 'Ø®Ø§ÙÙØ´'}"]
+    if g['reminder_end_date']: lines.append(f"ð Ù¾Ø§ÛØ§Ù ØªÚ©Ø±Ø§Ø±: {html.escape(g['reminder_end_date'])}")
     for k,v in meta.items():
-        if v: lines.append(f"📝 {html.escape(k)}: {html.escape(v)}")
-    rows=[[InlineKeyboardButton('✏️ ویرایش' if fa=='fa' else '✏️ Edit',callback_data=f'edit:{gid}')],[InlineKeyboardButton('✅ انجام دادم' if fa=='fa' else '✅ Done',callback_data=f'done:{gid}'),InlineKeyboardButton('❌ انجام ندادم' if fa=='fa' else '❌ Not done',callback_data=f'miss:{gid}')],[main_menu_button(uid)]]
+        if v: lines.append(f"ð {html.escape(k)}: {html.escape(v)}")
+    rows=[[InlineKeyboardButton('âï¸ ÙÛØ±Ø§ÛØ´' if fa=='fa' else 'âï¸ Edit',callback_data=f'edit:{gid}')],[InlineKeyboardButton('â Ø§ÙØ¬Ø§Ù Ø¯Ø§Ø¯Ù' if fa=='fa' else 'â Done',callback_data=f'done:{gid}'),InlineKeyboardButton('â Ø§ÙØ¬Ø§Ù ÙØ¯Ø§Ø¯Ù' if fa=='fa' else 'â Not done',callback_data=f'miss:{gid}')],[main_menu_button(uid)]]
     await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 # Save detailed fields after the goal row exists.
@@ -13264,7 +13241,7 @@ async def time_callback(update,context):
     for k,v in context.user_data.get('ready_details',[]): _goal_store_meta(uid,int(gid),k,v)
     context.user_data.pop('ready_details',None)
     if reminder:
-        context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); await q.message.edit_text('🔁 مدت تکرار یادآوری را انتخاب کن:' if lang(uid)=='fa' else '🔁 Choose reminder duration:',reply_markup=_targeted_repeat_keyboard(uid)); return
+        context.user_data.clear(); context.user_data['pending_repeat_goal_id']=int(gid); await q.message.edit_text('ð ÙØ¯Øª ØªÚ©Ø±Ø§Ø± ÛØ§Ø¯Ø¢ÙØ±Û Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:' if lang(uid)=='fa' else 'ð Choose reminder duration:',reply_markup=_targeted_repeat_keyboard(uid)); return
     context.user_data.clear(); log_activity(uid,'goal_created'); await q.message.edit_text(T[lang(uid)]['goal_added'].format(name=display_name(uid)),reply_markup=InlineKeyboardMarkup([[main_menu_button(uid)]]))
 
 async def custom_time_save(update,context):
@@ -13310,8 +13287,8 @@ async def custom_time_save(update,context):
     context.user_data['pending_repeat_goal_id'] = gid
 
     await update.message.reply_text(
-        '🔁 مدت تکرار یادآوری را انتخاب کن:' if lang(uid) == 'fa' else
-        '🔁 Choose reminder duration:',
+        'ð ÙØ¯Øª ØªÚ©Ø±Ø§Ø± ÛØ§Ø¯Ø¢ÙØ±Û Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:' if lang(uid) == 'fa' else
+        'ð Choose reminder duration:',
         reply_markup=_targeted_repeat_keyboard(uid),
     )
     return True
@@ -13332,7 +13309,7 @@ async def v25_unified_reminder_job(context):
         uid=g['user_id']; c=db(); already=c.execute('SELECT 1 FROM goal_completion_notice WHERE user_id=? AND goal_id=?',(uid,g['id'])).fetchone(); c.close()
         if already: continue
         try:
-            await context.bot.send_message(uid,'🎉 <b>هدف شما کامل شد!</b>\n\nامروز آخرین روز این هدف بود و دوره‌ای که تعیین کرده بودید به پایان رسید.\n\nسابقه هدف حفظ می‌شود و از تاریخچه قابل مشاهده خواهد بود.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('📋 یادآوری‌های من',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم',callback_data='goalcalendar:today')],[main_menu_button(uid)]]))
+            await context.bot.send_message(uid,'ð <b>ÙØ¯Ù Ø´ÙØ§ Ú©Ø§ÙÙ Ø´Ø¯!</b>\n\nØ§ÙØ±ÙØ² Ø¢Ø®Ø±ÛÙ Ø±ÙØ² Ø§ÛÙ ÙØ¯Ù Ø¨ÙØ¯ Ù Ø¯ÙØ±ÙâØ§Û Ú©Ù ØªØ¹ÛÛÙ Ú©Ø±Ø¯Ù Ø¨ÙØ¯ÛØ¯ Ø¨Ù Ù¾Ø§ÛØ§Ù Ø±Ø³ÛØ¯.\n\nØ³Ø§Ø¨ÙÙ ÙØ¯Ù Ø­ÙØ¸ ÙÛâØ´ÙØ¯ Ù Ø§Ø² ØªØ§Ø±ÛØ®ÚÙ ÙØ§Ø¨Ù ÙØ´Ø§ÙØ¯Ù Ø®ÙØ§ÙØ¯ Ø¨ÙØ¯.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§Û ÙÙ',callback_data='goalreminders'),InlineKeyboardButton('ð ØªÙÙÛÙ',callback_data='goalcalendar:today')],[main_menu_button(uid)]]))
             c=db(); c.execute('INSERT OR IGNORE INTO goal_completion_notice(user_id,goal_id,completed_at) VALUES(?,?,?)',(uid,g['id'],datetime.now(TZ).isoformat())); c.execute('UPDATE goals SET enabled=0 WHERE user_id=? AND id=?',(uid,g['id'])); c.commit(); c.close()
         except Exception as e: logger.warning('Goal completion notice failed: %s',e)
 
@@ -13342,8 +13319,8 @@ def _compact_menu_keyboard(uid,section):
     kb=_OLD_COMPACT_MENU_KEYBOARD_GOALS_UPGRADE(uid,section)
     if section=='goals':
         fa=lang(uid)=='fa'; extra=[
-            [InlineKeyboardButton('🎯 اهداف من' if fa else '🎯 My Goals',callback_data='cm:my_goals'),InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders')],
-            [InlineKeyboardButton('📅 تقویم شمسی' if fa else '📅 Jalali Calendar',callback_data='goalcalendar:today')],
+            [InlineKeyboardButton('ð¯ Ø§ÙØ¯Ø§Ù ÙÙ' if fa else 'ð¯ My Goals',callback_data='cm:my_goals'),InlineKeyboardButton('ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§' if fa else 'ð Reminders',callback_data='goalreminders')],
+            [InlineKeyboardButton('ð ØªÙÙÛÙ Ø´ÙØ³Û' if fa else 'ð Jalali Calendar',callback_data='goalcalendar:today')],
         ]
         rows = [list(row) for row in kb.inline_keyboard]
         rows[1:1] = extra
@@ -13351,12 +13328,12 @@ def _compact_menu_keyboard(uid,section):
     return kb
 
 async def my_goals_callback(update,context):
-    q=update.callback_query; await q.answer(); uid=q.from_user.id; fa=lang(uid)=='fa'; goals=_active_goals(uid); lines=['🎯 <b>اهداف من</b>',''] if fa else ['🎯 <b>My Goals</b>','']; rows=[]
-    if not goals: lines.append('هدف فعالی نداری.' if fa else 'No active goals.')
+    q=update.callback_query; await q.answer(); uid=q.from_user.id; fa=lang(uid)=='fa'; goals=_active_goals(uid); lines=['ð¯ <b>Ø§ÙØ¯Ø§Ù ÙÙ</b>',''] if fa else ['ð¯ <b>My Goals</b>','']; rows=[]
+    if not goals: lines.append('ÙØ¯Ù ÙØ¹Ø§ÙÛ ÙØ¯Ø§Ø±Û.' if fa else 'No active goals.')
     for g in goals:
-        lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time'] or 'خاموش'}")
+        lines.append(f"â¢ {html.escape(g['name'])} â â° {g['reminder_time'] or 'Ø®Ø§ÙÙØ´'}")
         rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
-    rows.append([InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')]); rows.append([main_menu_button(uid)])
+    rows.append([InlineKeyboardButton('ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§' if fa else 'ð Reminders',callback_data='goalreminders'),InlineKeyboardButton('ð ØªÙÙÛÙ' if fa else 'ð Calendar',callback_data='goalcalendar:today')]); rows.append([main_menu_button(uid)])
     await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 _OLD_COMPACT_MENU_CALLBACK_GOALS_UPGRADE=compact_menu_callback
@@ -13382,7 +13359,7 @@ async def text_router(update,context):
 # ===================== FINAL GOALS / NAVIGATION STABILITY PATCH =====================
 # This layer is intentionally last so it wins over older text-router/callback wrappers.
 # It fixes two production issues seen in testing:
-#   1) "🎯 برنامه من" could fall through a legacy router and surface TypeError.
+#   1) "ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ" could fall through a legacy router and surface TypeError.
 #   2) Main-menu callbacks could delete the current screen and then create a second
 #      carrier message, leaving the user with an empty/deleted screen.
 # No database tables or user-owned data are changed here.
@@ -13452,7 +13429,7 @@ async def goals_navigation_callback(update, context):
                 logger.exception("Failed to render main menu from goals callback")
         return
     try:
-        await q.answer("این گزینه دیگر معتبر نیست. منوی اهداف را دوباره باز کن.", show_alert=True)
+        await q.answer("Ø§ÛÙ Ú¯Ø²ÛÙÙ Ø¯ÛÚ¯Ø± ÙØ¹ØªØ¨Ø± ÙÛØ³Øª. ÙÙÙÛ Ø§ÙØ¯Ø§Ù Ø±Ø§ Ø¯ÙØ¨Ø§Ø±Ù Ø¨Ø§Ø² Ú©Ù.", show_alert=True)
     except Exception:
         pass
 
@@ -13476,7 +13453,7 @@ async def navigation_callback(update, context):
         if admin_is_allowed(uid):
             await context.bot.send_message(
                 chat_id=uid,
-                text="🏠 <b>منوی اصلی</b>" if fa else "🏠 <b>Main Menu</b>",
+                text="ð  <b>ÙÙÙÛ Ø§ØµÙÛ</b>" if fa else "ð  <b>Main Menu</b>",
                 parse_mode="HTML",
                 reply_markup=_compact_user_keyboard(uid),
             )
@@ -13507,9 +13484,9 @@ async def navigation_callback(update, context):
         total_done = c.execute("SELECT COUNT(*) AS n FROM goal_days WHERE user_id=? AND status='done'", (uid,)).fetchone()["n"]
         c.close()
         fa = lang(uid) == "fa"
-        text = f"📊 <b>آمار من</b>\n\n🎯 کل اهداف: {len(goals)}\n✅ انجام‌شده امروز: {done}\n❌ انجام‌نشده امروز: {missed}\n🔥 مجموع انجام‌ها: {total_done}"
+        text = f"ð <b>Ø¢ÙØ§Ø± ÙÙ</b>\n\nð¯ Ú©Ù Ø§ÙØ¯Ø§Ù: {len(goals)}\nâ Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø§ÙØ±ÙØ²: {done}\nâ Ø§ÙØ¬Ø§ÙâÙØ´Ø¯Ù Ø§ÙØ±ÙØ²: {missed}\nð¥ ÙØ¬ÙÙØ¹ Ø§ÙØ¬Ø§ÙâÙØ§: {total_done}"
         if streak > 0:
-            text += f"\n🔥 رکورد زنجیره فعلی: {streak} روز" if fa else f"\n🔥 Current streak: {streak} days"
+            text += f"\nð¥ Ø±Ú©ÙØ±Ø¯ Ø²ÙØ¬ÛØ±Ù ÙØ¹ÙÛ: {streak} Ø±ÙØ²" if fa else f"\nð¥ Current streak: {streak} days"
         await context.bot.send_message(chat_id=uid, text=text, parse_mode="HTML")
         return
     try:
@@ -13555,7 +13532,7 @@ async def _render_goals_section_direct(update, context):
     uid = update.effective_user.id
     clear_flow(context)
     fa = lang(uid) == "fa"
-    text = "🎯 <b>برنامه و اهداف</b>" if fa else "🎯 <b>Goals & Plan</b>"
+    text = "ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>" if fa else "ð¯ <b>Goals & Plan</b>"
     await update.message.reply_text(
         text,
         parse_mode="HTML",
@@ -13574,111 +13551,111 @@ async def text_router(update, context):
     uid = update.effective_user.id
 
     # Quick Access
-    if txt in ("⚡ دسترسی سریع", "⚡ Quick Access"):
+    if txt in ("â¡ Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹", "â¡ Quick Access"):
         clear_flow(context)
         fa = lang(uid) == "fa"
-        text = "⚡ <b>دسترسی سریع</b>\n\nپرتکرارترین قابلیت‌ها:" if fa else "⚡ <b>Quick Access</b>"
+        text = "â¡ <b>Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹</b>\n\nÙ¾Ø±ØªÚ©Ø±Ø§Ø±ØªØ±ÛÙ ÙØ§Ø¨ÙÛØªâÙØ§:" if fa else "â¡ <b>Quick Access</b>"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ افزودن هدف" if fa else "➕ Add Goal", callback_data="new_goal"),
-             InlineKeyboardButton("📋 لیست اهداف" if fa else "📋 Goals List", callback_data="goals:main")],
-            [InlineKeyboardButton("📅 برنامه امروز" if fa else "📅 Today's Plan", callback_data="goals:today"),
-             InlineKeyboardButton("🔔 یادآوری بعدی" if fa else "🔔 Next Reminder", callback_data="goalreminders")],
-            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show"),
-             InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Invite Friends", callback_data="ref:home")],
+            [InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù ÙØ¯Ù" if fa else "â Add Goal", callback_data="new_goal"),
+             InlineKeyboardButton("ð ÙÛØ³Øª Ø§ÙØ¯Ø§Ù" if fa else "ð Goals List", callback_data="goals:main")],
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ§ÙÙ Ø§ÙØ±ÙØ²" if fa else "ð Today's Plan", callback_data="goals:today"),
+             InlineKeyboardButton("ð ÛØ§Ø¯Ø¢ÙØ±Û Ø¨Ø¹Ø¯Û" if fa else "ð Next Reminder", callback_data="goalreminders")],
+            [InlineKeyboardButton("ð ØªÙÙØ¯ ÙÙ" if fa else "ð My Birthday", callback_data="birthday:show"),
+             InlineKeyboardButton("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Invite Friends", callback_data="ref:home")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
     # Goals & Plan
-    if txt in ("🎯 برنامه و اهداف", "🎯 Goals & Plan"):
+    if txt in ("ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù", "ð¯ Goals & Plan"):
         clear_flow(context)
         await _compact_menu_show(update, context, "goals")
         return
     # Calendar & Reminders
-    if txt in ("📅 تقویم و یادآوری", "📅 Calendar & Reminders"):
+    if txt in ("ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û", "ð Calendar & Reminders"):
         clear_flow(context)
         fa = lang(uid) == "fa"
-        text = "📅 <b>تقویم و یادآوری</b>" if fa else "📅 <b>Calendar & Reminders</b>"
+        text = "ð <b>ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û</b>" if fa else "ð <b>Calendar & Reminders</b>"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 تقویم شمسی" if fa else "📅 Jalali Calendar", callback_data="goalcalendar:today"),
-             InlineKeyboardButton("🔔 یادآوری‌ها" if fa else "🔔 Reminders", callback_data="goalreminders")],
-            [InlineKeyboardButton("📆 برنامه امروز" if fa else "📆 Today", callback_data="goals:today"),
-             InlineKeyboardButton("📆 برنامه هفته" if fa else "📆 Weekly", callback_data="goals:weekly")],
+            [InlineKeyboardButton("ð ØªÙÙÛÙ Ø´ÙØ³Û" if fa else "ð Jalali Calendar", callback_data="goalcalendar:today"),
+             InlineKeyboardButton("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§" if fa else "ð Reminders", callback_data="goalreminders")],
+            [InlineKeyboardButton("ð Ø¨Ø±ÙØ§ÙÙ Ø§ÙØ±ÙØ²" if fa else "ð Today", callback_data="goals:today"),
+             InlineKeyboardButton("ð Ø¨Ø±ÙØ§ÙÙ ÙÙØªÙ" if fa else "ð Weekly", callback_data="goals:weekly")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
     # My Stats (quick access)
-    if txt in ("📊 آمار من", "📊 My Stats"):
+    if txt in ("ð Ø¢ÙØ§Ø± ÙÙ", "ð My Stats"):
         clear_flow(context)
         await stats(update, context)
         return
     # My Account
-    if txt in ("👤 حساب من", "👤 My Account"):
+    if txt in ("ð¤ Ø­Ø³Ø§Ø¨ ÙÙ", "ð¤ My Account"):
         clear_flow(context)
         fa = lang(uid) == "fa"
-        text = "👤 <b>حساب من</b>" if fa else "👤 <b>My Account</b>"
+        text = "ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>" if fa else "ð¤ <b>My Account</b>"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👤 اطلاعات شخصی" if fa else "👤 Profile", callback_data="profile")],
-            [InlineKeyboardButton("👥 مدیریت مشتریان" if fa else "👥 Customer Management", callback_data="cust:main")],
-            [InlineKeyboardButton("🎂 تولد من" if fa else "🎂 My Birthday", callback_data="birthday:show")],
-            [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language", callback_data="lang"),
-             InlineKeyboardButton("⚙️ تنظیمات" if fa else "⚙️ Settings", callback_data="settings")],
+            [InlineKeyboardButton("ð¤ Ø§Ø·ÙØ§Ø¹Ø§Øª Ø´Ø®ØµÛ" if fa else "ð¤ Profile", callback_data="profile")],
+            [InlineKeyboardButton("ð¥ ÙØ¯ÛØ±ÛØª ÙØ´ØªØ±ÛØ§Ù" if fa else "ð¥ Customer Management", callback_data="cust:main")],
+            [InlineKeyboardButton("ð ØªÙÙØ¯ ÙÙ" if fa else "ð My Birthday", callback_data="birthday:show")],
+            [InlineKeyboardButton("ð Ø²Ø¨Ø§Ù" if fa else "ð Language", callback_data="lang"),
+             InlineKeyboardButton("âï¸ ØªÙØ¸ÛÙØ§Øª" if fa else "âï¸ Settings", callback_data="settings")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
     # My Rewards
-    if txt in ("🎁 پاداش‌های من", "🎁 My Rewards"):
+    if txt in ("ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ", "ð My Rewards"):
         clear_flow(context)
         fa = lang(uid) == "fa"
         xp, level, _ = xp_info(uid)
         text = (
-            f"🎁 <b>پاداش‌های من</b>\n\n"
-            f"⭐ XP: {xp}\n"
-            f"🏅 سطح: {level}\n"
-            f"💎 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}"
+            f"ð <b>Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ</b>\n\n"
+            f"â­ XP: {xp}\n"
+            f"ð Ø³Ø·Ø­: {level}\n"
+            f"ð VIP: {'ÙØ¹Ø§Ù' if is_vip(uid) else 'ØºÛØ±ÙØ¹Ø§Ù'}"
         )
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⭐ XP من" if fa else "⭐ My XP", callback_data="xp:info"),
-             InlineKeyboardButton("🏆 دستاوردها" if fa else "🏆 Achievements", callback_data="achievements")],
-            [InlineKeyboardButton("🎁 هدیه‌ها" if fa else "🎁 Gifts", callback_data="gifts:list"),
-             InlineKeyboardButton("📜 تاریخچه" if fa else "📜 History", callback_data="xp:history")],
+            [InlineKeyboardButton("â­ XP ÙÙ" if fa else "â­ My XP", callback_data="xp:info"),
+             InlineKeyboardButton("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§" if fa else "ð Achievements", callback_data="achievements")],
+            [InlineKeyboardButton("ð ÙØ¯ÛÙâÙØ§" if fa else "ð Gifts", callback_data="gifts:list"),
+             InlineKeyboardButton("ð ØªØ§Ø±ÛØ®ÚÙ" if fa else "ð History", callback_data="xp:history")],
         ])
         await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
     # Stats & Reports
-    if txt in ("📊 آمار و گزارش", "📊 Stats & Reports"):
+    if txt in ("ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´", "ð Stats & Reports"):
         clear_flow(context)
         await _compact_menu_show(update, context, "reports")
         return
     # Tools
-    if txt in ("🛠️ ابزارها", "🛠️ Tools"):
+    if txt in ("ð ï¸ Ø§Ø¨Ø²Ø§Ø±ÙØ§", "ð ï¸ Tools"):
         clear_flow(context)
         await _compact_menu_show(update, context, "tools")
         return
     # Support
-    if txt in ("🎫 پشتیبانی", "🎫 Support"):
+    if txt in ("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", "ð« Support"):
         clear_flow(context)
         await _compact_menu_show(update, context, "support")
         return
     # Birthday (text button)
-    if txt in ("🎂 تولد من", "🎂 My Birthday"):
+    if txt in ("ð ØªÙÙØ¯ ÙÙ", "ð My Birthday"):
         if not birthday_enabled():
-            await update.message.reply_text("🎂 این قابلیت در حال حاضر غیرفعال است.", reply_markup=compact_keyboard(uid))
+            await update.message.reply_text("ð Ø§ÛÙ ÙØ§Ø¨ÙÛØª Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.", reply_markup=compact_keyboard(uid))
             return
         context.user_data["awaiting_birthday"] = True
         fa = lang(uid) == "fa"
         await update.message.reply_text(
-            "🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
-            "فرمت: <code>YYYY-MM-DD</code>\nمثال: <code>1995-03-15</code>",
+            "ð <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø®ÙØ¯Øª Ø±Ù ÙØ§Ø±Ø¯ Ú©Ù</b>\n\n"
+            "ÙØ±ÙØª: <code>YYYY-MM-DD</code>\nÙØ«Ø§Ù: <code>1995-03-15</code>",
             parse_mode="HTML",
         )
         return
 
-    if txt in ("🎯 برنامه من", "🎯 My Plan"):
+    if txt in ("ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ", "ð¯ My Plan"):
         return await _render_goals_section_direct(update, context)
 
     # Main Menu is absolute: clear every transient flow and show exactly one
     # root screen. Never allow a pending form/AI state to consume this label.
-    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+    if txt in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu"):
         clear_flow(context)
         try:
             await update.message.delete()
@@ -13688,7 +13665,7 @@ async def text_router(update, context):
         # Admins: show user menu directly instead of admin root
         if admin_is_allowed(uid):
             await update.message.reply_text(
-                "🏠 <b>منوی اصلی</b>" if fa else "🏠 <b>Main Menu</b>",
+                "ð  <b>ÙÙÙÛ Ø§ØµÙÛ</b>" if fa else "ð  <b>Main Menu</b>",
                 parse_mode="HTML",
                 reply_markup=_compact_user_keyboard(uid),
             )
@@ -13703,7 +13680,7 @@ async def text_router(update, context):
     # Back is relative. Use the section recorded when the current flow was
     # entered; if no parent exists, fall back safely to the root rather than
     # incorrectly jumping to Goals.
-    if txt in ("⬅️ برگشت", "⬅️ Back"):
+    if txt in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
         parent = context.user_data.get("_nav_parent_section") or "root"
         try:
             await update.message.delete()
@@ -13713,17 +13690,17 @@ async def text_router(update, context):
         fa = lang(uid) == "fa"
         if parent == "tools":
             await update.message.reply_text(
-                "🤖 <b>ابزارهای هوشمند</b>" if fa else "🤖 <b>Smart Tools</b>",
+                "ð¤ <b>Ø§Ø¨Ø²Ø§Ø±ÙØ§Û ÙÙØ´ÙÙØ¯</b>" if fa else "ð¤ <b>Smart Tools</b>",
                 parse_mode="HTML",
                 reply_markup=_compact_menu_keyboard(uid, "tools"),
             )
         elif parent in {"goals", "reports", "vip", "account", "support"}:
             titles = {
-                "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
-                "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-                "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
-                "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
-                "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
+                "goals": ("ð¯ <b>Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù</b>", "ð¯ <b>Goals & Plan</b>"),
+                "reports": ("ð <b>Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª</b>", "ð <b>Reports & Progress</b>"),
+                "vip": ("ð <b>VIP Ù Ù¾Ø§Ø¯Ø§Ø´âÙØ§</b>", "ð <b>VIP & Rewards</b>"),
+                "account": ("ð¤ <b>Ø­Ø³Ø§Ø¨ ÙÙ</b>", "ð¤ <b>My Account</b>"),
+                "support": ("ð« <b>Ù¾Ø´ØªÛØ¨Ø§ÙÛ</b>", "ð« <b>Support</b>"),
             }
             await update.message.reply_text(
                 titles[parent][0 if fa else 1],
@@ -13757,8 +13734,8 @@ def _root_menu_text(uid):
     now = datetime.now(TZ)
     try:
         jy, jm, jd = _g2j(now.year, now.month, now.day)
-        months_fa = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-                     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+        months_fa = ["ÙØ±ÙØ±Ø¯ÛÙ", "Ø§Ø±Ø¯ÛØ¨ÙØ´Øª", "Ø®Ø±Ø¯Ø§Ø¯", "ØªÛØ±", "ÙØ±Ø¯Ø§Ø¯", "Ø´ÙØ±ÛÙØ±",
+                     "ÙÙØ±", "Ø¢Ø¨Ø§Ù", "Ø¢Ø°Ø±", "Ø¯Û", "Ø¨ÙÙÙ", "Ø§Ø³ÙÙØ¯"]
         months_en = ["Farvardin", "Ordibehesht", "Khordad", "Tir", "Mordad", "Shahrivar",
                      "Mehr", "Aban", "Azar", "Dey", "Bahman", "Esfand"]
         date_str = f"{jd} {months_fa[jm-1]} {jy}" if fa else f"{jd} {months_en[jm-1]} {jy}"
@@ -13767,12 +13744,12 @@ def _root_menu_text(uid):
     h = now.hour
     name = display_name(uid)
     if fa:
-        greet = "صبح بخیر" if h < 12 else ("بعدظهر بخیر" if h < 18 else "شب بخیر")
-        return (f"🏠 <b>منوی اصلی</b>\n\nسلام {name} عزیز، {greet} 🌷\n"
-                f"📅 {date_str}\n\nیکی از بخش‌های زیر را انتخاب کن:")
+        greet = "ØµØ¨Ø­ Ø¨Ø®ÛØ±" if h < 12 else ("Ø¨Ø¹Ø¯Ø¸ÙØ± Ø¨Ø®ÛØ±" if h < 18 else "Ø´Ø¨ Ø¨Ø®ÛØ±")
+        return (f"ð  <b>ÙÙÙÛ Ø§ØµÙÛ</b>\n\nØ³ÙØ§Ù {name} Ø¹Ø²ÛØ²Ø {greet} ð·\n"
+                f"ð {date_str}\n\nÛÚ©Û Ø§Ø² Ø¨Ø®Ø´âÙØ§Û Ø²ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:")
     greet = "Good morning" if h < 12 else ("Good afternoon" if h < 18 else "Good evening")
-    return (f"🏠 <b>Main Menu</b>\n\nHi {name}, {greet}!\n"
-            f"📅 {date_str}\n\nChoose a section:")
+    return (f"ð  <b>Main Menu</b>\n\nHi {name}, {greet}!\n"
+            f"ð {date_str}\n\nChoose a section:")
 
 
 _OLD_INIT_DB_SECURITY = init_db
@@ -13814,8 +13791,8 @@ def _guard_goal_handler(name):
                     log_security(uid, "goal_access_denied", f"handler={name} goal={gid}")
                     try:
                         if q:
-                            await q.answer("⛔ این مورد در دسترس شما نیست." if lang(uid) == "fa" else
-                                           "⛔ Not available for you.", show_alert=True)
+                            await q.answer("â Ø§ÛÙ ÙÙØ±Ø¯ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ø´ÙØ§ ÙÛØ³Øª." if lang(uid) == "fa" else
+                                           "â Not available for you.", show_alert=True)
                     except Exception:
                         pass
                     return
@@ -13852,7 +13829,7 @@ async def seclog_command(update, context):
     fa = lang(uid) == "fa"
     if not admin_guard(uid):
         log_security(uid, "admin_denied", "handler=seclog_command")
-        await update.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+        await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.")
         return
     limit = 20
     try:
@@ -13864,12 +13841,12 @@ async def seclog_command(update, context):
     rows = c.execute("SELECT * FROM security_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     c.close()
     if not rows:
-        await update.message.reply_text("✅ هیچ رویداد امنیتی ثبت نشده است." if fa else
-                                        "✅ No security events recorded.")
+        await update.message.reply_text("â ÙÛÚ Ø±ÙÛØ¯Ø§Ø¯ Ø§ÙÙÛØªÛ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª." if fa else
+                                        "â No security events recorded.")
         return
-    lines = ["🔐 <b>رویدادهای امنیتی اخیر</b>\n" if fa else "🔐 <b>Recent security events</b>\n"]
+    lines = ["ð <b>Ø±ÙÛØ¯Ø§Ø¯ÙØ§Û Ø§ÙÙÛØªÛ Ø§Ø®ÛØ±</b>\n" if fa else "ð <b>Recent security events</b>\n"]
     for r in rows:
-        line = (f"• <code>{html.escape(str(r['created_at'])[:16])}</code> | "
+        line = (f"â¢ <code>{html.escape(str(r['created_at'])[:16])}</code> | "
                 f"{html.escape(r['event'])} | user=<code>{r['user_id']}</code>")
         if r["details"]:
             line += f" | {html.escape(r['details'])}"
@@ -13910,7 +13887,7 @@ def set_feature(key, enabled, admin_id=0):
     _OLD_SET_FEATURE_OWNER_NOTIFY(key, enabled, admin_id)
     try:
         if admin_id and admin_is_allowed(admin_id) and admin_id != master_owner_id():
-            fa_txt = f"⚙️ <b>تغییر قابلیت</b>\n👤 مدیر: <code>{admin_id}</code>\n🔧 {html.escape(str(key))}: {'روشن' if enabled else 'خاموش'}"
+            fa_txt = f"âï¸ <b>ØªØºÛÛØ± ÙØ§Ø¨ÙÛØª</b>\nð¤ ÙØ¯ÛØ±: <code>{admin_id}</code>\nð§ {html.escape(str(key))}: {'Ø±ÙØ´Ù' if enabled else 'Ø®Ø§ÙÙØ´'}"
             c = db()
             c.execute("INSERT INTO owner_notifications(text,created_at) VALUES(?,?)",
                       (fa_txt, datetime.now(TZ).isoformat()))
@@ -13986,12 +13963,12 @@ def _rep_users():
     managers = len(ADMIN_IDS)
     goals_active = c.execute("SELECT COUNT(*) n FROM goals WHERE enabled=1").fetchone()["n"]
     c.close()
-    return ("👥 <b>گزارش کاربران</b>\n\n"
-            f"• کل کاربران: <b>{_fmt_num(total)}</b>\n"
-            f"• عضو جدید امروز: <b>{_fmt_num(new_today)}</b>\n"
-            f"• VIP فعال: <b>{_fmt_num(vip)}</b>\n"
-            f"• مدیران: <b>{_fmt_num(managers)}</b>\n"
-            f"• هدف‌های فعال: <b>{_fmt_num(goals_active)}</b>")
+    return ("ð¥ <b>Ú¯Ø²Ø§Ø±Ø´ Ú©Ø§Ø±Ø¨Ø±Ø§Ù</b>\n\n"
+            f"â¢ Ú©Ù Ú©Ø§Ø±Ø¨Ø±Ø§Ù: <b>{_fmt_num(total)}</b>\n"
+            f"â¢ Ø¹Ø¶Ù Ø¬Ø¯ÛØ¯ Ø§ÙØ±ÙØ²: <b>{_fmt_num(new_today)}</b>\n"
+            f"â¢ VIP ÙØ¹Ø§Ù: <b>{_fmt_num(vip)}</b>\n"
+            f"â¢ ÙØ¯ÛØ±Ø§Ù: <b>{_fmt_num(managers)}</b>\n"
+            f"â¢ ÙØ¯ÙâÙØ§Û ÙØ¹Ø§Ù: <b>{_fmt_num(goals_active)}</b>")
 
 
 def _rep_finance():
@@ -14014,11 +13991,11 @@ def _rep_finance():
     except Exception:
         pass
     c.close()
-    return ("💰 <b>گزارش مالی</b>\n\n"
-            f"• پرداخت‌های ثبت‌شده: <b>{_fmt_num(pay_n)}</b>\n"
-            f"• مجموع کل: <b>{_fmt_num(int(pay_sum))}</b> (Stars)\n"
-            f"• ۳۰ روز اخیر: <b>{_fmt_num(int(month_sum))}</b> (Stars)\n"
-            f"• رسید VIP در انتظار بررسی: <b>{_fmt_num(pending_receipts)}</b>")
+    return ("ð° <b>Ú¯Ø²Ø§Ø±Ø´ ÙØ§ÙÛ</b>\n\n"
+            f"â¢ Ù¾Ø±Ø¯Ø§Ø®ØªâÙØ§Û Ø«Ø¨ØªâØ´Ø¯Ù: <b>{_fmt_num(pay_n)}</b>\n"
+            f"â¢ ÙØ¬ÙÙØ¹ Ú©Ù: <b>{_fmt_num(int(pay_sum))}</b> (Stars)\n"
+            f"â¢ Û³Û° Ø±ÙØ² Ø§Ø®ÛØ±: <b>{_fmt_num(int(month_sum))}</b> (Stars)\n"
+            f"â¢ Ø±Ø³ÛØ¯ VIP Ø¯Ø± Ø§ÙØªØ¸Ø§Ø± Ø¨Ø±Ø±Ø³Û: <b>{_fmt_num(pending_receipts)}</b>")
 
 
 def _rep_tickets():
@@ -14053,13 +14030,13 @@ def _rep_tickets():
     except Exception:
         pass
     c.close()
-    lines = ["🎫 <b>گزارش تیکت‌ها</b>\n\n"]
-    lines.append(f"• باز: <b>{by_status.get('open',0)}</b> | بسته: <b>{by_status.get('closed',0)}</b>\n")
-    lines.append(f"• Escalated (باز بیش از ۴۸ ساعت): <b>{escalated}</b>\n")
+    lines = ["ð« <b>Ú¯Ø²Ø§Ø±Ø´ ØªÛÚ©ØªâÙØ§</b>\n\n"]
+    lines.append(f"â¢ Ø¨Ø§Ø²: <b>{by_status.get('open',0)}</b> | Ø¨Ø³ØªÙ: <b>{by_status.get('closed',0)}</b>\n")
+    lines.append(f"â¢ Escalated (Ø¨Ø§Ø² Ø¨ÛØ´ Ø§Ø² Û´Û¸ Ø³Ø§Ø¹Øª): <b>{escalated}</b>\n")
     if avg_min is not None:
-        lines.append(f"• میانگین زمان اولین پاسخ: <b>{avg_min:.0f} دقیقه</b>\n")
+        lines.append(f"â¢ ÙÛØ§ÙÚ¯ÛÙ Ø²ÙØ§Ù Ø§ÙÙÛÙ Ù¾Ø§Ø³Ø®: <b>{avg_min:.0f} Ø¯ÙÛÙÙ</b>\n")
     if sat is not None:
-        lines.append(f"• میانگین رضایت مشتریان: <b>{sat:.1f}/5</b>\n")
+        lines.append(f"â¢ ÙÛØ§ÙÚ¯ÛÙ Ø±Ø¶Ø§ÛØª ÙØ´ØªØ±ÛØ§Ù: <b>{sat:.1f}/5</b>\n")
     return "".join(lines)
 
 
@@ -14078,10 +14055,10 @@ def _rep_xp_vip():
     except Exception:
         vip_active = expiring = 0
     c.close()
-    return ("⭐ <b>گزارش XP و VIP</b>\n\n"
-            f"• XP اعطایی امروز: <b>{_fmt_num(int(xp_today))}</b>\n"
-            f"• VIP فعال: <b>{vip_active}</b>\n"
-            f"• تا ۷ روز آینده منقضی می‌شود: <b>{expiring}</b>")
+    return ("â­ <b>Ú¯Ø²Ø§Ø±Ø´ XP Ù VIP</b>\n\n"
+            f"â¢ XP Ø§Ø¹Ø·Ø§ÛÛ Ø§ÙØ±ÙØ²: <b>{_fmt_num(int(xp_today))}</b>\n"
+            f"â¢ VIP ÙØ¹Ø§Ù: <b>{vip_active}</b>\n"
+            f"â¢ ØªØ§ Û· Ø±ÙØ² Ø¢ÛÙØ¯Ù ÙÙÙØ¶Û ÙÛâØ´ÙØ¯: <b>{expiring}</b>")
 
 
 def _rep_errors():
@@ -14092,15 +14069,15 @@ def _rep_errors():
     total_today = c.execute("SELECT COUNT(*) n FROM error_events WHERE substr(created_at,1,10)=?", (today,)).fetchone()["n"]
     sec_today = c.execute("SELECT COUNT(*) n FROM security_events WHERE substr(created_at,1,10)=?", (today,)).fetchall()
     c.close()
-    lines = ["🐛 <b>گزارش خطاها</b>\n\n", f"• خطاهای امروز: <b>{total_today}</b>\n"]
+    lines = ["ð <b>Ú¯Ø²Ø§Ø±Ø´ Ø®Ø·Ø§ÙØ§</b>\n\n", f"â¢ Ø®Ø·Ø§ÙØ§Û Ø§ÙØ±ÙØ²: <b>{total_today}</b>\n"]
     for r in by_type:
-        lines.append(f"  – <code>{html.escape(r['error_type'])}</code>: {r['n']}\n")
+        lines.append(f"  â <code>{html.escape(r['error_type'])}</code>: {r['n']}\n")
     if sec_today:
-        lines.append(f"• رویدادهای امنیتی امروز: <b>{sec_today[0]['n']}</b>\n")
+        lines.append(f"â¢ Ø±ÙÛØ¯Ø§Ø¯ÙØ§Û Ø§ÙÙÛØªÛ Ø§ÙØ±ÙØ²: <b>{sec_today[0]['n']}</b>\n")
     if recent:
-        lines.append("\n<b>آخرین خطاها:</b>\n")
+        lines.append("\n<b>Ø¢Ø®Ø±ÛÙ Ø®Ø·Ø§ÙØ§:</b>\n")
         for r in recent:
-            lines.append(f"• {html.escape(str(r['created_at'])[:16])} <code>{html.escape(r['error_type'])}</code> u:{r['user_id']}\n")
+            lines.append(f"â¢ {html.escape(str(r['created_at'])[:16])} <code>{html.escape(r['error_type'])}</code> u:{r['user_id']}\n")
     return "".join(lines)
 
 
@@ -14112,23 +14089,23 @@ def _rep_health():
     wal = os.path.getsize(DB_PATH + "-wal") if os.path.exists(DB_PATH + "-wal") else 0
     up_s = int(time.time() - _PROCESS_START[0]) if "_PROCESS_START" in globals() else 0
     h, m = up_s // 3600, (up_s % 3600) // 60
-    return ("🩺 <b>سلامت سرویس‌ها</b>\n\n"
-            f"• وضعیت DB: <b>OK</b> (WAL فعال)\n"
-            f"• حجم دیتابیس: <b>{size/1024:.0f} KB</b> (WAL: {wal/1024:.0f} KB)\n"
-            f"• تعداد جدول‌ها: <b>{tables}</b>\n"
-            f"• زمان بالا بودن سرویس: <b>{h}ساعت و {m}دقیقه</b>\n"
-            f"• JobQueue یادآوری‌ها: <b>فعال</b>")
+    return ("ð©º <b>Ø³ÙØ§ÙØª Ø³Ø±ÙÛØ³âÙØ§</b>\n\n"
+            f"â¢ ÙØ¶Ø¹ÛØª DB: <b>OK</b> (WAL ÙØ¹Ø§Ù)\n"
+            f"â¢ Ø­Ø¬Ù Ø¯ÛØªØ§Ø¨ÛØ³: <b>{size/1024:.0f} KB</b> (WAL: {wal/1024:.0f} KB)\n"
+            f"â¢ ØªØ¹Ø¯Ø§Ø¯ Ø¬Ø¯ÙÙâÙØ§: <b>{tables}</b>\n"
+            f"â¢ Ø²ÙØ§Ù Ø¨Ø§ÙØ§ Ø¨ÙØ¯Ù Ø³Ø±ÙÛØ³: <b>{h}Ø³Ø§Ø¹Øª Ù {m}Ø¯ÙÛÙÙ</b>\n"
+            f"â¢ JobQueue ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§: <b>ÙØ¹Ø§Ù</b>")
 
 
 async def _send_backup_file(update, context):
     uid = update.effective_user.id
     path = DB_BACKUP_PATH if os.path.exists(DB_BACKUP_PATH) else (DB_PATH if os.path.exists(DB_PATH) else None)
     if not path:
-        await update.message.reply_text("❌ فایل بکاپ پیدا نشد.")
+        await update.message.reply_text("â ÙØ§ÛÙ Ø¨Ú©Ø§Ù¾ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.")
         return
     with open(path, "rb") as fh:
         await context.bot.send_document(uid, document=fh, filename="goals-backup.db",
-                                        caption="💾 آخرین نسخه پشتیبان دیتابیس")
+                                        caption="ð¾ Ø¢Ø®Ø±ÛÙ ÙØ³Ø®Ù Ù¾Ø´ØªÛØ¨Ø§Ù Ø¯ÛØªØ§Ø¨ÛØ³")
 
 
 _REPORT_BUILDERS = {
@@ -14145,10 +14122,10 @@ def _reports_menu_kb(uid):
     fa = lang(uid) == "fa"
     b = lambda t, cb: InlineKeyboardButton(t, callback_data=cb)
     rows = [
-        [b("👥 کاربران", "rep:users"), b("💰 مالی", "rep:finance")],
-        [b("🎫 تیکت‌ها", "rep:tickets"), b("⭐ XP/VIP", "rep:xpvip")],
-        [b("🐛 خطاها", "rep:errors"), b("🩺 سلامت", "rep:health")],
-        [b("💾 دریافت فایل بکاپ", "rep:backup")],
+        [b("ð¥ Ú©Ø§Ø±Ø¨Ø±Ø§Ù", "rep:users"), b("ð° ÙØ§ÙÛ", "rep:finance")],
+        [b("ð« ØªÛÚ©ØªâÙØ§", "rep:tickets"), b("â­ XP/VIP", "rep:xpvip")],
+        [b("ð Ø®Ø·Ø§ÙØ§", "rep:errors"), b("ð©º Ø³ÙØ§ÙØª", "rep:health")],
+        [b("ð¾ Ø¯Ø±ÛØ§ÙØª ÙØ§ÛÙ Ø¨Ú©Ø§Ù¾", "rep:backup")],
         [main_menu_button(uid)],
     ]
     return InlineKeyboardMarkup(rows)
@@ -14159,10 +14136,10 @@ async def reports_command(update, context):
     fa = lang(uid) == "fa"
     if not admin_guard(uid):
         log_security(uid, "admin_denied", "handler=reports_command")
-        await update.message.reply_text("⛔ دسترسی ندارید." if fa else "⛔ Access denied.")
+        await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.")
         return
-    text = ("📊 <b>گزارش‌های مدیریتی</b>\n\nیک گزارش را انتخاب کن:" if fa
-            else "📊 <b>Management Reports</b>\n\nChoose a report:")
+    text = ("ð <b>Ú¯Ø²Ø§Ø±Ø´âÙØ§Û ÙØ¯ÛØ±ÛØªÛ</b>\n\nÛÚ© Ú¯Ø²Ø§Ø±Ø´ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if fa
+            else "ð <b>Management Reports</b>\n\nChoose a report:")
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
 
 
@@ -14173,38 +14150,38 @@ async def reports_callback(update, context):
     if not admin_guard(uid):
         log_security(uid, "admin_denied", "handler=reports_callback")
         try:
-            await q.answer("⛔ دسترسی ندارید." if fa else "⛔ Access denied.", show_alert=True)
+            await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯." if fa else "â Access denied.", show_alert=True)
         except Exception:
             pass
         return
     await q.answer()
     action = q.data.split(":", 1)[1]
     if action == "menu":
-        await q.message.edit_text("📊 <b>گزارش‌های مدیریتی</b>\n\nیک گزارش را انتخاب کن:" if fa
-                                  else "📊 <b>Management Reports</b>\n\nChoose:",
+        await q.message.edit_text("ð <b>Ú¯Ø²Ø§Ø±Ø´âÙØ§Û ÙØ¯ÛØ±ÛØªÛ</b>\n\nÛÚ© Ú¯Ø²Ø§Ø±Ø´ Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:" if fa
+                                  else "ð <b>Management Reports</b>\n\nChoose:",
                                   parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
         return
     if action == "backup":
         try:
-            await q.answer("⏳ در حال آماده‌سازی..." if fa else "⏳ Preparing...")
+            await q.answer("â³ Ø¯Ø± Ø­Ø§Ù Ø¢ÙØ§Ø¯ÙâØ³Ø§Ø²Û..." if fa else "â³ Preparing...")
         except Exception:
             pass
         path = DB_BACKUP_PATH if os.path.exists(DB_BACKUP_PATH) else (DB_PATH if os.path.exists(DB_PATH) else None)
         if not path:
             try:
-                await q.message.edit_text("❌ فایل بکاپ پیدا نشد." if fa else "❌ Backup file not found.",
+                await q.message.edit_text("â ÙØ§ÛÙ Ø¨Ú©Ø§Ù¾ Ù¾ÛØ¯Ø§ ÙØ´Ø¯." if fa else "â Backup file not found.",
                                           reply_markup=_reports_menu_kb(uid))
             except Exception:
                 pass
             return
         with open(path, "rb") as fh:
             await context.bot.send_document(uid, document=fh, filename="goals-backup.db",
-                                            caption="💾 بکاپ دیتابیس ربات" if fa else "Bot database backup")
+                                            caption="ð¾ Ø¨Ú©Ø§Ù¾ Ø¯ÛØªØ§Ø¨ÛØ³ Ø±Ø¨Ø§Øª" if fa else "Bot database backup")
         return
     builder = _REPORT_BUILDERS.get(action)
     if not builder:
         return
-    back_row = [InlineKeyboardButton("⬅️ بازگشت به گزارش‌ها" if fa else "⬅️ Back to reports", callback_data="rep:menu"),
+    back_row = [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù Ú¯Ø²Ø§Ø±Ø´âÙØ§" if fa else "â¬ï¸ Back to reports", callback_data="rep:menu"),
                 main_menu_button(uid)]
     try:
         text = builder()
@@ -14215,7 +14192,7 @@ async def reports_callback(update, context):
             await q.message.edit_reply_markup(reply_markup=kb)
     except Exception as e:
         logger.exception("report %s failed", action)
-        await q.message.edit_text(f"⚠️ خطا در تولید گزارش: <code>{type(e).__name__}</code>",
+        await q.message.edit_text(f"â ï¸ Ø®Ø·Ø§ Ø¯Ø± ØªÙÙÛØ¯ Ú¯Ø²Ø§Ø±Ø´: <code>{type(e).__name__}</code>",
                                   parse_mode="HTML", reply_markup=_reports_menu_kb(uid))
 
 
@@ -14240,7 +14217,7 @@ async def weekly_owner_backup_job(context):
         with open(path, "rb") as fh:
             await context.bot.send_document(
                 oid, document=fh, filename=f"goals-backup-{today}.db",
-                caption=f"💾 بکاپ هفتگی دیتابیس ربات — {today}")
+                caption=f"ð¾ Ø¨Ú©Ø§Ù¾ ÙÙØªÚ¯Û Ø¯ÛØªØ§Ø¨ÛØ³ Ø±Ø¨Ø§Øª â {today}")
         set_system_setting("last_owner_backup_week", week)
         logger.info("Weekly owner backup delivered (%s)", path)
     except Exception:
@@ -14251,7 +14228,7 @@ async def weekly_owner_backup_job(context):
 # ===================== BIRTHDAY & OCCASIONS MODULE =====================
 # Independent system: persistent user birthday registry + configurable gifts +
 # custom occasions. Managed ONLY from the Owner area of the manager panel
-# (پنل مدیر -> 🎂 تولد و مناسبت‌ها). Privacy-safe by construction: regular users
+# (Ù¾ÙÙ ÙØ¯ÛØ± -> ð ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§). Privacy-safe by construction: regular users
 # can only ever read/write their OWN birthday row; there is no API that exposes
 # another user's birthday outside the Owner-only report.
 
@@ -14269,8 +14246,8 @@ def _bday_db():
     return c
 
 
-_FA_DIGITS = {"۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
-              "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9"}
+_FA_DIGITS = {"Û°": "0", "Û±": "1", "Û²": "2", "Û³": "3", "Û´": "4", "Ûµ": "5", "Û¶": "6", "Û·": "7", "Û¸": "8", "Û¹": "9",
+              "Ù ": "0", "Ù¡": "1", "Ù¢": "2", "Ù£": "3", "Ù¤": "4", "Ù¥": "5", "Ù¦": "6", "Ù§": "7", "Ù¨": "8", "Ù©": "9"}
 
 
 def _bd_en(s):
@@ -14316,9 +14293,9 @@ def bd_set(key, value):
 
 
 BD_GIFT_KINDS = ("xp", "service", "vip", "subscription", "none")
-BD_GIFT_LABELS = {"xp": "⭐ XP", "service": "🪙 خدمات (توکن)", "vip": "💎 VIP", "subscription": "📜 اشتراک", "none": "⛔ بدون هدیه"}
+BD_GIFT_LABELS = {"xp": "â­ XP", "service": "ðª Ø®Ø¯ÙØ§Øª (ØªÙÚ©Ù)", "vip": "ð VIP", "subscription": "ð Ø§Ø´ØªØ±Ø§Ú©", "none": "â Ø¨Ø¯ÙÙ ÙØ¯ÛÙ"}
 BD_AUDIENCES = ("all", "normal", "vip")
-BD_AUD_LABELS = {"all": "👥 همه کاربران", "normal": "👤 فقط کاربران عادی", "vip": "💎 فقط VIP"}
+BD_AUD_LABELS = {"all": "ð¥ ÙÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù", "normal": "ð¤ ÙÙØ· Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¹Ø§Ø¯Û", "vip": "ð ÙÙØ· VIP"}
 
 
 def bd_audience_ok(uid):
@@ -14331,7 +14308,7 @@ def bd_audience_ok(uid):
 
 def bd_gift_desc(kind, amount):
     n = max(1, int(float(amount or 0)))
-    unit = {"xp": "XP", "service": "توکن", "vip": "روز VIP", "subscription": "روز اشتراک"}.get(kind, "")
+    unit = {"xp": "XP", "service": "ØªÙÚ©Ù", "vip": "Ø±ÙØ² VIP", "subscription": "Ø±ÙØ² Ø§Ø´ØªØ±Ø§Ú©"}.get(kind, "")
     return f"{n} {unit}" if unit else ""
 
 
@@ -14354,11 +14331,11 @@ def _bday_reward(c, eid, uid, gkind, amount):
         n = max(1, int(float(amount or 0)))
         c.execute("UPDATE users SET xp=COALESCE(xp,0)+? WHERE user_id=?", (n, uid))
         c.execute("INSERT INTO xp_log(user_id,amount,reason,created_at) VALUES(?,?,?,?)", (uid, n, "birthday_gift", now_iso))
-        desc = f"⭐ +{n} XP"
+        desc = f"â­ +{n} XP"
     elif gkind == "service":
         n = max(1, int(float(amount or 0)))
         add_tokens(uid, n, reason="birthday_gift")
-        desc = f"🪙 +{n} توکن"
+        desc = f"ðª +{n} ØªÙÚ©Ù"
     elif gkind in ("vip", "subscription"):
         days = max(1, int(float(amount or 1)))
         r = c.execute("SELECT COALESCE(vip_until,'') v FROM users WHERE user_id=?", (uid,)).fetchone()
@@ -14371,15 +14348,15 @@ def _bday_reward(c, eid, uid, gkind, amount):
             except Exception:
                 pass
         c.execute("UPDATE users SET vip_until=? WHERE user_id=?", ((base + timedelta(days=days)).isoformat(), uid))
-        desc = f"💎 {days} روز {'VIP' if gkind == 'vip' else 'اشتراک'}"
+        desc = f"ð {days} Ø±ÙØ² {'VIP' if gkind == 'vip' else 'Ø§Ø´ØªØ±Ø§Ú©'}"
     if desc and eid:
         c.execute("UPDATE bday_events SET gift_kind=?,gift_amount=? WHERE id=?", (gkind, float(amount or 0), eid))
     return desc
 
 
 def bd_congrats_text(name):
-    tpl = bd_get("bd_congrats_fa", "🎉 {name} عزیز، تولدت مبارک! 🎂\n\nامیدواریم سالی سرشار از سلامتی، شادی و موفقیت داشته باشی.")
-    txt = tpl.replace("{name}", name or "دوست عزیز")
+    tpl = bd_get("bd_congrats_fa", "ð {name} Ø¹Ø²ÛØ²Ø ØªÙÙØ¯Øª ÙØ¨Ø§Ø±Ú©! ð\n\nØ§ÙÛØ¯ÙØ§Ø±ÛÙ Ø³Ø§ÙÛ Ø³Ø±Ø´Ø§Ø± Ø§Ø² Ø³ÙØ§ÙØªÛØ Ø´Ø§Ø¯Û Ù ÙÙÙÙÛØª Ø¯Ø§Ø´ØªÙ Ø¨Ø§Ø´Û.")
+    txt = tpl.replace("{name}", name or "Ø¯ÙØ³Øª Ø¹Ø²ÛØ²")
     if bd_get("bd_gift_enabled", "1") == "1":
         gkind = bd_get("bd_gift_kind", "xp")
         if gkind != "none":
@@ -14389,18 +14366,18 @@ def bd_congrats_text(name):
                 amt = 50.0
             d = bd_gift_desc(gkind, amt)
             if d:
-                txt += "\n\n🎁 هدیه تولد: " + d
+                txt += "\n\nð ÙØ¯ÛÙ ØªÙÙØ¯: " + d
     return txt
 
 
 # ---------- user-facing command (privacy: own row only) ----------
-# Birthday entry: Jalali calendar picker (سال ← ماه ← روز) + ✍️ ورود دستی.
+# Birthday entry: Jalali calendar picker (Ø³Ø§Ù â ÙØ§Ù â Ø±ÙØ²) + âï¸ ÙØ±ÙØ¯ Ø¯Ø³ØªÛ.
 
 _BD_JY_MIN, _BD_JY_MAX = 1300, 1450
 _BD_YEARS_PER_PAGE = 12
-_BD_FA_DG = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-_BD_MONTHS_FA = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-                 "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_BD_FA_DG = str.maketrans("0123456789", "Û°Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹")
+_BD_MONTHS_FA = ("ÙØ±ÙØ±Ø¯ÛÙ", "Ø§Ø±Ø¯ÛØ¨ÙØ´Øª", "Ø®Ø±Ø¯Ø§Ø¯", "ØªÛØ±", "ÙØ±Ø¯Ø§Ø¯", "Ø´ÙØ±ÛÙØ±",
+                 "ÙÙØ±", "Ø¢Ø¨Ø§Ù", "Ø¢Ø°Ø±", "Ø¯Û", "Ø¨ÙÙÙ", "Ø§Ø³ÙÙØ¯")
 _BD_MONTHS_EN = ("Farvardin", "Ordibehesht", "Khordad", "Tir", "Mordad", "Shahrivar",
                  "Mehr", "Aban", "Azar", "Dey", "Bahman", "Esfand")
 
@@ -14429,9 +14406,9 @@ def bd_jalali_to_iso(jy, jm, jd):
 
 def bd_parse_any_date(text):
     """Parse common birthday formats: 1382/04/23, 1382-04-23, 23/04/1382,
-    ۲۳/۰۴/۱۳۸۲, 2000-08-24, 2000/8/24. Returns (gregorian_iso, kind) or None.
+    Û²Û³/Û°Û´/Û±Û³Û¸Û², 2000-08-24, 2000/8/24. Returns (gregorian_iso, kind) or None.
     Years inside the Jalali window are treated as Solar Hijri; anything else as Gregorian."""
-    s = _bd_en((text or "").strip()).replace("/", "-").replace(".", "-").replace("،", "-").strip("- ")
+    s = _bd_en((text or "").strip()).replace("/", "-").replace(".", "-").replace("Ø", "-").strip("- ")
     parts = [p for p in re.split(r"-+", s) if p]
     if len(parts) == 3 and all(p.isdigit() for p in parts):
         a, b, cc = (int(p) for p in parts)
@@ -14468,7 +14445,7 @@ async def _safe_edit(q, text, kb=None):
 
 
 def _bd_manual_btn(fa):
-    return InlineKeyboardButton("✍️ ورود دستی" if fa else "✍️ Manual", callback_data="bd:manual")
+    return InlineKeyboardButton("âï¸ ÙØ±ÙØ¯ Ø¯Ø³ØªÛ" if fa else "âï¸ Manual", callback_data="bd:manual")
 
 
 def _bd_cal_years_kb(base, fa):
@@ -14483,13 +14460,13 @@ def _bd_cal_years_kb(base, fa):
     if row:
         rows.append(row)
     rows.append([
-        InlineKeyboardButton("◀️ سال‌های قبل" if fa else "◀️ Older years",
+        InlineKeyboardButton("âï¸ Ø³Ø§ÙâÙØ§Û ÙØ¨Ù" if fa else "âï¸ Older years",
                              callback_data="bd:caly:%d" % (base - _BD_YEARS_PER_PAGE)),
-        InlineKeyboardButton("سال‌های بعد ▶️" if fa else "Newer years ▶️",
+        InlineKeyboardButton("Ø³Ø§ÙâÙØ§Û Ø¨Ø¹Ø¯ â¶ï¸" if fa else "Newer years â¶ï¸",
                              callback_data="bd:caly:%d" % (base + _BD_YEARS_PER_PAGE)),
     ])
     rows.append([_bd_manual_btn(fa),
-                 InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="bd:back")])
+                 InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="bd:back")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -14502,7 +14479,7 @@ def _bd_cal_months_kb(year, fa):
             rows.append(row)
             row = []
     rows.append([_bd_manual_btn(fa),
-                 InlineKeyboardButton("⬅️ انتخاب سال" if fa else "⬅️ Years", callback_data="bd:cal")])
+                 InlineKeyboardButton("â¬ï¸ Ø§ÙØªØ®Ø§Ø¨ Ø³Ø§Ù" if fa else "â¬ï¸ Years", callback_data="bd:cal")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -14518,7 +14495,7 @@ def _bd_cal_days_kb(year, month, fa):
     if row:
         rows.append(row)
     rows.append([_bd_manual_btn(fa),
-                 InlineKeyboardButton("⬅️ انتخاب ماه" if fa else "⬅️ Months",
+                 InlineKeyboardButton("â¬ï¸ Ø§ÙØªØ®Ø§Ø¨ ÙØ§Ù" if fa else "â¬ï¸ Months",
                                       callback_data="bd:calm:%d" % year)])
     return InlineKeyboardMarkup(rows)
 
@@ -14531,27 +14508,27 @@ def _bd_status_parts(uid):
     if r:
         jy, jm, jd = _jalali_from_iso(r["birth_date"])
         if fa:
-            text = ("🎂 <b>تاریخ تولد ثبت‌شدهٔ تو:</b>\n"
-                    "🗓 شمسی: <code>%04d/%02d/%02d</code>\n"
-                    "📅 میلادی: <code>%s</code>\n\n"
-                    "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود."
+            text = ("ð <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø«Ø¨ØªâØ´Ø¯ÙÙ ØªÙ:</b>\n"
+                    "ð Ø´ÙØ³Û: <code>%04d/%02d/%02d</code>\n"
+                    "ð ÙÛÙØ§Ø¯Û: <code>%s</code>\n\n"
+                    "â ï¸ ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø¯Ø§Ø¦ÙÛ Ø°Ø®ÛØ±Ù ÙÛ\u200cØ´ÙØ¯ Ù ÙÙØ· Ø¨Ø±Ø§Û ØªØ¨Ø±ÛÚ© Ù ÙØ¯ÛÙ Ø§Ø³ØªÙØ§Ø¯Ù ÙÛ\u200cØ´ÙØ¯."
                     ) % (jy, jm, jd, r["birth_date"])
         else:
-            text = ("🎂 <b>Your saved birthday:</b> <code>%s</code>\n\n"
-                    "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts."
+            text = ("ð <b>Your saved birthday:</b> <code>%s</code>\n\n"
+                    "â ï¸ Your birthday is saved permanently and used only for birthday greetings and gifts."
                     ) % (r["birth_date"],)
     else:
         if fa:
-            text = ("🎂 <b>تاریخ تولد خودت رو وارد کن</b>\n\n"
-                    "سال، ماه و روز تولدت را از تقویم انتخاب کن یا «✍️ ورود دستی» را بزن.\n\n"
-                    "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود.")
+            text = ("ð <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø®ÙØ¯Øª Ø±Ù ÙØ§Ø±Ø¯ Ú©Ù</b>\n\n"
+                    "Ø³Ø§ÙØ ÙØ§Ù Ù Ø±ÙØ² ØªÙÙØ¯Øª Ø±Ø§ Ø§Ø² ØªÙÙÛÙ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù ÛØ§ Â«âï¸ ÙØ±ÙØ¯ Ø¯Ø³ØªÛÂ» Ø±Ø§ Ø¨Ø²Ù.\n\n"
+                    "â ï¸ ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø¯Ø§Ø¦ÙÛ Ø°Ø®ÛØ±Ù ÙÛ\u200cØ´ÙØ¯ Ù ÙÙØ· Ø¨Ø±Ø§Û ØªØ¨Ø±ÛÚ© Ù ÙØ¯ÛÙ Ø§Ø³ØªÙØ§Ø¯Ù ÙÛ\u200cØ´ÙØ¯.")
         else:
-            text = ("🎂 <b>Enter your birthday</b>\n\n"
+            text = ("ð <b>Enter your birthday</b>\n\n"
                     "Pick year, month and day from the calendar, or tap Manual.\n\n"
-                    "⚠️ Your birthday is saved permanently and used only for birthday greetings and gifts.")
+                    "â ï¸ Your birthday is saved permanently and used only for birthday greetings and gifts.")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎂 ثبت تولد" if fa else "🎂 Set Birthday", callback_data="bd:set")],
-        [InlineKeyboardButton("🗑 حذف تاریخ" if fa else "🗑 Delete", callback_data="bd:del")],
+        [InlineKeyboardButton("ð Ø«Ø¨Øª ØªÙÙØ¯" if fa else "ð Set Birthday", callback_data="bd:set")],
+        [InlineKeyboardButton("ð Ø­Ø°Ù ØªØ§Ø±ÛØ®" if fa else "ð Delete", callback_data="bd:del")],
     ])
     return text, kb
 
@@ -14560,7 +14537,7 @@ async def birthday_command(update, context):
     uid = update.effective_user.id
     fa = lang(uid) == "fa"
     if bd_get("bd_enabled", "1") != "1":
-        await update.message.reply_text("این بخش در حال حاضر غیرفعال است. 🙏" if fa else "This section is currently disabled.")
+        await update.message.reply_text("Ø§ÛÙ Ø¨Ø®Ø´ Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª. ð" if fa else "This section is currently disabled.")
         return
     text, kb = _bd_status_parts(uid)
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
@@ -14585,7 +14562,7 @@ async def birthday_callback(update, context):
     if act == "set" or act == "cal":
         await _ans()
         base = max(_BD_JY_MIN, min(_bd_now_jy() - 25, _BD_JY_MAX - 11))
-        title = "📅 <b>سال تولدت را انتخاب کن:</b>" if fa else "📅 <b>Select your birth year:</b>"
+        title = "ð <b>Ø³Ø§Ù ØªÙÙØ¯Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:</b>" if fa else "ð <b>Select your birth year:</b>"
         await _safe_edit(q, title, _bd_cal_years_kb(base, fa))
         return
     if act.startswith("caly:"):
@@ -14594,7 +14571,7 @@ async def birthday_callback(update, context):
             base = int(act.split(":")[1])
         except ValueError:
             base = _bd_now_jy() - 25
-        title = "📅 <b>سال تولدت را انتخاب کن:</b>" if fa else "📅 <b>Select your birth year:</b>"
+        title = "ð <b>Ø³Ø§Ù ØªÙÙØ¯Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:</b>" if fa else "ð <b>Select your birth year:</b>"
         await _safe_edit(q, title, _bd_cal_years_kb(base, fa))
         return
     if act.startswith("calm:"):
@@ -14602,13 +14579,13 @@ async def birthday_callback(update, context):
             year = int(act.split(":")[1])
             assert _BD_JY_MIN <= year <= _BD_JY_MAX
         except Exception:
-            await _ans("⛔ سال نامعتبر است.", True)
+            await _ans("â Ø³Ø§Ù ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.", True)
             return
         await _ans()
         if fa:
-            title = "🗓 <b>ماه تولدت را انتخاب کن:</b> <code>%d</code>" % year
+            title = "ð <b>ÙØ§Ù ØªÙÙØ¯Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:</b> <code>%d</code>" % year
         else:
-            title = "🗓 <b>Select your birth month:</b> <code>%d</code>" % year
+            title = "ð <b>Select your birth month:</b> <code>%d</code>" % year
         await _safe_edit(q, title, _bd_cal_months_kb(year, fa))
         return
     if act.startswith("cald:"):
@@ -14617,21 +14594,21 @@ async def birthday_callback(update, context):
             year, month = int(pr[1]), int(pr[2])
             assert _BD_JY_MIN <= year <= _BD_JY_MAX and 1 <= month <= 12
         except Exception:
-            await _ans("⛔ نامعتبر است.", True)
+            await _ans("â ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.", True)
             return
         await _ans()
         mname = (_BD_MONTHS_FA if fa else _BD_MONTHS_EN)[month - 1]
         if fa:
-            title = "🔢 <b>روز تولدت را انتخاب کن:</b> %s %d" % (mname, year)
+            title = "ð¢ <b>Ø±ÙØ² ØªÙÙØ¯Øª Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:</b> %s %d" % (mname, year)
         else:
-            title = "🔢 <b>Select your birth day:</b> %s %d" % (mname, year)
+            title = "ð¢ <b>Select your birth day:</b> %s %d" % (mname, year)
         await _safe_edit(q, title, _bd_cal_days_kb(year, month, fa))
         return
     if act.startswith("calsave:"):
         pr = act.split(":")
         iso = bd_jalali_to_iso(pr[1], pr[2], pr[3]) if len(pr) == 4 else None
         if not iso:
-            await _ans("⛔ تاریخ نامعتبر است.", True)
+            await _ans("â ØªØ§Ø±ÛØ® ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª.", True)
             return
         now_iso = datetime.now(TZ).isoformat()
         c = _bday_db()
@@ -14642,32 +14619,32 @@ async def birthday_callback(update, context):
         c.close()
         jy, jm, jd = _jalali_from_iso(iso)
         if fa:
-            txt = ("✅ <b>تاریخ تولدت ثبت شد!</b> 🎂\n\n"
-                   "🗓 شمسی: <code>%04d/%02d/%02d</code>\n"
-                   "📅 میلادی: <code>%s</code>\n\n"
-                   "هر سال در همین روز تبریک و هدیهٔ تولد دریافت می‌کنی."
+            txt = ("â <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯Øª Ø«Ø¨Øª Ø´Ø¯!</b> ð\n\n"
+                   "ð Ø´ÙØ³Û: <code>%04d/%02d/%02d</code>\n"
+                   "ð ÙÛÙØ§Ø¯Û: <code>%s</code>\n\n"
+                   "ÙØ± Ø³Ø§Ù Ø¯Ø± ÙÙÛÙ Ø±ÙØ² ØªØ¨Ø±ÛÚ© Ù ÙØ¯ÛÙÙ ØªÙÙØ¯ Ø¯Ø±ÛØ§ÙØª ÙÛâÚ©ÙÛ."
                    ) % (jy, jm, jd, iso)
         else:
-            txt = ("✅ <b>Your birthday is saved!</b> 🎂\n\n"
+            txt = ("â <b>Your birthday is saved!</b> ð\n\n"
                    "Standard date: <code>%s</code>\n\n"
                    "You will receive birthday greetings and gifts every year on this day.") % (iso,)
-        await _ans("✅ ثبت شد")
+        await _ans("â Ø«Ø¨Øª Ø´Ø¯")
         await _safe_edit(q, txt, None)
         return
     if act == "manual":
         context.user_data["bd_wait"] = "date"
         if fa:
-            txt = ("✍️ <b>تاریخ تولد را دستی وارد کن</b>\n\n"
-                   "فرمت‌های قابل قبول:\n"
-                   "<code>1382/04/23</code> · <code>1382-04-23</code>\n"
-                   "<code>23/04/1382</code> (شمسی)\n"
-                   "<code>2000-08-24</code> (میلادی)\n\n"
-                   "⚠️ تاریخ تولد دائمی ذخیره می\u200cشود و فقط برای تبریک و هدیه استفاده می\u200cشود.")
+            txt = ("âï¸ <b>ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø±Ø§ Ø¯Ø³ØªÛ ÙØ§Ø±Ø¯ Ú©Ù</b>\n\n"
+                   "ÙØ±ÙØªâÙØ§Û ÙØ§Ø¨Ù ÙØ¨ÙÙ:\n"
+                   "<code>1382/04/23</code> Â· <code>1382-04-23</code>\n"
+                   "<code>23/04/1382</code> (Ø´ÙØ³Û)\n"
+                   "<code>2000-08-24</code> (ÙÛÙØ§Ø¯Û)\n\n"
+                   "â ï¸ ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø¯Ø§Ø¦ÙÛ Ø°Ø®ÛØ±Ù ÙÛ\u200cØ´ÙØ¯ Ù ÙÙØ· Ø¨Ø±Ø§Û ØªØ¨Ø±ÛÚ© Ù ÙØ¯ÛÙ Ø§Ø³ØªÙØ§Ø¯Ù ÙÛ\u200cØ´ÙØ¯.")
         else:
-            txt = ("✍️ <b>Enter your birthday manually</b>\n\n"
+            txt = ("âï¸ <b>Enter your birthday manually</b>\n\n"
                    "Accepted formats:\n<code>2000-08-24</code>, <code>2000/8/24</code>, "
                    "<code>1382/04/23</code>, <code>23/04/1382</code>\n\n"
-                   "⚠️ Your birthday is saved permanently and used only for greetings and gifts.")
+                   "â ï¸ Your birthday is saved permanently and used only for greetings and gifts.")
         await _ans()
         await _safe_edit(q, txt, None)
         return
@@ -14677,12 +14654,12 @@ async def birthday_callback(update, context):
         c.commit()
         c.close()
         await _ans()
-        await _safe_edit(q, "🗑 تاریخ تولد حذف شد." if fa else "🗑 Birthday removed.", None)
+        await _safe_edit(q, "ð ØªØ§Ø±ÛØ® ØªÙÙØ¯ Ø­Ø°Ù Ø´Ø¯." if fa else "ð Birthday removed.", None)
         return
     if act == "cancel":
         context.user_data.pop("bd_wait", None)
         await _ans()
-        await _safe_edit(q, "باشه، لغو شد. 👍" if fa else "Okay, cancelled. 👍", None)
+        await _safe_edit(q, "Ø¨Ø§Ø´ÙØ ÙØºÙ Ø´Ø¯. ð" if fa else "Okay, cancelled. ð", None)
         return
     if act == "back":
         await _ans()
@@ -14694,9 +14671,9 @@ async def birthday_callback(update, context):
 
 # ---------- Owner-only panel ----------
 
-BD_PANEL_BTN = "🎂 تولد و مناسبت‌ها"
-_BDO_SECTIONS = ("🎂 مدیریت تولد", "🎁 هدیه تولد", "📅 مناسبت‌ها", "✉️ پیام تبریک",
-                 "⭐ XP و پاداش مناسبت", "⚙️ تنظیمات", "📊 گزارش تولد")
+BD_PANEL_BTN = "ð ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§"
+_BDO_SECTIONS = ("ð ÙØ¯ÛØ±ÛØª ØªÙÙØ¯", "ð ÙØ¯ÛÙ ØªÙÙØ¯", "ð ÙÙØ§Ø³Ø¨ØªâÙØ§", "âï¸ Ù¾ÛØ§Ù ØªØ¨Ø±ÛÚ©",
+                 "â­ XP Ù Ù¾Ø§Ø¯Ø§Ø´ ÙÙØ§Ø³Ø¨Øª", "âï¸ ØªÙØ¸ÛÙØ§Øª", "ð Ú¯Ø²Ø§Ø±Ø´ ØªÙÙØ¯")
 
 
 def _is_bd_owner(uid):
@@ -14704,11 +14681,11 @@ def _is_bd_owner(uid):
 
 
 def _bdo_kb():
-    rows = [["🎂 مدیریت تولد", "🎁 هدیه تولد"],
-            ["📅 مناسبت‌ها", "✉️ پیام تبریک"],
-            ["⭐ XP و پاداش مناسبت", "⚙️ تنظیمات"],
-            ["📊 گزارش تولد"],
-            ["⬅️ برگشت"]]
+    rows = [["ð ÙØ¯ÛØ±ÛØª ØªÙÙØ¯", "ð ÙØ¯ÛÙ ØªÙÙØ¯"],
+            ["ð ÙÙØ§Ø³Ø¨ØªâÙØ§", "âï¸ Ù¾ÛØ§Ù ØªØ¨Ø±ÛÚ©"],
+            ["â­ XP Ù Ù¾Ø§Ø¯Ø§Ø´ ÙÙØ§Ø³Ø¨Øª", "âï¸ ØªÙØ¸ÛÙØ§Øª"],
+            ["ð Ú¯Ø²Ø§Ø±Ø´ ØªÙÙØ¯"],
+            ["â¬ï¸ Ø¨Ø±Ú¯Ø´Øª"]]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
 
@@ -14723,46 +14700,46 @@ def _bdo_home_text():
         c.close()
     except Exception:
         n_users = 0
-    return (f"🎂 <b>تولد و مناسبت‌ها</b>\n\n"
-            f"سیستم تولد: {'🟢 فعال' if en else '🔴 خاموش'}\n"
-            f"هدیه تولد: {'🟢 فعال' if ge else '🔴 خاموش'} ({BD_GIFT_LABELS.get(bd_get('bd_gift_kind', 'xp'))})\n"
-            f"کاربران دارای تاریخ تولد: {n_users}\n"
-            f"مناسبت‌های فعال: {n_occ}\n\n"
-            f"یکی از بخش‌های زیر را انتخاب کن:")
+    return (f"ð <b>ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨ØªâÙØ§</b>\n\n"
+            f"Ø³ÛØ³ØªÙ ØªÙÙØ¯: {'ð¢ ÙØ¹Ø§Ù' if en else 'ð´ Ø®Ø§ÙÙØ´'}\n"
+            f"ÙØ¯ÛÙ ØªÙÙØ¯: {'ð¢ ÙØ¹Ø§Ù' if ge else 'ð´ Ø®Ø§ÙÙØ´'} ({BD_GIFT_LABELS.get(bd_get('bd_gift_kind', 'xp'))})\n"
+            f"Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¯Ø§Ø±Ø§Û ØªØ§Ø±ÛØ® ØªÙÙØ¯: {n_users}\n"
+            f"ÙÙØ§Ø³Ø¨ØªâÙØ§Û ÙØ¹Ø§Ù: {n_occ}\n\n"
+            f"ÛÚ©Û Ø§Ø² Ø¨Ø®Ø´âÙØ§Û Ø²ÛØ± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù:")
 
 
 def _bdo_bday_mgmt_view():
-    en = "🟢" if bd_get("bd_enabled", "1") == "1" else "🔴"
-    rem = "🟢" if bd_get("bd_reminder_enabled", "1") == "1" else "🔴"
+    en = "ð¢" if bd_get("bd_enabled", "1") == "1" else "ð´"
+    rem = "ð¢" if bd_get("bd_reminder_enabled", "1") == "1" else "ð´"
     nd = bd_get("bd_reminder_days", "3")
     st = bd_get("bd_send_time", "09:00")
-    text = (f"🎂 <b>مدیریت تولد</b>\n\nقابلیت تولد: {en}\nیادآوری قبل از تولد: {rem} ({nd} روز قبل)\n"
-            f"ساعت ارسال تبریک: {st}\n\nجلوگیری از دریافت چندبارهٔ هدیه برای هر تولد همیشه فعال است (هر کاربر، هر سال، فقط یک بار).")
+    text = (f"ð <b>ÙØ¯ÛØ±ÛØª ØªÙÙØ¯</b>\n\nÙØ§Ø¨ÙÛØª ØªÙÙØ¯: {en}\nÛØ§Ø¯Ø¢ÙØ±Û ÙØ¨Ù Ø§Ø² ØªÙÙØ¯: {rem} ({nd} Ø±ÙØ² ÙØ¨Ù)\n"
+            f"Ø³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù ØªØ¨Ø±ÛÚ©: {st}\n\nØ¬ÙÙÚ¯ÛØ±Û Ø§Ø² Ø¯Ø±ÛØ§ÙØª ÚÙØ¯Ø¨Ø§Ø±ÙÙ ÙØ¯ÛÙ Ø¨Ø±Ø§Û ÙØ± ØªÙÙØ¯ ÙÙÛØ´Ù ÙØ¹Ø§Ù Ø§Ø³Øª (ÙØ± Ú©Ø§Ø±Ø¨Ø±Ø ÙØ± Ø³Ø§ÙØ ÙÙØ· ÛÚ© Ø¨Ø§Ø±).")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("روشن/خاموش قابلیت تولد", callback_data="bd:tog_main")],
-        [InlineKeyboardButton("روشن/خاموش یادآوری", callback_data="bd:tog_rem")],
-        [InlineKeyboardButton("فاصلهٔ یادآوری: " + nd + " روز", callback_data="bd:cyc_rem")],
-        [InlineKeyboardButton("⬅️ بازگشت", callback_data="bd:home")],
+        [InlineKeyboardButton("Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ ÙØ§Ø¨ÙÛØª ØªÙÙØ¯", callback_data="bd:tog_main")],
+        [InlineKeyboardButton("Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ ÛØ§Ø¯Ø¢ÙØ±Û", callback_data="bd:tog_rem")],
+        [InlineKeyboardButton("ÙØ§ØµÙÙÙ ÛØ§Ø¯Ø¢ÙØ±Û: " + nd + " Ø±ÙØ²", callback_data="bd:cyc_rem")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="bd:home")],
     ])
     return text, kb
 
 
 def _bdo_gift_view():
-    ge = "🟢" if bd_get("bd_gift_enabled", "1") == "1" else "🔴"
+    ge = "ð¢" if bd_get("bd_gift_enabled", "1") == "1" else "ð´"
     gk = bd_get("bd_gift_kind", "xp")
     aud = bd_get("bd_audience", "all")
     amt = bd_get("bd_gift_amount", "50")
-    text = (f"🎁 <b>هدیه تولد</b>\n\nوضعیت: {ge}\nنوع هدیه: {BD_GIFT_LABELS.get(gk)}\n"
-            f"مقدار: {bd_gift_desc(gk, amt) or '-'}\nمحدودیت: هر کاربر هر سال فقط ۱ بار (خودکار)\n"
-            f"مخاطبان: {BD_AUD_LABELS.get(aud)}")
+    text = (f"ð <b>ÙØ¯ÛÙ ØªÙÙØ¯</b>\n\nÙØ¶Ø¹ÛØª: {ge}\nÙÙØ¹ ÙØ¯ÛÙ: {BD_GIFT_LABELS.get(gk)}\n"
+            f"ÙÙØ¯Ø§Ø±: {bd_gift_desc(gk, amt) or '-'}\nÙØ­Ø¯ÙØ¯ÛØª: ÙØ± Ú©Ø§Ø±Ø¨Ø± ÙØ± Ø³Ø§Ù ÙÙØ· Û± Ø¨Ø§Ø± (Ø®ÙØ¯Ú©Ø§Ø±)\n"
+            f"ÙØ®Ø§Ø·Ø¨Ø§Ù: {BD_AUD_LABELS.get(aud)}")
     nxt = BD_GIFT_KINDS[(BD_GIFT_KINDS.index(gk) + 1) % len(BD_GIFT_KINDS)]
     naud = BD_AUDIENCES[(BD_AUDIENCES.index(aud) + 1) % len(BD_AUDIENCES)]
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("روشن/خاموش هدیه", callback_data="bd:tog_gift")],
-        [InlineKeyboardButton("نوع هدیه ← " + BD_GIFT_LABELS[nxt], callback_data="bd:cyc_kind")],
-        [InlineKeyboardButton("تغییر مقدار", callback_data="bd:amt")],
-        [InlineKeyboardButton("مخاطبان ← " + BD_AUD_LABELS[naud], callback_data="bd:cyc_aud")],
-        [InlineKeyboardButton("⬅️ بازگشت", callback_data="bd:home")],
+        [InlineKeyboardButton("Ø±ÙØ´Ù/Ø®Ø§ÙÙØ´ ÙØ¯ÛÙ", callback_data="bd:tog_gift")],
+        [InlineKeyboardButton("ÙÙØ¹ ÙØ¯ÛÙ â " + BD_GIFT_LABELS[nxt], callback_data="bd:cyc_kind")],
+        [InlineKeyboardButton("ØªØºÛÛØ± ÙÙØ¯Ø§Ø±", callback_data="bd:amt")],
+        [InlineKeyboardButton("ÙØ®Ø§Ø·Ø¨Ø§Ù â " + BD_AUD_LABELS[naud], callback_data="bd:cyc_aud")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="bd:home")],
     ])
     return text, kb
 
@@ -14771,31 +14748,31 @@ def _bdo_occ_list_view():
     c = _bday_db()
     rows = c.execute("SELECT * FROM occasions ORDER BY id").fetchall()
     c.close()
-    lines = ["📅 <b>مناسبت‌ها</b>", ""]
+    lines = ["ð <b>ÙÙØ§Ø³Ø¨ØªâÙØ§</b>", ""]
     if not rows:
-        lines.append("هنوز مناسبی نساخته‌ای.")
+        lines.append("ÙÙÙØ² ÙÙØ§Ø³Ø¨Û ÙØ³Ø§Ø®ØªÙâØ§Û.")
     for o in rows:
-        lines.append(f"{'🟢' if o['active'] else '🔴'} <b>{o['name']}</b> — {o['date']}"
-                     f" | XP:{o['xp_amount']} | VIP:{o['vip_days']} روز | ارسال خودکار: {'بله' if o['auto_send'] else 'نه'}")
-    kb_rows = [[InlineKeyboardButton("➕ افزودن مناسبت", callback_data="bd:occ_add")]]
+        lines.append(f"{'ð¢' if o['active'] else 'ð´'} <b>{o['name']}</b> â {o['date']}"
+                     f" | XP:{o['xp_amount']} | VIP:{o['vip_days']} Ø±ÙØ² | Ø§Ø±Ø³Ø§Ù Ø®ÙØ¯Ú©Ø§Ø±: {'Ø¨ÙÙ' if o['auto_send'] else 'ÙÙ'}")
+    kb_rows = [[InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù ÙÙØ§Ø³Ø¨Øª", callback_data="bd:occ_add")]]
     for o in rows:
-        kb_rows.append([InlineKeyboardButton(("🔴 خاموش " if o["active"] else "🟢 روشن ") + o["name"],
+        kb_rows.append([InlineKeyboardButton(("ð´ Ø®Ø§ÙÙØ´ " if o["active"] else "ð¢ Ø±ÙØ´Ù ") + o["name"],
                                              callback_data=f"bd:occ_toggle:{o['id']}"),
-                        InlineKeyboardButton("🗑", callback_data=f"bd:occ_del:{o['id']}")])
-    kb_rows.append([InlineKeyboardButton("⬅️ بازگشت", callback_data="bd:home")])
+                        InlineKeyboardButton("ð", callback_data=f"bd:occ_del:{o['id']}")])
+    kb_rows.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="bd:home")])
     return "\n".join(lines), InlineKeyboardMarkup(kb_rows)
 
 
 def _bdo_msg_view():
     st = bd_get("bd_send_time", "09:00")
     tpl = bd_get("bd_congrats_fa", "")
-    short = (tpl[:120] + "…") if len(tpl) > 120 else tpl
-    text = (f"✉️ <b>پیام‌های تبریک</b>\n\nمتن فعلی:\n<i>{short}</i>\n\n"
-            f"می‌توانی از {{name}} برای نام کاربر استفاده کنی.\nساعت ارسال: {st}")
+    short = (tpl[:120] + "â¦") if len(tpl) > 120 else tpl
+    text = (f"âï¸ <b>Ù¾ÛØ§ÙâÙØ§Û ØªØ¨Ø±ÛÚ©</b>\n\nÙØªÙ ÙØ¹ÙÛ:\n<i>{short}</i>\n\n"
+            f"ÙÛâØªÙØ§ÙÛ Ø§Ø² {{name}} Ø¨Ø±Ø§Û ÙØ§Ù Ú©Ø§Ø±Ø¨Ø± Ø§Ø³ØªÙØ§Ø¯Ù Ú©ÙÛ.\nØ³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù: {st}")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("ویرایش متن تبریک", callback_data="bd:text"),
-         InlineKeyboardButton("تغییر ساعت ارسال", callback_data="bd:time")],
-        [InlineKeyboardButton("⬅️ بازگشت", callback_data="bd:home")],
+        [InlineKeyboardButton("ÙÛØ±Ø§ÛØ´ ÙØªÙ ØªØ¨Ø±ÛÚ©", callback_data="bd:text"),
+         InlineKeyboardButton("ØªØºÛÛØ± Ø³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù", callback_data="bd:time")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="bd:home")],
     ])
     return text, kb
 
@@ -14804,12 +14781,12 @@ def _bdo_settings_view():
     nd = bd_get("bd_reminder_days", "3")
     aud = bd_get("bd_audience", "all")
     st = bd_get("bd_send_time", "09:00")
-    text = (f"⚙️ <b>تنظیمات تولد و مناسبت</b>\n\nیادآوری: {nd} روز قبل\nساعت ارسال: {st}\n"
-            f"مخاطبان هدیه: {BD_AUD_LABELS.get(aud)}\n\nثبت تاریخچهٔ همهٔ هدیه‌ها همیشه فعال است.")
+    text = (f"âï¸ <b>ØªÙØ¸ÛÙØ§Øª ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨Øª</b>\n\nÛØ§Ø¯Ø¢ÙØ±Û: {nd} Ø±ÙØ² ÙØ¨Ù\nØ³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù: {st}\n"
+            f"ÙØ®Ø§Ø·Ø¨Ø§Ù ÙØ¯ÛÙ: {BD_AUD_LABELS.get(aud)}\n\nØ«Ø¨Øª ØªØ§Ø±ÛØ®ÚÙÙ ÙÙÙÙ ÙØ¯ÛÙâÙØ§ ÙÙÛØ´Ù ÙØ¹Ø§Ù Ø§Ø³Øª.")
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("تغییر فاصلهٔ یادآوری", callback_data="bd:remdays"),
-         InlineKeyboardButton("تغییر ساعت ارسال", callback_data="bd:time")],
-        [InlineKeyboardButton("⬅️ بازگشت", callback_data="bd:home")],
+        [InlineKeyboardButton("ØªØºÛÛØ± ÙØ§ØµÙÙÙ ÛØ§Ø¯Ø¢ÙØ±Û", callback_data="bd:remdays"),
+         InlineKeyboardButton("ØªØºÛÛØ± Ø³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù", callback_data="bd:time")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª", callback_data="bd:home")],
     ])
     return text, kb
 
@@ -14826,22 +14803,22 @@ def _bdo_report_text():
         d = (today + timedelta(days=i)).isoformat()[5:]
         for r in upcoming:
             if r["birth_date"][5:] == d:
-                soon.append(f"• {r['first_name'] or '-'} — {r['birth_date']}")
+                soon.append(f"â¢ {r['first_name'] or '-'} â {r['birth_date']}")
     gifts_today = c.execute("SELECT COUNT(*) n FROM bday_events WHERE kind='birthday' AND substr(created_at,1,10)=?", (today.isoformat(),)).fetchone()["n"]
     wk_start = (today - timedelta(days=today.weekday())).isoformat()
     gifts_week = c.execute("SELECT COUNT(*) n FROM bday_events WHERE kind='birthday' AND substr(created_at,1,10)>=?", (wk_start,)).fetchone()["n"]
     occ_sent = c.execute("SELECT COUNT(*) n FROM bday_events WHERE kind LIKE 'occ%'").fetchone()["n"]
     c.close()
-    lines = ["📊 <b>گزارش تولد و مناسبت</b>", "",
-             f"<b>تولدهای امروز:</b> {len(todays)}"]
+    lines = ["ð <b>Ú¯Ø²Ø§Ø±Ø´ ØªÙÙØ¯ Ù ÙÙØ§Ø³Ø¨Øª</b>", "",
+             f"<b>ØªÙÙØ¯ÙØ§Û Ø§ÙØ±ÙØ²:</b> {len(todays)}"]
     for r in todays[:20]:
-        lines.append(f"🎂 {r['first_name'] or '-'} (<code>{r['user_id']}</code>)")
+        lines.append(f"ð {r['first_name'] or '-'} (<code>{r['user_id']}</code>)")
     lines.append("")
-    lines.append("<b>هفتهٔ آینده:</b>")
-    lines.extend(soon[:15] if soon else ["—"])
+    lines.append("<b>ÙÙØªÙÙ Ø¢ÛÙØ¯Ù:</b>")
+    lines.extend(soon[:15] if soon else ["â"])
     lines.append("")
-    lines.append(f"هدیه‌های امروز: {gifts_today} | این هفته: {gifts_week}")
-    lines.append(f"کل ارسال‌های مناسبتی ثبت‌شده: {occ_sent}")
+    lines.append(f"ÙØ¯ÛÙâÙØ§Û Ø§ÙØ±ÙØ²: {gifts_today} | Ø§ÛÙ ÙÙØªÙ: {gifts_week}")
+    lines.append(f"Ú©Ù Ø§Ø±Ø³Ø§ÙâÙØ§Û ÙÙØ§Ø³Ø¨ØªÛ Ø«Ø¨ØªâØ´Ø¯Ù: {occ_sent}")
     return "\n".join(lines)
 
 
@@ -14880,7 +14857,7 @@ async def _bdo_owner_callback(update, context):
     data = q.data or ""
     if not _is_bd_owner(uid):
         master_incident("security", f"user {uid} tried owner birthday panel: {data}", severity="warning")
-        await q.answer("⛔ دسترسی ندارید.", show_alert=True)
+        await q.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.", show_alert=True)
         return
     act = data[3:]
     if act == "home":
@@ -14918,28 +14895,28 @@ async def _bdo_owner_callback(update, context):
     if act == "amt":
         await q.answer()
         context.user_data["bdo_wait"] = "amount"
-        await q.message.reply_text("💰 مقدار هدیه را بفرست (عدد):\nXP/توکن = واحد، VIP/اشتراک = تعداد روز")
+        await q.message.reply_text("ð° ÙÙØ¯Ø§Ø± ÙØ¯ÛÙ Ø±Ø§ Ø¨ÙØ±Ø³Øª (Ø¹Ø¯Ø¯):\nXP/ØªÙÚ©Ù = ÙØ§Ø­Ø¯Ø VIP/Ø§Ø´ØªØ±Ø§Ú© = ØªØ¹Ø¯Ø§Ø¯ Ø±ÙØ²")
         return
     if act == "text":
         await q.answer()
         context.user_data["bdo_wait"] = "text"
-        await q.message.reply_text("✍️ متن تبریک جدید را بفرست (از {name} استفاده کن):")
+        await q.message.reply_text("âï¸ ÙØªÙ ØªØ¨Ø±ÛÚ© Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª (Ø§Ø² {name} Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù):")
         return
     if act == "time":
         await q.answer()
         context.user_data["bdo_wait"] = "time"
-        await q.message.reply_text("⏰ ساعت ارسال را بفرست (HH:MM):")
+        await q.message.reply_text("â° Ø³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª (HH:MM):")
         return
     if act == "remdays":
         await q.answer()
         context.user_data["bdo_wait"] = "remdays"
-        await q.message.reply_text("🔔 چند روز قبل از تولد یادآوری شود؟ (۱ تا ۱۴)")
+        await q.message.reply_text("ð ÚÙØ¯ Ø±ÙØ² ÙØ¨Ù Ø§Ø² ØªÙÙØ¯ ÛØ§Ø¯Ø¢ÙØ±Û Ø´ÙØ¯Ø (Û± ØªØ§ Û±Û´)")
         return
     if act == "occ_add":
         await q.answer()
         context.user_data["bdo_wait"] = "occ_name"
         context.user_data["bdo_occ"] = {}
-        await q.message.reply_text("➕ نام مناسبت جدید را بفرست:")
+        await q.message.reply_text("â ÙØ§Ù ÙÙØ§Ø³Ø¨Øª Ø¬Ø¯ÛØ¯ Ø±Ø§ Ø¨ÙØ±Ø³Øª:")
         return
     if act.startswith("occ_toggle:"):
         oid = int(act.split(":")[1])
@@ -14974,7 +14951,7 @@ def _bdo_handle_input(update, context, uid, txt):
             ud["bdo_wait"] = "amount"
             return False
         bd_set("bd_gift_amount", int(v) if v == int(v) else v)
-        asyncio.ensure_future(update.message.reply_text("✅ ذخیره شد.", reply_markup=_bdo_kb()))
+        asyncio.ensure_future(update.message.reply_text("â Ø°Ø®ÛØ±Ù Ø´Ø¯.", reply_markup=_bdo_kb()))
         return True
     if wait == "text":
         ud.pop("bdo_wait", None)
@@ -14982,7 +14959,7 @@ def _bdo_handle_input(update, context, uid, txt):
             ud["bdo_wait"] = "text"
             return False
         bd_set("bd_congrats_fa", txt)
-        asyncio.ensure_future(update.message.reply_text("✅ متن تبریک ذخیره شد.", reply_markup=_bdo_kb()))
+        asyncio.ensure_future(update.message.reply_text("â ÙØªÙ ØªØ¨Ø±ÛÚ© Ø°Ø®ÛØ±Ù Ø´Ø¯.", reply_markup=_bdo_kb()))
         return True
     if wait == "time":
         ud.pop("bdo_wait", None)
@@ -14991,7 +14968,7 @@ def _bdo_handle_input(update, context, uid, txt):
             ud["bdo_wait"] = "time"
             return False
         bd_set("bd_send_time", f"{int(m.group(1)):02d}:{m.group(2)}")
-        asyncio.ensure_future(update.message.reply_text("✅ ساعت ارسال ذخیره شد.", reply_markup=_bdo_kb()))
+        asyncio.ensure_future(update.message.reply_text("â Ø³Ø§Ø¹Øª Ø§Ø±Ø³Ø§Ù Ø°Ø®ÛØ±Ù Ø´Ø¯.", reply_markup=_bdo_kb()))
         return True
     if wait == "remdays":
         ud.pop("bdo_wait", None)
@@ -15002,45 +14979,45 @@ def _bdo_handle_input(update, context, uid, txt):
             ud["bdo_wait"] = "remdays"
             return False
         bd_set("bd_reminder_days", n)
-        asyncio.ensure_future(update.message.reply_text("✅ فاصلهٔ یادآوری ذخیره شد.", reply_markup=_bdo_kb()))
+        asyncio.ensure_future(update.message.reply_text("â ÙØ§ØµÙÙÙ ÛØ§Ø¯Ø¢ÙØ±Û Ø°Ø®ÛØ±Ù Ø´Ø¯.", reply_markup=_bdo_kb()))
         return True
     occ = ud.get("bdo_occ") or {}
     if wait == "occ_name":
         ud["bdo_occ"] = {"name": txt[:100]}
         ud["bdo_wait"] = "occ_date"
-        asyncio.ensure_future(update.message.reply_text("📅 تاریخ مناسبت را بفرست (MM-DD مثل 03-15 یا تاریخ کامل):"))
+        asyncio.ensure_future(update.message.reply_text("ð ØªØ§Ø±ÛØ® ÙÙØ§Ø³Ø¨Øª Ø±Ø§ Ø¨ÙØ±Ø³Øª (MM-DD ÙØ«Ù 03-15 ÛØ§ ØªØ§Ø±ÛØ® Ú©Ø§ÙÙ):"))
         return True
     if wait == "occ_date":
         md = bd_parse_mmdd(txt) or (bd_parse_date(txt) or "")[5:] or None
         if not md:
-            asyncio.ensure_future(update.message.reply_text("⚠️ فرمت درست نیست. دوباره بفرست (مثل 03-15):"))
+            asyncio.ensure_future(update.message.reply_text("â ï¸ ÙØ±ÙØª Ø¯Ø±Ø³Øª ÙÛØ³Øª. Ø¯ÙØ¨Ø§Ø±Ù Ø¨ÙØ±Ø³Øª (ÙØ«Ù 03-15):"))
             return True
         occ["date"] = md
         ud["bdo_occ"] = occ
         ud["bdo_wait"] = "occ_msg"
-        asyncio.ensure_future(update.message.reply_text("✉️ پیام مناسبتی را بفرست (یا «-» برای پیش‌فرض):"))
+        asyncio.ensure_future(update.message.reply_text("âï¸ Ù¾ÛØ§Ù ÙÙØ§Ø³Ø¨ØªÛ Ø±Ø§ Ø¨ÙØ±Ø³Øª (ÛØ§ Â«-Â» Ø¨Ø±Ø§Û Ù¾ÛØ´âÙØ±Ø¶):"))
         return True
     if wait == "occ_msg":
         occ["message"] = "" if txt.strip() == "-" else txt[:1000]
         ud["bdo_occ"] = occ
         ud["bdo_wait"] = "occ_xp"
-        asyncio.ensure_future(update.message.reply_text("⭐ پاداش XP همهٔ کاربران؟ (عدد یا 0):"))
+        asyncio.ensure_future(update.message.reply_text("â­ Ù¾Ø§Ø¯Ø§Ø´ XP ÙÙÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§ÙØ (Ø¹Ø¯Ø¯ ÛØ§ 0):"))
         return True
     if wait == "occ_xp":
         try:
             occ["xp_amount"] = max(0, int(_bd_en(txt).strip()))
         except Exception:
-            asyncio.ensure_future(update.message.reply_text("⚠️ عدد معتبر بفرست:"))
+            asyncio.ensure_future(update.message.reply_text("â ï¸ Ø¹Ø¯Ø¯ ÙØ¹ØªØ¨Ø± Ø¨ÙØ±Ø³Øª:"))
             return True
         ud["bdo_occ"] = occ
         ud["bdo_wait"] = "occ_vip"
-        asyncio.ensure_future(update.message.reply_text("💎 روزهای VIP هدیه؟ (عدد یا 0):"))
+        asyncio.ensure_future(update.message.reply_text("ð Ø±ÙØ²ÙØ§Û VIP ÙØ¯ÛÙØ (Ø¹Ø¯Ø¯ ÛØ§ 0):"))
         return True
     if wait == "occ_vip":
         try:
             occ["vip_days"] = max(0, int(_bd_en(txt).strip()))
         except Exception:
-            asyncio.ensure_future(update.message.reply_text("⚠️ عدد معتبر بفرست:"))
+            asyncio.ensure_future(update.message.reply_text("â ï¸ Ø¹Ø¯Ø¯ ÙØ¹ØªØ¨Ø± Ø¨ÙØ±Ø³Øª:"))
             return True
         ud.pop("bdo_wait", None)
         ud.pop("bdo_occ", None)
@@ -15050,7 +15027,7 @@ def _bdo_handle_input(update, context, uid, txt):
         c.commit()
         c.close()
         master_log(uid, "occasion_created", occ["name"], occ["date"])
-        asyncio.ensure_future(update.message.reply_text("✅ مناسبت ساخته شد و هر سال خودکار ارسال می‌شود.", reply_markup=_bdo_kb()))
+        asyncio.ensure_future(update.message.reply_text("â ÙÙØ§Ø³Ø¨Øª Ø³Ø§Ø®ØªÙ Ø´Ø¯ Ù ÙØ± Ø³Ø§Ù Ø®ÙØ¯Ú©Ø§Ø± Ø§Ø±Ø³Ø§Ù ÙÛâØ´ÙØ¯.", reply_markup=_bdo_kb()))
         return True
     return False
 
@@ -15062,22 +15039,22 @@ async def _bdo_route(update, context, uid, txt):
     if txt == BD_PANEL_BTN:
         if not _is_bd_owner(uid):
             master_incident("security", f"user {uid} tried to open the birthday panel", severity="warning")
-            await update.message.reply_text("⛔ دسترسی ندارید.")
+            await update.message.reply_text("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.")
             return True
         await _bdo_open_panel(update, context)
         return True
     if not (_is_bd_owner(uid) and ud.get("bdo_panel")):
         return False
-    if txt in _BDO_SECTIONS or txt in ("⬅️ برگشت", "⬅️ Back"):
-        if txt in ("⬅️ برگشت", "⬅️ Back"):
+    if txt in _BDO_SECTIONS or txt in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
+        if txt in ("â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
             ud.pop("bdo_panel", None)
             ud.pop("bdo_wait", None)
             ud.pop("bdo_occ", None)
             title, markup = _manager_main_keyboard(uid)
             await update.message.reply_text(title, parse_mode="HTML", reply_markup=markup)
             return True
-        key = {"🎂 مدیریت تولد": "mgmt", "🎁 هدیه تولد": "gift", "📅 مناسبت‌ها": "occ",
-               "✉️ پیام تبریک": "msg", "⚙️ تنظیمات": "cfg", "📊 گزارش تولد": "report"}.get(txt)
+        key = {"ð ÙØ¯ÛØ±ÛØª ØªÙÙØ¯": "mgmt", "ð ÙØ¯ÛÙ ØªÙÙØ¯": "gift", "ð ÙÙØ§Ø³Ø¨ØªâÙØ§": "occ",
+               "âï¸ Ù¾ÛØ§Ù ØªØ¨Ø±ÛÚ©": "msg", "âï¸ ØªÙØ¸ÛÙØ§Øª": "cfg", "ð Ú¯Ø²Ø§Ø±Ø´ ØªÙÙØ¯": "report"}.get(txt)
         if key == "msg" or key == "cfg":
             text, kb = _bdo_msg_view() if key == "msg" else _bdo_settings_view()
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
@@ -15153,7 +15130,7 @@ async def birthday_occasion_job(context):
                     continue
                 c.commit()
                 try:
-                    await context.bot.send_message(uid, f"🔔 سلام! {nd} روز تا تولدت مونده 🎂 آمادهٔ جشن باش!")
+                    await context.bot.send_message(uid, f"ð Ø³ÙØ§Ù! {nd} Ø±ÙØ² ØªØ§ ØªÙÙØ¯Øª ÙÙÙØ¯Ù ð Ø¢ÙØ§Ø¯ÙÙ Ø¬Ø´Ù Ø¨Ø§Ø´!")
                 except Exception:
                     logger.warning("birthday_occasion_job: failed to send reminder to uid=%s", uid)
 
@@ -15162,7 +15139,7 @@ async def birthday_occasion_job(context):
         oid = int(o["id"])
         c.execute("UPDATE occasions SET last_sent_year=? WHERE id=?", (year, oid))
         c.commit()
-        base = o["message"] or f"🎊 مناسبت «{o['name']}» بر همهٔ شما مبارک!"
+        base = o["message"] or f"ð ÙÙØ§Ø³Ø¨Øª Â«{o['name']}Â» Ø¨Ø± ÙÙÙÙ Ø´ÙØ§ ÙØ¨Ø§Ø±Ú©!"
         count = 0
         for u in c.execute("SELECT user_id FROM users WHERE blocked=0").fetchall():
             uid = int(u["user_id"])
@@ -15174,7 +15151,7 @@ async def birthday_occasion_job(context):
                 n = int(o["xp_amount"])
                 c.execute("UPDATE users SET xp=COALESCE(xp,0)+? WHERE user_id=?", (n, uid))
                 c.execute("INSERT INTO xp_log(user_id,amount,reason,created_at) VALUES(?,?,?,?)", (uid, n, f"occasion_{oid}", now.isoformat()))
-                desc += f"\n⭐ +{n} XP"
+                desc += f"\nâ­ +{n} XP"
             if int(o["vip_days"] or 0) > 0:
                 desc += "\n" + _bday_reward(c, eid, uid, "vip", int(o["vip_days"]))
             c.commit()
@@ -15209,7 +15186,7 @@ async def text_router(update, context):
         uid = update.effective_user.id
         txt = update.message.text.strip()
         # Navigation labels always win over any pending birthday input state.
-        if txt in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+        if txt in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu", "â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
             context.user_data.pop("bd_wait", None)
             context.user_data.pop("bdo_wait", None)
             context.user_data.pop("bdo_occ", None)
@@ -15220,7 +15197,7 @@ async def text_router(update, context):
                 parsed = bd_parse_any_date(txt)
                 if not parsed:
                     await update.message.reply_text(
-                        "⚠️ فرمت درست نیست.\nمثال شمسی: <code>1382/04/23</code> یا <code>23/04/1382</code>\nمثال میلادی: <code>2000-08-24</code>",
+                        "â ï¸ ÙØ±ÙØª Ø¯Ø±Ø³Øª ÙÛØ³Øª.\nÙØ«Ø§Ù Ø´ÙØ³Û: <code>1382/04/23</code> ÛØ§ <code>23/04/1382</code>\nÙØ«Ø§Ù ÙÛÙØ§Ø¯Û: <code>2000-08-24</code>",
                         parse_mode="HTML")
                     return
                 iso, _kind = parsed
@@ -15233,7 +15210,7 @@ async def text_router(update, context):
                 jy, jm, jd = _jalali_from_iso(iso)
                 mname = (_BD_MONTHS_FA if lang(uid) == "fa" else _BD_MONTHS_EN)[jm - 1]
                 await update.message.reply_text(
-                    f"✅ ثبت شد! 🎂 تولدت هر سال {jd} {mname} جشن گرفته می‌شود.\n📅 تاریخ استاندارد: <code>{iso}</code>",
+                    f"â Ø«Ø¨Øª Ø´Ø¯! ð ØªÙÙØ¯Øª ÙØ± Ø³Ø§Ù {jd} {mname} Ø¬Ø´Ù Ú¯Ø±ÙØªÙ ÙÛâØ´ÙØ¯.\nð ØªØ§Ø±ÛØ® Ø§Ø³ØªØ§ÙØ¯Ø§Ø±Ø¯: <code>{iso}</code>",
                     parse_mode="HTML")
                 return
             # Owner panel routing / pending owner inputs.
@@ -15258,7 +15235,7 @@ async def poll_callback(update, context):
         await q.answer()
         return
     choice = data[5:]
-    labels = {"satisfied": "😍 عالی بود", "ok": "👍 خوب بود", "meh": "😐 معمولی"}
+    labels = {"satisfied": "ð Ø¹Ø§ÙÛ Ø¨ÙØ¯", "ok": "ð Ø®ÙØ¨ Ø¨ÙØ¯", "meh": "ð ÙØ¹ÙÙÙÛ"}
     label = labels.get(choice, choice)
     # Log the poll response
     try:
@@ -15270,10 +15247,10 @@ async def poll_callback(update, context):
         c.close()
     except Exception:
         logger.debug("poll_callback: failed to log poll response", exc_info=True)
-    await q.answer(f"ممنون! نظرت ثبت شد: {label}", show_alert=True)
+    await q.answer(f"ÙÙÙÙÙ! ÙØ¸Ø±Øª Ø«Ø¨Øª Ø´Ø¯: {label}", show_alert=True)
     try:
         await q.message.edit_text(
-            f"🗣️ <b>نظرسنجی</b>\n\nاز امکانات ربات راضی بودی؟\n\n✅ پاسخ تو: {label}\n\nممنون از نظرت! ❤️",
+            f"ð£ï¸ <b>ÙØ¸Ø±Ø³ÙØ¬Û</b>\n\nØ§Ø² Ø§ÙÚ©Ø§ÙØ§Øª Ø±Ø¨Ø§Øª Ø±Ø§Ø¶Û Ø¨ÙØ¯ÛØ\n\nâ Ù¾Ø§Ø³Ø® ØªÙ: {label}\n\nÙÙÙÙÙ Ø§Ø² ÙØ¸Ø±Øª! â¤ï¸",
             parse_mode="HTML"
         )
     except Exception:
@@ -15325,11 +15302,11 @@ _FINAL_OLD_COMPACT_MENU_CALLBACK_UI = compact_menu_callback
 def _compact_user_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
-        ["⚡ دسترسی سریع" if fa else "⚡ Quick Access", "🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
-        ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
-        ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
-        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
-        ["🎫 پشتیبانی" if fa else "🎫 Support", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["â¡ Ø¯Ø³ØªØ±Ø³Û Ø³Ø±ÛØ¹" if fa else "â¡ Quick Access", "ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù" if fa else "ð¯ Goals & Plan"],
+        ["ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ" if fa else "ð Online Prices", "ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û" if fa else "ð Calendar & Reminders"],
+        ["ð¤ Ø­Ø³Ø§Ø¨ ÙÙ" if fa else "ð¤ My Account", "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Invite Friends"],
+        ["ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´" if fa else "ð Stats & Reports", "ð ï¸ Ø§Ø¨Ø²Ø§Ø±ÙØ§" if fa else "ð ï¸ Tools"],
+        ["ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ" if fa else "ð« Support", "âï¸ ØªÙØ¸ÛÙØ§Øª" if fa else "âï¸ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
@@ -15338,43 +15315,43 @@ def _compact_menu_keyboard(uid, section):
     fa = lang(uid) == "fa"
     common = {
         "goals": [
-            [("🎯 اهداف امروز", "cm:today"), ("➕ هدف جدید", "cm:custom_goal")],
-            [("🏆 اهداف آماده", "cm:ready_goals"), ("✏️ ویرایش اهداف", "cm:edit_goals")],
-            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم", "cm:calendar")],
-            [("📊 آمار من", "cm:stats"), ("📅 گزارش هفتگی", "cm:weekly")],
+            [("ð¯ Ø§ÙØ¯Ø§Ù Ø§ÙØ±ÙØ²", "cm:today"), ("â ÙØ¯Ù Ø¬Ø¯ÛØ¯", "cm:custom_goal")],
+            [("ð Ø§ÙØ¯Ø§Ù Ø¢ÙØ§Ø¯Ù", "cm:ready_goals"), ("âï¸ ÙÛØ±Ø§ÛØ´ Ø§ÙØ¯Ø§Ù", "cm:edit_goals")],
+            [("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§", "cm:reminders"), ("ð ØªÙÙÛÙ", "cm:calendar")],
+            [("ð Ø¢ÙØ§Ø± ÙÙ", "cm:stats"), ("ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û", "cm:weekly")],
         ],
         "reports": [
-            [("📊 گزارش امروز", "v25:reports"), ("📅 گزارش هفتگی", "cm:weekly")],
-            [("🗓️ گزارش ماهانه", "v25:report_month"), ("📈 آمار من", "cm:stats")],
-            [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
+            [("ð Ú¯Ø²Ø§Ø±Ø´ Ø§ÙØ±ÙØ²", "v25:reports"), ("ð Ú¯Ø²Ø§Ø±Ø´ ÙÙØªÚ¯Û", "cm:weekly")],
+            [("ðï¸ Ú¯Ø²Ø§Ø±Ø´ ÙØ§ÙØ§ÙÙ", "v25:report_month"), ("ð Ø¢ÙØ§Ø± ÙÙ", "cm:stats")],
+            [("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "cm:achievements"), ("â­ XP", "cm:xp")],
         ],
         "tools": [
-            [("📚 راهنمای ربات", "cm:guide")],
+            [("ð Ø±Ø§ÙÙÙØ§Û Ø±Ø¨Ø§Øª", "cm:guide")],
         ],
         "vip": [
-            [("💎 VIP و اشتراک", "cm:vip"), ("⭐ XP", "cm:xp")],
-            [("🎟️ توکن‌های من", "cm:tokens"), ("🤝 دعوت دوستان", "cm:referral")],
-            [("🏆 دستاوردها", "cm:achievements")],
+            [("ð VIP Ù Ø§Ø´ØªØ±Ø§Ú©", "cm:vip"), ("â­ XP", "cm:xp")],
+            [("ðï¸ ØªÙÚ©ÙâÙØ§Û ÙÙ", "cm:tokens"), ("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù", "cm:referral")],
+            [("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§", "cm:achievements")],
         ],
         "account": [
-            [("👤 پروفایل", "cm:profile"), ("🎁 پاداش‌های من", "cm:rewards")],
-            [("🔔 یادآوری‌ها", "cm:reminders"), ("📅 تقویم من", "cm:calendar")],
-            [("⚙️ تنظیمات", "cm:settings")],
+            [("ð¤ Ù¾Ø±ÙÙØ§ÛÙ", "cm:profile"), ("ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ", "cm:rewards")],
+            [("ð ÛØ§Ø¯Ø¢ÙØ±ÛâÙØ§", "cm:reminders"), ("ð ØªÙÙÛÙ ÙÙ", "cm:calendar")],
+            [("âï¸ ØªÙØ¸ÛÙØ§Øª", "cm:settings")],
         ],
         "support": [
-            [("🎫 پشتیبانی", "cm:support"), ("📚 راهنمای ربات", "cm:guide")],
+            [("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", "cm:support"), ("ð Ø±Ø§ÙÙÙØ§Û Ø±Ø¨Ø§Øª", "cm:guide")],
         ],
     }
     en = {
-        "cm:today":"🎯 Today's Goals", "cm:custom_goal":"➕ New Goal",
-        "cm:ready_goals":"🏆 Ready Goals", "cm:edit_goals":"✏️ Edit Goals",
-        "cm:reminders":"🔔 Reminders", "cm:calendar":"📅 Calendar",
-        "cm:stats":"📈 My Stats", "cm:weekly":"📅 Weekly Report",
-        "v25:reports":"📊 Today's Report", "v25:report_month":"🗓️ Monthly Report",
-        "cm:achievements":"🏆 Achievements", "cm:xp":"⭐ XP",
-        "cm:vip":"💎 VIP & Subscription", "cm:tokens":"🎟️ My Tokens", "cm:referral":"🤝 Referrals",
-        "cm:profile":"👤 Profile", "cm:rewards":"🎁 My Rewards", "cm:settings":"⚙️ Settings",
-        "cm:support":"🎫 Support",
+        "cm:today":"ð¯ Today's Goals", "cm:custom_goal":"â New Goal",
+        "cm:ready_goals":"ð Ready Goals", "cm:edit_goals":"âï¸ Edit Goals",
+        "cm:reminders":"ð Reminders", "cm:calendar":"ð Calendar",
+        "cm:stats":"ð My Stats", "cm:weekly":"ð Weekly Report",
+        "v25:reports":"ð Today's Report", "v25:report_month":"ðï¸ Monthly Report",
+        "cm:achievements":"ð Achievements", "cm:xp":"â­ XP",
+        "cm:vip":"ð VIP & Subscription", "cm:tokens":"ðï¸ My Tokens", "cm:referral":"ð¤ Referrals",
+        "cm:profile":"ð¤ Profile", "cm:rewards":"ð My Rewards", "cm:settings":"âï¸ Settings",
+        "cm:support":"ð« Support",
     }
     rows=[]
     for row in common.get(section, []):
@@ -15383,7 +15360,7 @@ def _compact_menu_keyboard(uid, section):
             out.append(InlineKeyboardButton(label if fa else en.get(cb, label), callback_data=cb))
         rows.append(out)
     rows.append([
-        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home"),
+        InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="cm:home"),
         main_menu_button(uid),
     ])
     return InlineKeyboardMarkup(rows)
@@ -15393,17 +15370,17 @@ def _compact_root_inline(uid):
     fa = lang(uid) == "fa"
     if fa:
         rows = [
-            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
-            [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
-            [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
+            [InlineKeyboardButton("ð¯ Ø¨Ø±ÙØ§ÙÙ ÙÙ", callback_data="menu:goals")],
+            [InlineKeyboardButton("ð Ú¯Ø²Ø§Ø±Ø´ Ù Ù¾ÛØ´Ø±ÙØª", callback_data="menu:reports"), InlineKeyboardButton("ð¤ Ø§Ø¨Ø²Ø§Ø±ÙØ§", callback_data="menu:tools")],
+            [InlineKeyboardButton("ð VIP Ù XP", callback_data="menu:vip"), InlineKeyboardButton("ð¤ Ø­Ø³Ø§Ø¨ ÙÙ", callback_data="menu:account")],
+            [InlineKeyboardButton("ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ", callback_data="menu:support")],
         ]
     else:
         rows = [
-            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
-            [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
-            [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
+            [InlineKeyboardButton("ð¯ My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("ð Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("ð¤ Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("ð VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("ð¤ My Account", callback_data="menu:account")],
+            [InlineKeyboardButton("ð« Support", callback_data="menu:support")],
         ]
     return InlineKeyboardMarkup(rows)
 
@@ -15413,14 +15390,14 @@ async def _render_rewards_page(update, context):
     fa = lang(uid) == "fa"
     xp, level, _ = xp_info(uid)
     text = (
-        f"🎁 <b>پاداش‌های من</b>\n\n⭐ XP: {xp}\n🏅 سطح: {level}\n💎 VIP: {'فعال' if is_vip(uid) else 'غیرفعال'}"
+        f"ð <b>Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ</b>\n\nâ­ XP: {xp}\nð Ø³Ø·Ø­: {level}\nð VIP: {'ÙØ¹Ø§Ù' if is_vip(uid) else 'ØºÛØ±ÙØ¹Ø§Ù'}"
         if fa else
-        f"🎁 <b>My Rewards</b>\n\n⭐ XP: {xp}\n🏅 Level: {level}\n💎 VIP: {'Active' if is_vip(uid) else 'Inactive'}"
+        f"ð <b>My Rewards</b>\n\nâ­ XP: {xp}\nð Level: {level}\nð VIP: {'Active' if is_vip(uid) else 'Inactive'}"
     )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⭐ XP من" if fa else "⭐ My XP", callback_data="cm:xp"), InlineKeyboardButton("🏆 دستاوردها" if fa else "🏆 Achievements", callback_data="cm:achievements")],
-        [InlineKeyboardButton("🎟️ توکن‌های من" if fa else "🎟️ My Tokens", callback_data="cm:tokens"), InlineKeyboardButton("🤝 دعوت دوستان" if fa else "🤝 Referrals", callback_data="cm:referral")],
-        [InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="menu:account"), main_menu_button(uid)],
+        [InlineKeyboardButton("â­ XP ÙÙ" if fa else "â­ My XP", callback_data="cm:xp"), InlineKeyboardButton("ð Ø¯Ø³ØªØ§ÙØ±Ø¯ÙØ§" if fa else "ð Achievements", callback_data="cm:achievements")],
+        [InlineKeyboardButton("ðï¸ ØªÙÚ©ÙâÙØ§Û ÙÙ" if fa else "ðï¸ My Tokens", callback_data="cm:tokens"), InlineKeyboardButton("ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù" if fa else "ð¤ Referrals", callback_data="cm:referral")],
+        [InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª" if fa else "â¬ï¸ Back", callback_data="menu:account"), main_menu_button(uid)],
     ])
     q = getattr(update, "callback_query", None)
     if q:
@@ -15450,14 +15427,14 @@ async def text_router(update, context):
     txt = update.message.text.strip()
     uid = update.effective_user.id
     direct = {
-        "🎯 برنامه و اهداف": "goals", "🎯 Goals & Plan": "goals",
-        "📈 قیمت آنلاین": "prices", "📈 Online Prices": "prices",
-        "📅 تقویم و یادآوری": "calendar", "📅 Calendar & Reminders": "calendar",
-        "👤 حساب من": "account", "👤 My Account": "account",
-        "📊 آمار و گزارش": "reports", "📊 Stats & Reports": "reports", "📊 Reports & Analytics": "reports",
-        "🛠️ ابزارها": "tools", "🛠️ Tools": "tools",
-        "🎫 پشتیبانی": "support", "🎫 Support": "support",
-        "⚙️ تنظیمات": "settings", "⚙️ Settings": "settings",
+        "ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù": "goals", "ð¯ Goals & Plan": "goals",
+        "ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ": "prices", "ð Online Prices": "prices",
+        "ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û": "calendar", "ð Calendar & Reminders": "calendar",
+        "ð¤ Ø­Ø³Ø§Ø¨ ÙÙ": "account", "ð¤ My Account": "account",
+        "ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´": "reports", "ð Stats & Reports": "reports", "ð Reports & Analytics": "reports",
+        "ð ï¸ Ø§Ø¨Ø²Ø§Ø±ÙØ§": "tools", "ð ï¸ Tools": "tools",
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ": "support", "ð« Support": "support",
+        "âï¸ ØªÙØ¸ÛÙØ§Øª": "settings", "âï¸ Settings": "settings",
     }
     section = direct.get(txt)
     if section:
@@ -15470,7 +15447,7 @@ async def text_router(update, context):
             return await v25_reminders_menu(update, context)
         if section == "settings":
             return await settings(update, context)
-    if txt in ("🎁 پاداش‌های من", "🎁 My Rewards"):
+    if txt in ("ð Ù¾Ø§Ø¯Ø§Ø´âÙØ§Û ÙÙ", "ð My Rewards"):
         clear_flow(context)
         return await _render_rewards_page(update, context)
     return await _FINAL_OLD_TEXT_ROUTER_UI(update, context)
@@ -15577,13 +15554,13 @@ def _direct_filter_reply_keyboard(uid, markup):
     if not markup or admin_guard(uid):
         return markup
     label_map={
-        "📈 قیمت آنلاین":"price_data", "📈 Online Prices":"price_data",
-        "🤝 دعوت دوستان":"referrals", "🤝 Invite Friends":"referrals",
-        "⚙️ تنظیمات":"settings", "⚙️ Settings":"settings",
-        "📅 تقویم و یادآوری":"calendar_hub", "📅 Calendar & Reminders":"calendar_hub",
-        "📊 آمار و گزارش":"stats", "📊 Stats & Reports":"stats",
-        "🎯 برنامه و اهداف":"goals", "🎯 Goals & Plan":"goals",
-        "🎫 پشتیبانی":"support", "🎫 Support":"support",
+        "ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ":"price_data", "ð Online Prices":"price_data",
+        "ð¤ Ø¯Ø¹ÙØª Ø¯ÙØ³ØªØ§Ù":"referrals", "ð¤ Invite Friends":"referrals",
+        "âï¸ ØªÙØ¸ÛÙØ§Øª":"settings", "âï¸ Settings":"settings",
+        "ð ØªÙÙÛÙ Ù ÛØ§Ø¯Ø¢ÙØ±Û":"calendar_hub", "ð Calendar & Reminders":"calendar_hub",
+        "ð Ø¢ÙØ§Ø± Ù Ú¯Ø²Ø§Ø±Ø´":"stats", "ð Stats & Reports":"stats",
+        "ð¯ Ø¨Ø±ÙØ§ÙÙ Ù Ø§ÙØ¯Ø§Ù":"goals", "ð¯ Goals & Plan":"goals",
+        "ð« Ù¾Ø´ØªÛØ¨Ø§ÙÛ":"support", "ð« Support":"support",
     }
     rows=[]
     for row in markup.keyboard:
@@ -15602,7 +15579,7 @@ async def compact_menu_callback(update, context):
     uid = q.from_user.id
     key = _direct_cb_feature(q.data)
     if key and not _direct_feature_allowed(uid,key):
-        await q.answer("🔒 این قابلیت در حال حاضر غیرفعال است.", show_alert=True)
+        await q.answer("ð Ø§ÛÙ ÙØ§Ø¨ÙÛØª Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.", show_alert=True)
         return
     return await _DIRECT_OLD_COMPACT_MENU_CALLBACK(update, context)
 
@@ -15614,7 +15591,7 @@ async def v25_callback(update, context):
     data=str(q.data or "")
     key=_direct_cb_feature(data)
     if key and not _direct_feature_allowed(uid,key):
-        await q.answer("🔒 این قابلیت در حال حاضر غیرفعال است.", show_alert=True)
+        await q.answer("ð Ø§ÛÙ ÙØ§Ø¨ÙÛØª Ø¯Ø± Ø­Ø§Ù Ø­Ø§Ø¶Ø± ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.", show_alert=True)
         return
     return await _DIRECT_OLD_V25_CALLBACK(update, context)
 
@@ -15622,7 +15599,7 @@ _DIRECT_OLD_PRICE_CALLBACK = price_callback
 async def price_callback(update, context):
     uid=update.effective_user.id
     if not _direct_feature_allowed(uid,"price_data"):
-        await update.callback_query.answer("🔒 قیمت آنلاین غیرفعال است.",show_alert=True); return
+        await update.callback_query.answer("ð ÙÛÙØª Ø¢ÙÙØ§ÛÙ ØºÛØ±ÙØ¹Ø§Ù Ø§Ø³Øª.",show_alert=True); return
     return await _DIRECT_OLD_PRICE_CALLBACK(update, context)
 
 
@@ -15715,14 +15692,14 @@ async def _direct_forced_sub_enforce(uid, bot):
         try: _forced_sub_record_join(uid)
         except Exception: pass
         return True,None
-    lines=["🔒 <b>عضویت اجباری</b>","","برای استفاده از ربات باید در همه کانال‌های زیر عضو باشی:",""]
+    lines=["ð <b>Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û</b>","","Ø¨Ø±Ø§Û Ø§Ø³ØªÙØ§Ø¯Ù Ø§Ø² Ø±Ø¨Ø§Øª Ø¨Ø§ÛØ¯ Ø¯Ø± ÙÙÙ Ú©Ø§ÙØ§ÙâÙØ§Û Ø²ÛØ± Ø¹Ø¶Ù Ø¨Ø§Ø´Û:",""]
     kb=[]
     for r in missing:
         title=html.escape(str(r["title"] or r["channel_id"]))
-        lines.append("🔴 "+title)
+        lines.append("ð´ "+title)
         url=_direct_fsub_join_url(r["channel_id"],r["join_url"] if "join_url" in r.keys() else "")
-        if url: kb.append([InlineKeyboardButton("📢 عضویت در "+title,url=url)])
-    kb.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن",callback_data="forcedsub:check")])
+        if url: kb.append([InlineKeyboardButton("ð¢ Ø¹Ø¶ÙÛØª Ø¯Ø± "+title,url=url)])
+    kb.append([InlineKeyboardButton("â Ø¹Ø¶Ù Ø´Ø¯ÙØ Ø¨Ø±Ø±Ø³Û Ú©Ù",callback_data="forcedsub:check")])
     return False,("\n".join(lines),InlineKeyboardMarkup(kb))
 
 
@@ -15739,7 +15716,7 @@ async def require_subscription(update, context):
         if ok: return True
         msg,kb=result
         if update.callback_query:
-            await update.callback_query.answer("ابتدا عضو کانال شوید.",show_alert=True)
+            await update.callback_query.answer("Ø§Ø¨ØªØ¯Ø§ Ø¹Ø¶Ù Ú©Ø§ÙØ§Ù Ø´ÙÛØ¯.",show_alert=True)
             try: await update.callback_query.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
             except Exception: await update.callback_query.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
         elif update.message: await update.message.reply_text(msg,parse_mode="HTML",reply_markup=kb)
@@ -15761,25 +15738,25 @@ async def forced_sub_check_callback(update, context):
     q=update.callback_query; uid=q.from_user.id
     ok,result=await _direct_forced_sub_enforce(uid,context.bot)
     if ok:
-        await q.answer("✅ عضویت تأیید شد.",show_alert=True)
-        await q.message.edit_text("✅ <b>عضویت شما تأیید شد.</b>\nحالا می‌توانی از ربات استفاده کنی.",parse_mode="HTML",reply_markup=compact_keyboard(uid))
+        await q.answer("â Ø¹Ø¶ÙÛØª ØªØ£ÛÛØ¯ Ø´Ø¯.",show_alert=True)
+        await q.message.edit_text("â <b>Ø¹Ø¶ÙÛØª Ø´ÙØ§ ØªØ£ÛÛØ¯ Ø´Ø¯.</b>\nØ­Ø§ÙØ§ ÙÛâØªÙØ§ÙÛ Ø§Ø² Ø±Ø¨Ø§Øª Ø§Ø³ØªÙØ§Ø¯Ù Ú©ÙÛ.",parse_mode="HTML",reply_markup=compact_keyboard(uid))
     else:
-        msg,kb=result; await q.answer("❌ هنوز عضو همه کانال‌ها نیستی.",show_alert=True); await q.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
+        msg,kb=result; await q.answer("â ÙÙÙØ² Ø¹Ø¶Ù ÙÙÙ Ú©Ø§ÙØ§ÙâÙØ§ ÙÛØ³ØªÛ.",show_alert=True); await q.message.edit_text(msg,parse_mode="HTML",reply_markup=kb)
 
 async def _direct_fsub_admin_panel(update,context):
     uid=update.effective_user.id
     if not admin_guard(uid):
-        if update.callback_query: await update.callback_query.answer("⛔ دسترسی ندارید.",show_alert=True)
+        if update.callback_query: await update.callback_query.answer("â Ø¯Ø³ØªØ±Ø³Û ÙØ¯Ø§Ø±ÛØ¯.",show_alert=True)
         return
     _direct_fsub_init(); rows=_direct_fsub_rows(False); enabled=_direct_fsub_enabled()
-    lines=["🔒 <b>عضویت اجباری</b>","",f"وضعیت: {'🟢 فعال' if enabled else '🔴 غیرفعال'}",f"تعداد کانال‌ها: {len(rows)}","", "هر کانال فعال برای همه کاربران به‌صورت زنده بررسی می‌شود."]
+    lines=["ð <b>Ø¹Ø¶ÙÛØª Ø§Ø¬Ø¨Ø§Ø±Û</b>","",f"ÙØ¶Ø¹ÛØª: {'ð¢ ÙØ¹Ø§Ù' if enabled else 'ð´ ØºÛØ±ÙØ¹Ø§Ù'}",f"ØªØ¹Ø¯Ø§Ø¯ Ú©Ø§ÙØ§ÙâÙØ§: {len(rows)}","", "ÙØ± Ú©Ø§ÙØ§Ù ÙØ¹Ø§Ù Ø¨Ø±Ø§Û ÙÙÙ Ú©Ø§Ø±Ø¨Ø±Ø§Ù Ø¨ÙâØµÙØ±Øª Ø²ÙØ¯Ù Ø¨Ø±Ø±Ø³Û ÙÛâØ´ÙØ¯."]
     kb=[
-        [InlineKeyboardButton("➕ افزودن کانال اجباری",callback_data="forcedsub:add")],
-        [InlineKeyboardButton("📋 لیست کانال‌های اجباری",callback_data="forcedsub:list")],
-        [InlineKeyboardButton("🤖 ست‌کردن و بررسی ربات",callback_data="forcedsub:setbot")],
-        [InlineKeyboardButton("🟢 فعالسازی / 🔴 غیرفعال",callback_data="forcedsub:toggle")],
-        [InlineKeyboardButton("🗑 حذف کانال",callback_data="forcedsub:delete_list")],
-        [InlineKeyboardButton("⬅️ منوی مدیریت",callback_data="adm:stats")],
+        [InlineKeyboardButton("â Ø§ÙØ²ÙØ¯Ù Ú©Ø§ÙØ§Ù Ø§Ø¬Ø¨Ø§Ø±Û",callback_data="forcedsub:add")],
+        [InlineKeyboardButton("ð ÙÛØ³Øª Ú©Ø§ÙØ§ÙâÙØ§Û Ø§Ø¬Ø¨Ø§Ø±Û",callback_data="forcedsub:list")],
+        [InlineKeyboardButton("ð¤ Ø³ØªâÚ©Ø±Ø¯Ù Ù Ø¨Ø±Ø±Ø³Û Ø±Ø¨Ø§Øª",callback_data="forcedsub:setbot")],
+        [InlineKeyboardButton("ð¢ ÙØ¹Ø§ÙØ³Ø§Ø²Û / ð´ ØºÛØ±ÙØ¹Ø§Ù",callback_data="forcedsub:toggle")],
+        [InlineKeyboardButton("ð Ø­Ø°Ù Ú©Ø§ÙØ§Ù",callback_data="forcedsub:delete_list")],
+        [InlineKeyboardButton("â¬ï¸ ÙÙÙÛ ÙØ¯ÛØ±ÛØª",callback_data="adm:stats")],
     ]
     text="\n".join(lines)
     if update.callback_query:
@@ -15790,36 +15767,36 @@ async def _direct_fsub_admin_panel(update,context):
 
 async def forced_sub_callback(update,context):
     q=update.callback_query; uid=q.from_user.id; data=str(q.data or "")
-    if not admin_guard(uid): await q.answer("⛔",show_alert=True); return
+    if not admin_guard(uid): await q.answer("â",show_alert=True); return
     if data=="forcedsub:home": return await _direct_fsub_admin_panel(update,context)
     if data=="forcedsub:check": return await forced_sub_check_callback(update,context)
     if data=="forcedsub:toggle":
         _forced_sub_set("forced_sub_enabled","0" if _forced_sub_is_enabled() else "1"); return await _direct_fsub_admin_panel(update,context)
     if data=="forcedsub:add":
-        context.user_data["forced_sub_wait"]="multi_channel"; await q.answer(); await q.message.edit_text("➕ <b>افزودن کانال اجباری</b>\n\nیک یا چند کانال را بفرست.\nهر کانال در یک خط، یا با کاما جدا شود.\n\nمثال:\n<code>@channel1</code>\n<code>@channel2</code>",parse_mode="HTML"); return
+        context.user_data["forced_sub_wait"]="multi_channel"; await q.answer(); await q.message.edit_text("â <b>Ø§ÙØ²ÙØ¯Ù Ú©Ø§ÙØ§Ù Ø§Ø¬Ø¨Ø§Ø±Û</b>\n\nÛÚ© ÛØ§ ÚÙØ¯ Ú©Ø§ÙØ§Ù Ø±Ø§ Ø¨ÙØ±Ø³Øª.\nÙØ± Ú©Ø§ÙØ§Ù Ø¯Ø± ÛÚ© Ø®Ø·Ø ÛØ§ Ø¨Ø§ Ú©Ø§ÙØ§ Ø¬Ø¯Ø§ Ø´ÙØ¯.\n\nÙØ«Ø§Ù:\n<code>@channel1</code>\n<code>@channel2</code>",parse_mode="HTML"); return
     if data=="forcedsub:list":
-        rows=_direct_fsub_rows(False); lines=["📋 <b>کانال‌های اجباری</b>",""]
+        rows=_direct_fsub_rows(False); lines=["ð <b>Ú©Ø§ÙØ§ÙâÙØ§Û Ø§Ø¬Ø¨Ø§Ø±Û</b>",""]
         kb=[]
         for r in rows:
-            st="🟢" if r["enabled"] else "🔴"; lines.append(f"{st} {html.escape(str(r['title'] or r['channel_id']))}")
-            kb.append([InlineKeyboardButton(("🔴 غیرفعال: " if r["enabled"] else "🟢 فعال: ")+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:toggle_channel:{r['id']}")])
-        if not rows: lines.append("هنوز کانالی ثبت نشده است.")
-        kb.append([InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+            st="ð¢" if r["enabled"] else "ð´"; lines.append(f"{st} {html.escape(str(r['title'] or r['channel_id']))}")
+            kb.append([InlineKeyboardButton(("ð´ ØºÛØ±ÙØ¹Ø§Ù: " if r["enabled"] else "ð¢ ÙØ¹Ø§Ù: ")+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:toggle_channel:{r['id']}")])
+        if not rows: lines.append("ÙÙÙØ² Ú©Ø§ÙØ§ÙÛ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª.")
+        kb.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("\n".join(lines),parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
     if data=="forcedsub:delete_list":
-        rows=_direct_fsub_rows(False); kb=[[InlineKeyboardButton("🗑 "+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:delete:{r['id']}")] for r in rows]; kb.append([InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("🗑 <b>حذف کانال</b>\n\nکانال موردنظر را انتخاب کن.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
+        rows=_direct_fsub_rows(False); kb=[[InlineKeyboardButton("ð "+str(r["title"] or r["channel_id"]),callback_data=f"forcedsub:delete:{r['id']}")] for r in rows]; kb.append([InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª",callback_data="forcedsub:home")]); await q.answer(); await q.message.edit_text("ð <b>Ø­Ø°Ù Ú©Ø§ÙØ§Ù</b>\n\nÚ©Ø§ÙØ§Ù ÙÙØ±Ø¯ÙØ¸Ø± Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup(kb)); return
     if data.startswith("forcedsub:toggle_channel:"):
-        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("UPDATE managed_channels SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=?",(datetime.now(TZ).isoformat(),rid)); c.commit(); c.close(); await q.answer("✅ وضعیت تغییر کرد."); return await _direct_fsub_admin_panel(update,context)
+        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("UPDATE managed_channels SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END,updated_at=? WHERE id=?",(datetime.now(TZ).isoformat(),rid)); c.commit(); c.close(); await q.answer("â ÙØ¶Ø¹ÛØª ØªØºÛÛØ± Ú©Ø±Ø¯."); return await _direct_fsub_admin_panel(update,context)
     if data.startswith("forcedsub:delete:"):
-        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("DELETE FROM managed_channels WHERE id=?",(rid,)); c.commit(); c.close(); await q.answer("🗑 کانال حذف شد."); return await _direct_fsub_admin_panel(update,context)
+        rid=int(data.rsplit(":",1)[1]); c=db(); c.execute("DELETE FROM managed_channels WHERE id=?",(rid,)); c.commit(); c.close(); await q.answer("ð Ú©Ø§ÙØ§Ù Ø­Ø°Ù Ø´Ø¯."); return await _direct_fsub_admin_panel(update,context)
     if data=="forcedsub:setbot":
         rows=_direct_fsub_rows(True); checks=[]
         try: me=await context.bot.get_me()
-        except Exception as exc: await q.answer("❌ ربات قابل شناسایی نیست.",show_alert=True); return
+        except Exception as exc: await q.answer("â Ø±Ø¨Ø§Øª ÙØ§Ø¨Ù Ø´ÙØ§Ø³Ø§ÛÛ ÙÛØ³Øª.",show_alert=True); return
         for r in rows:
-            ok=await _direct_fsub_bot_admin(context.bot,r["channel_id"]); checks.append(("🟢" if ok else "🔴")+" "+str(r["title"] or r["channel_id"]))
-        text="🤖 <b>ست‌کردن و بررسی ربات</b>\n\nربات فعال: @"+str(getattr(me,"username","") or me.id)+"\n\n"+("\n".join(checks) if checks else "کانالی ثبت نشده است.")+"\n\nربات باید در هر کانال فعال Administrator باشد."
-        await q.answer(); await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ بازگشت",callback_data="forcedsub:home")]])); return
-    await q.answer("گزینه ناشناخته است.",show_alert=True)
+            ok=await _direct_fsub_bot_admin(context.bot,r["channel_id"]); checks.append(("ð¢" if ok else "ð´")+" "+str(r["title"] or r["channel_id"]))
+        text="ð¤ <b>Ø³ØªâÚ©Ø±Ø¯Ù Ù Ø¨Ø±Ø±Ø³Û Ø±Ø¨Ø§Øª</b>\n\nØ±Ø¨Ø§Øª ÙØ¹Ø§Ù: @"+str(getattr(me,"username","") or me.id)+"\n\n"+("\n".join(checks) if checks else "Ú©Ø§ÙØ§ÙÛ Ø«Ø¨Øª ÙØ´Ø¯Ù Ø§Ø³Øª.")+"\n\nØ±Ø¨Ø§Øª Ø¨Ø§ÛØ¯ Ø¯Ø± ÙØ± Ú©Ø§ÙØ§Ù ÙØ¹Ø§Ù Administrator Ø¨Ø§Ø´Ø¯."
+        await q.answer(); await q.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("â¬ï¸ Ø¨Ø§Ø²Ú¯Ø´Øª",callback_data="forcedsub:home")]])); return
+    await q.answer("Ú¯Ø²ÛÙÙ ÙØ§Ø´ÙØ§Ø®ØªÙ Ø§Ø³Øª.",show_alert=True)
 
 _DIRECT_OLD_TEXT_ROUTER = text_router
 async def text_router(update,context):
@@ -15834,28 +15811,28 @@ async def text_router(update,context):
             ref=_direct_fsub_normalize(raw)
             try:
                 chat=await context.bot.get_chat(ref)
-                if not await _direct_fsub_bot_admin(context.bot,ref): failed.append(ref+" ← ربات ادمین نیست"); continue
+                if not await _direct_fsub_bot_admin(context.bot,ref): failed.append(ref+" â Ø±Ø¨Ø§Øª Ø§Ø¯ÙÛÙ ÙÛØ³Øª"); continue
                 now=datetime.now(TZ).isoformat(); title=getattr(chat,"title",None) or ref; join=_direct_fsub_join_url(ref,"")
                 c=db(); c.execute("INSERT OR IGNORE INTO managed_channels(channel_id,title,join_url,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?)",(ref,title,join,1,now,now)); c.commit(); c.close(); added.append(title)
-            except Exception as exc: failed.append(ref+" ← کانال قابل دسترسی نیست")
-        msg="✅ اضافه شد: "+(", ".join(added) if added else "هیچ‌کدام")
-        if failed: msg+="\n\n❌ اضافه نشد:\n"+"\n".join(failed)
-        await update.message.reply_text(msg,reply_markup=ReplyKeyboardMarkup([["🏠 منوی اصلی"]],resize_keyboard=True))
+            except Exception as exc: failed.append(ref+" â Ú©Ø§ÙØ§Ù ÙØ§Ø¨Ù Ø¯Ø³ØªØ±Ø³Û ÙÛØ³Øª")
+        msg="â Ø§Ø¶Ø§ÙÙ Ø´Ø¯: "+(", ".join(added) if added else "ÙÛÚâÚ©Ø¯Ø§Ù")
+        if failed: msg+="\n\nâ Ø§Ø¶Ø§ÙÙ ÙØ´Ø¯:\n"+"\n".join(failed)
+        await update.message.reply_text(msg,reply_markup=ReplyKeyboardMarkup([["ð  ÙÙÙÛ Ø§ØµÙÛ"]],resize_keyboard=True))
         return
     return await _DIRECT_OLD_TEXT_ROUTER(update,context)
 
 # Daily rotating friendly messages. Same user receives a different variant on different days.
 _DIRECT_MORNING_VARIANTS=[
-    "🌅 صبح بخیر {name}! آماده‌ای امروز یک قدم کوچیک ولی قشنگ برداریم؟ 🌱",
-    "☀️ صبح بخیر {name}! امروز قرار نیست همه‌چیز رو یک‌جا حل کنیم. فقط از یک کار شروع کنیم. 💪",
-    "🌷 صبح بخیر {name}! یه روز تازه شروع شده. بیا امروز رو برای خودمون بهتر بسازیم. ❤️",
-    "🚀 صبح بخیر {name}! هدف امروز ساده‌ست: یک قدم واقعی به جلو. بزن بریم!",
+    "ð ØµØ¨Ø­ Ø¨Ø®ÛØ± {name}! Ø¢ÙØ§Ø¯ÙâØ§Û Ø§ÙØ±ÙØ² ÛÚ© ÙØ¯Ù Ú©ÙÚÛÚ© ÙÙÛ ÙØ´ÙÚ¯ Ø¨Ø±Ø¯Ø§Ø±ÛÙØ ð±",
+    "âï¸ ØµØ¨Ø­ Ø¨Ø®ÛØ± {name}! Ø§ÙØ±ÙØ² ÙØ±Ø§Ø± ÙÛØ³Øª ÙÙÙâÚÛØ² Ø±Ù ÛÚ©âØ¬Ø§ Ø­Ù Ú©ÙÛÙ. ÙÙØ· Ø§Ø² ÛÚ© Ú©Ø§Ø± Ø´Ø±ÙØ¹ Ú©ÙÛÙ. ðª",
+    "ð· ØµØ¨Ø­ Ø¨Ø®ÛØ± {name}! ÛÙ Ø±ÙØ² ØªØ§Ø²Ù Ø´Ø±ÙØ¹ Ø´Ø¯Ù. Ø¨ÛØ§ Ø§ÙØ±ÙØ² Ø±Ù Ø¨Ø±Ø§Û Ø®ÙØ¯ÙÙÙ Ø¨ÙØªØ± Ø¨Ø³Ø§Ø²ÛÙ. â¤ï¸",
+    "ð ØµØ¨Ø­ Ø¨Ø®ÛØ± {name}! ÙØ¯Ù Ø§ÙØ±ÙØ² Ø³Ø§Ø¯ÙâØ³Øª: ÛÚ© ÙØ¯Ù ÙØ§ÙØ¹Û Ø¨Ù Ø¬ÙÙ. Ø¨Ø²Ù Ø¨Ø±ÛÙ!",
 ]
 _DIRECT_NIGHT_VARIANTS=[
-    "🌙 شب بخیر {name}! خسته نباشی. حتی یک قدم کوچیک امروز هم ارزشمند بود. ❤️",
-    "🌙 شب بخیر {name}! امروز هرچقدر هم که پیش رفتی، برای خودت حسابش کن. فردا دوباره ادامه می‌دیم. 🌱",
-    "✨ شب آروم {name}! کارهای انجام‌شده رو ببین و برای فردا فقط یک قدم کوچیک انتخاب کن. 🌷",
-    "🌙 شب بخیر {name}! امروز تموم شد، ولی فرصت فردا هنوز مال توئه. استراحت کن و دوباره شروع می‌کنیم. 💛",
+    "ð Ø´Ø¨ Ø¨Ø®ÛØ± {name}! Ø®Ø³ØªÙ ÙØ¨Ø§Ø´Û. Ø­ØªÛ ÛÚ© ÙØ¯Ù Ú©ÙÚÛÚ© Ø§ÙØ±ÙØ² ÙÙ Ø§Ø±Ø²Ø´ÙÙØ¯ Ø¨ÙØ¯. â¤ï¸",
+    "ð Ø´Ø¨ Ø¨Ø®ÛØ± {name}! Ø§ÙØ±ÙØ² ÙØ±ÚÙØ¯Ø± ÙÙ Ú©Ù Ù¾ÛØ´ Ø±ÙØªÛØ Ø¨Ø±Ø§Û Ø®ÙØ¯Øª Ø­Ø³Ø§Ø¨Ø´ Ú©Ù. ÙØ±Ø¯Ø§ Ø¯ÙØ¨Ø§Ø±Ù Ø§Ø¯Ø§ÙÙ ÙÛâØ¯ÛÙ. ð±",
+    "â¨ Ø´Ø¨ Ø¢Ø±ÙÙ {name}! Ú©Ø§Ø±ÙØ§Û Ø§ÙØ¬Ø§ÙâØ´Ø¯Ù Ø±Ù Ø¨Ø¨ÛÙ Ù Ø¨Ø±Ø§Û ÙØ±Ø¯Ø§ ÙÙØ· ÛÚ© ÙØ¯Ù Ú©ÙÚÛÚ© Ø§ÙØªØ®Ø§Ø¨ Ú©Ù. ð·",
+    "ð Ø´Ø¨ Ø¨Ø®ÛØ± {name}! Ø§ÙØ±ÙØ² ØªÙÙÙ Ø´Ø¯Ø ÙÙÛ ÙØ±ØµØª ÙØ±Ø¯Ø§ ÙÙÙØ² ÙØ§Ù ØªÙØ¦Ù. Ø§Ø³ØªØ±Ø§Ø­Øª Ú©Ù Ù Ø¯ÙØ¨Ø§Ø±Ù Ø´Ø±ÙØ¹ ÙÛâÚ©ÙÛÙ. ð",
 ]
 
 def _direct_variant(items, uid, day):
@@ -15884,7 +15861,7 @@ async def user_daily_progress_job(context):
         try:
             if delivery_once(key,uid,"night"): continue
             c=db(); t=c.execute("SELECT COUNT(*) total,SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) done FROM goal_days WHERE user_id=? AND goal_date=?",(uid,today)).fetchone(); c.close()
-            text=_direct_variant(_DIRECT_NIGHT_VARIANTS,uid,now.toordinal()).format(name=html.escape(display_name(uid)))+f"\n\n🎯 امروز: {int(t['done'] or 0)}/{int(t['total'] or 0)} هدف انجام شد."
+            text=_direct_variant(_DIRECT_NIGHT_VARIANTS,uid,now.toordinal()).format(name=html.escape(display_name(uid)))+f"\n\nð¯ Ø§ÙØ±ÙØ²: {int(t['done'] or 0)}/{int(t['total'] or 0)} ÙØ¯Ù Ø§ÙØ¬Ø§Ù Ø´Ø¯."
             await context.bot.send_message(uid,text,reply_markup=compact_keyboard(uid))
         except Exception: logger.exception("Direct night message failed for %s",uid)
 
@@ -16085,7 +16062,7 @@ async def custom_time_save(update, context):
     text = (getattr(update.message, "text", "") or "").strip()
     tm = parse_time(text)
     if tm is None:
-        await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
+        await update.message.reply_text("â Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙØ«Ø§Ù: 18:30 ÛØ§ Û±Û¸:Û³Û°")
         return True
     context.user_data["_final_manual_goal_time"] = tm
     return await _FINAL_REPAIR_OLD_CUSTOM_TIME_SAVE(update, context)
@@ -16098,7 +16075,7 @@ async def text_router(update, context):
                 return
         except Exception:
             logger.exception("Final manual goal time repair failed")
-            await update.message.reply_text("❌ ثبت ساعت انجام نشد. مثال: 18:30")
+            await update.message.reply_text("â Ø«Ø¨Øª Ø³Ø§Ø¹Øª Ø§ÙØ¬Ø§Ù ÙØ´Ø¯. ÙØ«Ø§Ù: 18:30")
             return
     return await _FINAL_REPAIR_OLD_TEXT_ROUTER(update, context)
 
@@ -16116,13 +16093,13 @@ async def rename_save(update, context):
     if not gid:
         return True
     if not name:
-        await update.message.reply_text("❌ نام هدف نمی‌تواند خالی باشد.")
+        await update.message.reply_text("â ÙØ§Ù ÙØ¯Ù ÙÙÛâØªÙØ§ÙØ¯ Ø®Ø§ÙÛ Ø¨Ø§Ø´Ø¯.")
         return True
     c = db()
     try:
         row = c.execute("SELECT id FROM goals WHERE id=? AND user_id=?", (int(gid), uid)).fetchone()
         if not row:
-            await update.message.reply_text("❌ هدف پیدا نشد.")
+            await update.message.reply_text("â ÙØ¯Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯.")
             return True
         c.execute("UPDATE goals SET name=? WHERE id=? AND user_id=?", (name, int(gid), uid))
         c.commit()
@@ -16140,19 +16117,19 @@ async def custom_edit_time_save(update, context):
     gid = context.user_data.get("edit_reminder_id")
     reminder = parse_time((getattr(update.message, "text", "") or "").strip())
     if reminder is None:
-        await update.message.reply_text("❌ ساعت نامعتبر است. مثال: 18:30 یا ۱۸:۳۰")
+        await update.message.reply_text("â Ø³Ø§Ø¹Øª ÙØ§ÙØ¹ØªØ¨Ø± Ø§Ø³Øª. ÙØ«Ø§Ù: 18:30 ÛØ§ Û±Û¸:Û³Û°")
         return True
     if not gid:
         context.user_data.pop("edit_reminder_id", None)
         context.user_data.pop("awaiting_edit_time", None)
         context.user_data.pop("awaiting_custom_edit_time", None)
-        await update.message.reply_text("❌ هدف ویرایش پیدا نشد.")
+        await update.message.reply_text("â ÙØ¯Ù ÙÛØ±Ø§ÛØ´ Ù¾ÛØ¯Ø§ ÙØ´Ø¯.")
         return True
     c = db()
     try:
         row = c.execute("SELECT id FROM goals WHERE id=? AND user_id=?", (int(gid), uid)).fetchone()
         if not row:
-            await update.message.reply_text("❌ هدف پیدا نشد.")
+            await update.message.reply_text("â ÙØ¯Ù Ù¾ÛØ¯Ø§ ÙØ´Ø¯.")
             return True
         c.execute("UPDATE goals SET reminder_time=? WHERE id=? AND user_id=?", (reminder, int(gid), uid))
         c.commit()
@@ -16173,13 +16150,13 @@ async def text_router(update, context):
     text = update.message.text.strip()
 
     # Navigation always wins, even when an older flow left a stale input flag.
-    if text in ("🏠 منوی اصلی", "🏠 Main Menu", "⬅️ برگشت", "⬅️ Back"):
+    if text in ("ð  ÙÙÙÛ Ø§ØµÙÛ", "ð  Main Menu", "â¬ï¸ Ø¨Ø±Ú¯Ø´Øª", "â¬ï¸ Back"):
         clear_flow(context)
         try:
             await update.message.delete()
         except Exception:
             pass
-        await update.message.chat.send_message("🏠", reply_markup=keyboard(uid))
+        await update.message.chat.send_message("ð ", reply_markup=keyboard(uid))
         return True
 
     try:
@@ -16199,8 +16176,8 @@ async def text_router(update, context):
             logger.exception("Failed to clear isolated text flow for uid=%s", uid)
         try:
             await update.message.reply_text(
-                "⚠️ این بخش با خطا مواجه شد، اما ربات قفل نشد.\n"
-                "اطلاعات ذخیره‌شده حفظ شده است. از منو ادامه بده.",
+                "â ï¸ Ø§ÛÙ Ø¨Ø®Ø´ Ø¨Ø§ Ø®Ø·Ø§ ÙÙØ§Ø¬Ù Ø´Ø¯Ø Ø§ÙØ§ Ø±Ø¨Ø§Øª ÙÙÙ ÙØ´Ø¯.\n"
+                "Ø§Ø·ÙØ§Ø¹Ø§Øª Ø°Ø®ÛØ±ÙâØ´Ø¯Ù Ø­ÙØ¸ Ø´Ø¯Ù Ø§Ø³Øª. Ø§Ø² ÙÙÙ Ø§Ø¯Ø§ÙÙ Ø¨Ø¯Ù.",
                 reply_markup=keyboard(uid),
             )
         except Exception:
@@ -16239,11 +16216,11 @@ async def legacy_compat_callback(update, context):
         except Exception:
             pass
         await q.message.edit_text(
-            "زبان را انتخاب کن / Choose language:",
+            "Ø²Ø¨Ø§Ù Ø±Ø§ Ø§ÙØªØ®Ø§Ø¨ Ú©Ù / Choose language:",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🇮🇷 فارسی", callback_data="setlang:fa"),
-                 InlineKeyboardButton("🇬🇧 English", callback_data="setlang:en")],
-                [InlineKeyboardButton("↩️ تنظیمات", callback_data="settings:back")],
+                [InlineKeyboardButton("ð®ð· ÙØ§Ø±Ø³Û", callback_data="setlang:fa"),
+                 InlineKeyboardButton("ð¬ð§ English", callback_data="setlang:en")],
+                [InlineKeyboardButton("â©ï¸ ØªÙØ¸ÛÙØ§Øª", callback_data="settings:back")],
             ]),
         )
         return
@@ -16263,7 +16240,7 @@ async def legacy_compat_callback(update, context):
         except Exception:
             logger.warning("Could not remap legacy callback %s for uid=%s", data, uid)
             try:
-                await q.answer("لطفاً از منوی اصلی استفاده کن.", show_alert=True)
+                await q.answer("ÙØ·ÙØ§Ù Ø§Ø² ÙÙÙÛ Ø§ØµÙÛ Ø§Ø³ØªÙØ§Ø¯Ù Ú©Ù.", show_alert=True)
             except Exception:
                 pass
             return
