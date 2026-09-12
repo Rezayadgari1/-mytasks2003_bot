@@ -10902,7 +10902,7 @@ def _compact_root_inline(uid):
     fa = lang(uid) == "fa"
     if fa:
         rows = [
-            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
+            [InlineKeyboardButton("🎯 اهداف", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
@@ -10910,7 +10910,7 @@ def _compact_root_inline(uid):
         ]
     else:
         rows = [
-            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("🎯 Goals", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 Reports", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
@@ -15364,14 +15364,14 @@ def _compact_root_inline(uid):
     fa = lang(uid) == "fa"
     if fa:
         rows = [
-            [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
+            [InlineKeyboardButton("🎯 اهداف", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
         ]
     else:
         rows = [
-            [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
+            [InlineKeyboardButton("🎯 Goals", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
