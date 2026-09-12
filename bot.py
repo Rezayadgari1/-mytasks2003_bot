@@ -58,10 +58,10 @@ except ImportError:
 # ── Module imports (extracted from this file) ──────────────
 from config import (
     BOT_TOKEN, _SCRIPT_DIR, DB_PATH, DB_SCHEMA_VERSION, DB_BACKUP_PATH, TZ,
-    REQUIRED_CHANNEL_URL, N8N_WEBHOOK_URL, N8N_API_KEY, N8N_TIMEOUT,
-    MYTASKS_BUILD_ID, OPENAI_MODEL, GEMINI_API_KEY, GEMINI_MODEL,
-    AI_FAILOVER_TO_N8N, OMNIROUTE_BASE_URL, OMNIROUTE_API_KEY,
-    OMNIROUTE_MODEL, OMNIROUTE_TIMEOUT, ADMIN_IDS, _parse_admin_ids,
+    REQUIRED_CHANNEL_URL, 
+    MYTASKS_BUILD_ID, 
+    
+    ADMIN_IDS, _parse_admin_ids,
     GOALS_FA, GOALS_EN, T, TIME_BUTTONS, FEATURE_MENU_MAP,
 )
 from database import (
@@ -79,7 +79,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 _PROCESS_START = [time.time()]
-logger.info("MyTasks build %s | AI gateway: OmniRoute -> OpenAI -> n8n", MYTASKS_BUILD_ID)
 
 def subscription_required(func):
     @wraps(func)
@@ -720,7 +719,6 @@ def init_db():
         "telegram_bot_api": ("🤖 هسته Telegram Bot API", "free", "Telegram", "استفاده عادی از Bot API رایگان است؛ محدودیت نرخ ارسال دارد."),
         "hosting": ("🖥️ هاست / اجرای ربات", "variable", "Railway یا سرور دیگر", "هزینه به سرویس میزبانی و مصرف CPU/RAM/Storage/Network بستگی دارد."),
         "database": ("🗄️ دیتابیس SQLite", "free", "خود ربات", "برای نسخه فعلی داخل همان سرویس است؛ هزینه API جداگانه ندارد."),
-        "ai_api": ("🧠 AI / Voice / پردازش هوشمند", "optional_paid", "OpenAI API یا سرویس جایگزین", "بدون API Key خاموش می‌ماند؛ مصرف API می‌تواند هزینه داشته باشد."),
         "price_sources": ("📈 منابع قیمت آنلاین", "free_or_variable", "منابع عمومی/API", "بعضی منابع رایگان‌اند؛ APIهای تجاری ممکن است هزینه یا محدودیت داشته باشند."),
         "sms": ("📱 پیامک SMS", "optional_paid", "پنل SMS انتخابی", "خود قابلیت رایگان است؛ ارسال SMS معمولاً هزینه هر پیام/بسته دارد."),
         "payment_gateway": ("💳 درگاه پرداخت ایرانی", "variable", "پرداخت‌یار/PSP انتخابی", "اتصال فنی می‌تواند رایگان باشد؛ کارمزد و شرایط را ارائه‌دهنده تعیین می‌کند."),
@@ -1604,7 +1602,6 @@ def settings_keyboard(uid):
         [InlineKeyboardButton("🌐 زبان" if fa else "🌐 Language",callback_data="settings:language")],
         [InlineKeyboardButton("🔔 اعلان‌ها" if fa else "🔔 Notifications",callback_data="settings:notifications")],
         [InlineKeyboardButton("🎯 اهداف" if fa else "🎯 Goals",callback_data="settings:goals")],
-        [InlineKeyboardButton("🤖 هوش مصنوعی" if fa else "🤖 AI",callback_data="settings:ai")],
         [InlineKeyboardButton("💎 VIP و امکانات پولی" if fa else "💎 VIP & Paid Features",callback_data="settings:vip")],
     ]
     if admin_is_allowed(uid):
@@ -1662,15 +1659,6 @@ async def settings_callback(update, context):
         c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); c.execute("UPDATE user_settings SET reminders_enabled=1-reminders_enabled WHERE user_id=?",(uid,)); c.commit(); c.close(); await q.message.edit_text("✅ تنظیم شد.",reply_markup=settings_keyboard(uid)); return
     if action=="goals":
         await q.message.edit_text(("🎯 هدف‌ها دائمی هستند و فقط خودت می‌توانی حذفشان کنی. هنگام ساخت هدف می‌توانی مدت انجام را هم تعیین کنی." if fa else "🎯 Goals stay saved until you delete them. When creating a goal you can also set its duration."),reply_markup=settings_keyboard(uid)); return
-    if action=="ai":
-        providers=[]
-        if omniroute_configured(): providers.append("🟢 OmniRoute")
-        if bool(os.environ.get("OPENAI_API_KEY","").strip()): providers.append("🟢 OpenAI")
-        if n8n_configured(): providers.append("🟢 n8n")
-        status = "، ".join(providers) if providers else ("🔴 فعلاً هیچ سرویس AI متصل نیست." if fa else "🔴 No AI provider is connected yet.")
-        text = (f"🤖 <b>چت با AI</b>\\n\\nسرویس‌های آماده: {status}\\nسهمیه رایگان روزانه: ۱۰ پیام"
-                if fa else f"🤖 <b>AI Chat</b>\\n\\nAvailable providers: {status}\\nFree daily quota: 10 messages")
-        await q.message.edit_text(text,parse_mode="HTML",reply_markup=settings_keyboard(uid)); return
     if action=="vip":
         xp,level,vip_until=xp_info(uid)
         text=(f"💎 VIP\n\nوضعیت: {'🟢 فعال' if is_vip(uid) else '⚪ عادی'}\n⭐ سطح: {level}\n👥 دعوت دوستان و فعالیت‌ها می‌توانند XP و پاداش بگیرند.\n\nپرداخت واقعی فعلاً از پنل مدیر قابل کنترل است." if fa else f"💎 VIP\n\nStatus: {'🟢 Active' if is_vip(uid) else '⚪ Free'}\n⭐ Level: {level}\n👥 Referrals and activity can earn XP/rewards.\n\nReal payments are controlled from the admin panel for now.")
@@ -2539,12 +2527,11 @@ def generate_unique_auto_post(channel_id, category, topic):
     recent=recent_auto_posts(channel_id,8)
     avoid="\n".join(f"- {r['topic']}: {str(r['content'])[:220]}" for r in recent)
     for attempt in range(1,9):
-        content=ai_generate_post(topic, avoid_text=avoid, variation_seed=attempt)
+        content=topic_specific_fallback(topic,attempt)
         duplicate,score=post_is_duplicate(channel_id,topic,content)
         if not duplicate and _is_topic_relevant(content,topic):
             return content
         logger.warning("Auto post rejected topic=%s attempt=%s similarity=%.2f",topic,attempt,score)
-        avoid += f"\n- نسخه ردشده: {str(content)[:220]}"
     for attempt in range(1,9):
         candidate=topic_specific_fallback(topic,attempt)
         duplicate,_=post_is_duplicate(channel_id,topic,candidate,threshold=0.90)
@@ -2561,100 +2548,10 @@ def generate_unique_auto_post(channel_id, category, topic):
             return candidate
     raise RuntimeError("Unable to generate a unique automatic post")
 
-def _ai_post_prompt(topic, focus, topic_terms, avoid_text, variation_seed):
-    return (
-        "تو نویسنده حرفه‌ای محتوای کانال MyTasks هستی.\n"
-        f"موضوع انتخاب‌شده و غیرقابل‌تغییر: «{topic}»\n"
-        f"راهنمای موضوع: {focus}\n"
-        f"کلیدواژه‌ها: {topic_terms}\n"
-        f"نسخه: {variation_seed}\n"
-        f"پست‌های اخیر که نباید تکرار شوند:\n{avoid_text[:1800]}\n\n"
-        "فقط متن نهایی پست را برگردان. خود prompt، قوانین، تحلیل یا توضیح فرایند را منتشر نکن. "
-        "حداکثر 120 کلمه. یک تیتر دقیق، یک توضیح کوتاه، سه نکته کاربردی مرتبط و یک اقدام یک‌خطی مرتبط بنویس. "
-        "اگر موضوع ورزش است فقط درباره همان ورزش/تمرین بنویس؛ اگر خواب است درباره خواب؛ موضوع را به مدیریت هدف عمومی تبدیل نکن. "
-        "از ادعاهای قطعی پزشکی یا مالی خودداری کن. متن را با پاراگراف‌بندی طبیعی و بدون نمایش عبارت‌های literal مانند \\\\n برگردان."
-    )
 
-def _clean_ai_post(text):
-    text=str(text or "").strip()
-    text=text.replace("\\\\r\\\\n","\n").replace("\\\\n","\n").replace("\\r\\n","\n")
-    text=re.sub(r'\n{3,}','\n\n',text)
-    # Remove accidental prompt/meta preambles.
-    bad_prefixes=("تمام محتوای پست باید","قانون بسیار مهم","prompt:","system:")
-    lines=text.splitlines()
-    while lines and any(lines[0].strip().lower().startswith(x.lower()) for x in bad_prefixes):
-        lines.pop(0)
-    return "\n".join(lines).strip()
 
-def _gemini_generate_text(prompt):
-    if not GEMINI_API_KEY:
-        return ""
-    try:
-        payload=json.dumps({
-            "contents":[{"parts":[{"text":prompt}]}],
-            "generationConfig":{"temperature":0.8,"maxOutputTokens":360}
-        },ensure_ascii=False).encode("utf-8")
-        url=f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(GEMINI_MODEL)}:generateContent"
-        req=urllib.request.Request(url,data=payload,headers={"Content-Type":"application/json","x-goog-api-key":GEMINI_API_KEY},method="POST")
-        with urllib.request.urlopen(req,timeout=35) as resp:
-            data=json.loads(resp.read().decode("utf-8"))
-        parts=data.get("candidates",[{}])[0].get("content",{}).get("parts",[])
-        return _clean_ai_post("".join(str(x.get("text","")) for x in parts))
-    except Exception as e:
-        logger.error("Gemini text generation failed: %s",e)
-        return ""
 
-def ai_text_generate(prompt, max_output_tokens=500, purpose="general"):
-    """Unified text-AI gateway used by chat, smart posts and other AI text features.
-    Provider failures are isolated. The next configured provider is tried.
-    No secret is exposed in logs or user messages.
-    """
-    providers=[]
-    if n8n_configured():
-        providers.append(("n8n", lambda: _n8n_ai_fallback_sync(prompt)))
-    if omniroute_configured():
-        providers.append(("OmniRoute", lambda: _omniroute_ai_sync(prompt)))
-    if GEMINI_API_KEY:
-        providers.append(("Gemini", lambda: _gemini_generate_text(prompt)))
-    api_key=os.environ.get("OPENAI_API_KEY", "").strip()
-    if api_key:
-        def _openai_text():
-            payload=json.dumps({
-                "model": OPENAI_MODEL,
-                "input": str(prompt)[:8000],
-                "max_output_tokens": int(max_output_tokens),
-            }, ensure_ascii=False).encode("utf-8")
-            req=urllib.request.Request(
-                "https://api.openai.com/v1/responses",
-                data=payload,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=35) as resp:
-                data=json.loads(resp.read().decode("utf-8"))
-            return str(data.get("output_text") or "").strip()
-        providers.append(("OpenAI", _openai_text))
 
-    for name, fn in providers:
-        try:
-            answer=str(fn() or "").strip()
-            if answer:
-                _record_service_event(name.lower(), "OK", f"{purpose} unified AI")
-                return answer[:8000]
-        except Exception as exc:
-            _record_service_event(name.lower(), "ERROR", f"{purpose}:{type(exc).__name__}")
-            logger.warning("Unified AI provider %s failed for %s: %s", name, purpose, type(exc).__name__)
-    return ""
-
-def ai_generate_post(topic, avoid_text='', variation_seed=1):
-    focus=_topic_focus(topic)
-    topic_terms=", ".join(_topic_terms(topic)[:6])
-    prompt=_ai_post_prompt(topic,focus,topic_terms,avoid_text,variation_seed)
-
-    result=_clean_ai_post(ai_text_generate(prompt, max_output_tokens=360, purpose="channel_post"))
-    if result and _is_topic_relevant(result,topic):
-        return result
-    return topic_specific_fallback(topic,variation_seed)
 
 
 def get_auto_topic():
@@ -5260,7 +5157,7 @@ async def text_router(update, context):
         return
     text = update.message.text.strip()
     if any(k in context.user_data for k in (
-        "channel_state", "admin_broadcast", "ai_chat", "auto_wait_interval", "admin_health_time",
+        "channel_state", "admin_broadcast", "auto_wait_interval", "admin_health_time",
         "auto_wait_time", "awaiting_custom_duration", "awaiting_custom_condition", "awaiting_custom_edit_time",
         "awaiting_custom_goal", "awaiting_custom_time", "awaiting_edit_time",
         "awaiting_rename", "awaiting_step", "support_new"
@@ -5372,9 +5269,6 @@ async def text_router(update, context):
 
     if await admin_broadcast_save(update, context):
         return
-
-    if await ai_chat_text(update, context):
-        return
     if await custom_goal_save(update, context):
         return
     if await custom_duration_save(update, context):
@@ -5423,8 +5317,6 @@ async def text_router(update, context):
         await prices(update, context)
     elif text in ("💎 VIP",):
         await vip_center(update, context)
-    elif text in ("🤖 چت با AI", "🤖 AI Chat"):
-        await ai_chat_start(update, context)
     elif text in ("🎫 پشتیبانی", "🎫 Support"):
         await support_start(update, context)
     elif text in ("⚙️ تنظیمات", "⚙️ Settings"):
@@ -6272,7 +6164,6 @@ async def final_admin_panel_callback(update,context):
 
 
 FEATURE_LABELS_FA = {
-    "ai": "🤖 هوش مصنوعی", "vip": "💎 VIP", "reminders": "⏰ یادآوری",
     "sports": "⚽ ورزش", "nutrition": "🥗 تغذیه", "investing": "💰 سرمایه‌گذاری",
     "self_growth": "🌱 رشد شخصی", "morning": "☀️ پیام صبح", "night": "🌙 پیام شب",
     "auto_publish": "🤖 انتشار خودکار", "images": "🖼 تصاویر", "feedback": "👍 بازخورد",
@@ -6339,7 +6230,6 @@ FEATURE_CATEGORIES={
     "goals":("🎯 تنظیمات اهداف",["goals","weekly","stats","profile","achievements","reminders","morning","night"]),
     "customers":("👥 تنظیمات مشتری و نوبت‌دهی",["customers","customer_today","customer_new_appointment","customer_customers","customer_calendar","customer_hours","customer_reminders","customer_analytics","customer_loyal","customer_period","customer_booking_link","customer_online_booking","customer_business_settings"]),
     "channel":("📢 تنظیمات کانال و انتشار",["auto_publish","approval","images","feedback"]),
-    "ai":("🤖 تنظیمات هوش مصنوعی و ابزارها",["ai","price_data"]),
     "engagement":("⭐ تنظیمات XP / VIP / دعوت",["xp","vip","referrals","payments"]),
     "support":("🎫 تنظیمات پشتیبانی و سیستم",["support","mini_app","maintenance","test_mode"]),
     "vipbuilder":("💎 سازنده امکانات VIP",["vip","ai","price_data","goals","weekly","stats","customers","customer_online_booking","auto_publish","approval","support","referrals"]),
@@ -6893,52 +6783,6 @@ def _record_service_event(service,status,details=""):
     except Exception:
         pass
 
-def _n8n_ai_fallback_sync(prompt):
-    """Call the configured n8n AI workflow.
-    n8n itself owns the OpenAI credential; Railway does not need OPENAI_API_KEY
-    when this workflow is configured. Only the user prompt is sent.
-    """
-    if not AI_FAILOVER_TO_N8N or not _secure_remote_base(N8N_WEBHOOK_URL):
-        return None
-    payload=json.dumps({
-        "event":"ai_chat",
-        "prompt":str(prompt)[:8000],
-        "model": os.environ.get("N8N_AI_MODEL", "gpt-4o-mini").strip(),
-        "messages":[
-            {"role":"system","content":"پاسخ کوتاه، مفید، مودبانه و امن بده. اطلاعات حساس یا حدس قطعی ارائه نکن."},
-            {"role":"user","content":str(prompt)[:8000]}
-        ],
-    },ensure_ascii=False).encode("utf-8")
-    headers={"Content-Type":"application/json"}
-    # Optional shared secret. A standard n8n Webhook does not require one.
-    if N8N_API_KEY:
-        headers["X-MyTasks-Key"]=N8N_API_KEY
-        headers["Authorization"]=f"Bearer {N8N_API_KEY}"
-    try:
-        req=urllib.request.Request(N8N_WEBHOOK_URL,data=payload,headers=headers,method="POST")
-        with urllib.request.urlopen(req,timeout=N8N_TIMEOUT) as resp:
-            raw=resp.read().decode("utf-8","replace")
-        data=json.loads(raw)
-        # n8n Webhook responses commonly arrive either as an object or a one-item array.
-        if isinstance(data,list):
-            data=data[0] if data and isinstance(data[0],dict) else {}
-        answer=""
-        if isinstance(data,dict):
-            answer=(data.get("output_text") or data.get("answer") or data.get("text")
-                    or data.get("output") or data.get("response") or "")
-            if not answer and isinstance(data.get("data"),dict):
-                nested=data["data"]
-                answer=(nested.get("output_text") or nested.get("answer")
-                        or nested.get("text") or nested.get("output") or "")
-        answer=str(answer).strip()
-        if answer:
-            _record_service_event("n8n","OK","AI workflow")
-            return answer[:4000]
-        _record_service_event("n8n","WARN","empty AI workflow response")
-    except Exception as exc:
-        _record_service_event("n8n","ERROR",type(exc).__name__)
-        logger.warning("n8n AI workflow failed: %s", type(exc).__name__)
-    return None
 
 def _secure_remote_base(url):
     if not url:
@@ -6949,205 +6793,16 @@ def _secure_remote_base(url):
         return True
     return low.startswith("http://127.0.0.1") or low.startswith("http://localhost")
 
-def omniroute_configured():
-    return bool(_secure_remote_base(OMNIROUTE_BASE_URL) and OMNIROUTE_API_KEY)
-
-def _omniroute_root():
-    if not omniroute_configured():
-        return None
-    return OMNIROUTE_BASE_URL[:-3] if OMNIROUTE_BASE_URL.endswith("/v1") else OMNIROUTE_BASE_URL
-
-def _omniroute_api_base():
-    root=_omniroute_root()
-    return root + "/v1" if root else None
-
-def _omniroute_ai_sync(prompt):
-    """Call the self-hosted OmniRoute OpenAI-compatible gateway safely."""
-    if not omniroute_configured():
-        return None
-    payload=json.dumps({
-        "model": OMNIROUTE_MODEL,
-        "messages":[
-            {"role":"system","content":"پاسخ کوتاه، مفید، مودبانه و امن بده. اطلاعات حساس یا حدس قطعی ارائه نکن."},
-            {"role":"user","content":str(prompt)[:8000]}
-        ],
-        "temperature":0.2,
-        "max_tokens":500
-    },ensure_ascii=False).encode("utf-8")
-    try:
-        req=urllib.request.Request(
-            _omniroute_api_base()+"/chat/completions",
-            data=payload,
-            headers={
-                "Authorization":f"Bearer {OMNIROUTE_API_KEY}",
-                "Content-Type":"application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req,timeout=OMNIROUTE_TIMEOUT) as resp:
-            data=json.loads(resp.read().decode("utf-8"))
-        choices=data.get("choices") or []
-        answer=""
-        if choices:
-            message=choices[0].get("message") or {}
-            content=message.get("content","")
-            if isinstance(content,list):
-                content=" ".join(str(x.get("text","")) for x in content if isinstance(x,dict))
-            answer=str(content).strip()
-        if answer:
-            _record_service_event("omniroute","OK","AI gateway")
-            return answer[:4000]
-        _record_service_event("omniroute","WARN","empty response")
-    except Exception as exc:
-        _record_service_event("omniroute","ERROR",type(exc).__name__)
-        logger.warning("OmniRoute AI failed: %s", type(exc).__name__)
-    return None
-
-def _omniroute_health_sync():
-    if not omniroute_configured():
-        return False, "OMNIROUTE_BASE_URL/OMNIROUTE_API_KEY تنظیم نشده است."
-    try:
-        req=urllib.request.Request(
-            _omniroute_root() + "/api/health",
-            headers={"Authorization":f"Bearer {OMNIROUTE_API_KEY}"},
-            method="GET",
-        )
-        with urllib.request.urlopen(req,timeout=min(OMNIROUTE_TIMEOUT,8)) as resp:
-            status=getattr(resp,"status",200)
-            body=resp.read(4096).decode("utf-8","replace")
-        if status == 200:
-            return True, "OmniRoute در دسترس است."
-        return False, f"HTTP {status}"
-    except Exception as exc:
-        return False, f"اتصال برقرار نشد: {type(exc).__name__}"
-
-def ai_provider_diagnostics():
-    """Return provider state for admin/health-check use only; never expose secrets."""
-    return {
-        "omniroute": omniroute_configured(),
-        "openai": bool(os.environ.get("OPENAI_API_KEY","").strip()),
-        "n8n": n8n_configured(),
-        "gemini": bool(GEMINI_API_KEY),
-        "text_unified": bool(omniroute_configured() or n8n_configured() or GEMINI_API_KEY or os.environ.get("OPENAI_API_KEY", "").strip()),
-        "voice_stt": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
-    }
-
-def n8n_configured():
-    # A normal n8n Webhook can be secured by its own URL/auth. The shared key
-    # is optional so a valid webhook can act as the AI gateway without exposing
-    # OPENAI_API_KEY to Railway.
-    return bool(_secure_remote_base(N8N_WEBHOOK_URL))
-
-async def ai_chat_start(update,context):
-    uid=update.effective_user.id
-    if not user_feature_allowed(uid,"ai"):
-        await update.message.reply_text("🤖 چت AI فعلاً غیرفعال است." if lang(uid)=="fa" else "🤖 AI Chat is currently disabled.", reply_markup=keyboard(uid)); return
-    allowed, reason = feature_token_gate(uid, "ai")
-    if not allowed:
-        await update.message.reply_text(token_gate_message(uid, "ai", reason), reply_markup=keyboard(uid))
-        return
-    api_key=os.environ.get("OPENAI_API_KEY","").strip()
-    if not api_key and not omniroute_configured() and not n8n_configured() and not GEMINI_API_KEY:
-        clear_flow(context)
-        await update.message.reply_text(
-            "⚠️ در حال حاضر سرویس هوش مصنوعی در دسترس نیست. اگر تمایل داشته باشید، می‌توانید بعداً دوباره تلاش بفرمایید.",
-            reply_markup=keyboard(uid),
-        )
-        return
-    clear_flow(context)
-    context.user_data["ai_chat"] = True
-    # AI is entered from Smart Tools, so Back must return there; Main Menu
-    # always goes to the root. Keep this state for both inline and legacy
-    # reply-keyboard navigation paths.
-    context.user_data["_nav_parent_section"] = "tools"
-    await update.message.reply_text(
-        "🤖 آماده‌ام. سوالت را بفرست."
-        if lang(uid)=="fa" else
-        "🤖 Ready. Send your question.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("⬅️ برگشت" if lang(uid)=="fa" else "⬅️ Back", callback_data="aichat:back"),
-            InlineKeyboardButton("🏠 منوی اصلی" if lang(uid)=="fa" else "🏠 Main Menu", callback_data="nav:main"),
-        ]]),
-    )
-
-async def ai_chat_navigation_callback(update, context):
-    q = update.callback_query
-    uid = q.from_user.id
-    action = (q.data or "").split(":", 1)[1] if ":" in (q.data or "") else ""
-    try:
-        await q.answer()
-    except Exception:
-        pass
-    clear_flow(context)
-    fa = lang(uid) == "fa"
-    if action == "back":
-        await q.message.edit_text(
-            "🤖 <b>ابزارهای هوشمند</b>" if fa else
-            "🤖 <b>Smart Tools</b>",
-            parse_mode="HTML",
-            reply_markup=_compact_menu_keyboard(uid, "tools"),
-        )
-        return
-    # Main Menu (and any unknown legacy AI navigation action) is a hard root.
-    await q.message.edit_text(
-        _root_menu_text(uid),
-        parse_mode="HTML",
-        reply_markup=_compact_root_inline(uid),
-    )
 
 
-async def ai_chat_text(update,context):
-    if not context.user_data.get("ai_chat"): return False
-    uid=update.effective_user.id; text=update.message.text.strip()
-    if text in ("⬅️ برگشت","⬅️ Back","🏠 منوی اصلی","🏠 Main Menu"):
-        clear_flow(context)
-        await update.message.reply_text("🏠 منوی اصلی",reply_markup=keyboard(uid))
-        return True
-    api_key=os.environ.get("OPENAI_API_KEY","").strip()
-    if not api_key and not omniroute_configured() and not n8n_configured() and not GEMINI_API_KEY:
-        clear_flow(context)
-        await update.message.reply_text(
-            "⚠️ در حال حاضر دستیار هوشمند موقتاً در دسترس نیست.\n"
-            "لطفاً کمی بعد دوباره تلاش بفرمایید. 🌷",
-            reply_markup=keyboard(uid),
-        )
-        return True
-    c=db(); c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,)); r=c.execute("SELECT ai_daily_used,ai_used_date FROM user_settings WHERE user_id=?",(uid,)).fetchone(); today=datetime.now(TZ).date().isoformat(); used=r["ai_daily_used"] if r and r["ai_used_date"]==today else 0; limit=100 if is_vip(uid) else 10
-    if used>=limit:
-        c.close(); await update.message.reply_text("⛔ سهمیه AI امروز تمام شده است." if lang(uid)=="fa" else "⛔ Your AI quota for today is used up.",reply_markup=nav_keyboard(uid)); return True
-    c.close()
-    try:
-        prompt=(
-            "پاسخ کوتاه، مفید، مودبانه و امن به این سوال کاربر بده. "
-            "اگر موضوع پزشکی یا مالی است، پاسخ عمومی و غیرقطعی نگه دار.\n\n" + text
-        )
-        answer=ai_text_generate(prompt, max_output_tokens=500, purpose="chat")
-        if not answer:
-            raise RuntimeError("No AI provider returned a response")
-        c=db()
-        c.execute("INSERT OR IGNORE INTO user_settings(user_id) VALUES(?)",(uid,))
-        c.execute(
-            "UPDATE user_settings SET ai_daily_used=?,ai_used_date=? WHERE user_id=?",
-            (used+1,today,uid)
-        )
-        c.commit(); c.close()
-        await update.message.reply_text(answer,reply_markup=nav_keyboard(uid))
-    except Exception as e:
-        logger.error("AI chat failed: %s",e)
-        clear_flow(context)
-        await update.message.reply_text(
-            (
-                "⚠️ متأسفانه در حال حاضر پاسخ هوش مصنوعی دریافت نشد. "
-                "لطفاً کمی بعد دوباره تلاش بفرمایید."
-            )
-            if lang(uid) == "fa" else
-            (
-                "⚠️ The AI provider did not return a response right now. "
-                "Please try again in a little while."
-            ),
-            reply_markup=keyboard(uid)
-        )
-    return True
+
+
+
+
+
+
+
+
 
 
 async def build_daily_report():
@@ -7318,18 +6973,6 @@ async def run_health_checks(bot,admin_id=0):
                    if scheduler_ok else
                    "صف زمان‌بندی داخلی کتابخانه در دسترس نیست؛ fallback داخلی ربات استفاده می‌شود."))
 
-    n8n_ok=n8n_configured()
-    checks.append(("n8n","OK" if n8n_ok else "WARN",
-                   "Workflow هوش مصنوعی/اتوماسیون متصل است؛ اعتبارنامه OpenAI می‌تواند داخل n8n نگهداری شود."
-                   if n8n_ok else
-                   "Workflow هوش مصنوعی n8n هنوز متصل نشده است؛ مسیرهای دیگر در صورت تنظیم استفاده می‌شوند."))
-
-    omni_ok=False
-    omni_detail="OmniRoute تنظیم نشده است."
-    if omniroute_configured():
-        omni_ok, omni_detail = _omniroute_health_sync()
-    checks.append(("OmniRoute","OK" if omni_ok else ("WARN" if not omniroute_configured() else "ERROR"), omni_detail))
-
     price_enabled=feature_enabled("price_data")
     checks.append(("Price Sources","OK" if price_enabled else "OFF",
                    "قیمت از منابع بازار دریافت می‌شود؛ AI منبع عدد قیمت نیست."
@@ -7357,22 +7000,6 @@ async def run_health_checks(bot,admin_id=0):
                        f"{isolation_bad} رابطه ناسازگار پیدا شد؛ نیازمند بررسی مدیر است."))
     except Exception:
         checks.append(("Data Isolation","WARN","ممیزی مالکیت در این نوبت کامل نشد."))
-
-    ai_enabled=feature_enabled("ai")
-    provider_state=ai_provider_diagnostics()
-    ai_key=provider_state["openai"] or provider_state.get("gemini", False)
-    if not ai_enabled:
-        checks.append(("AI","OFF","هوش مصنوعی توسط مدیر غیرفعال شده است."))
-    elif any(provider_state.values()):
-        providers=[]
-        if provider_state["omniroute"]: providers.append("OmniRoute")
-        if provider_state["openai"]: providers.append("OpenAI")
-        if provider_state["n8n"]: providers.append("n8n fallback")
-        if provider_state.get("gemini"): providers.append("Gemini")
-        checks.append(("AI","OK","AI فعال است؛ مسیرها: " + " + ".join(providers)))
-    else:
-        checks.append(("AI","WARN","دستیار هوشمند فعال است ولی هیچ مسیر AI قابل استفاده‌ای متصل نیست."))
-
     try:
         c=db()
         feature_count=c.execute("SELECT COUNT(*) n FROM feature_access").fetchone()["n"]
@@ -7457,11 +7084,8 @@ def health_text():
         "Customer/Booking":"👥 مشتری و رزرو",
         "Channel":"📢 کانال",
         "Scheduler":"⏰ زمان‌بندی",
-        "n8n":"🔗 n8n",
-        "OmniRoute":"🔀 OmniRoute",
         "Price Sources":"💹 منابع قیمت",
         "Data Isolation":"🔐 جداسازی داده",
-        "AI":"🤖 هوش مصنوعی",
         "Feature Access":"🧩 دسترسی قابلیت‌ها",
         "SQLite Foreign Keys":"🔗 کلیدهای خارجی SQLite",
         "SQLite Journal":"💾 ژورنال SQLite",
@@ -7785,7 +7409,6 @@ V25_FEATURE_LABELS = {
     'card_to_card':'💵 کارت‌به‌کارت',
     'surveys':'⭐ نظرسنجی مشتری',
     'sms':'📱 پیامک',
-    'voice':'🎙️ دستیار صوتی',
     'vip_plans':'💎 پلن‌های VIP',
     'market_prices_v25':'📈 قیمت بازار'
 }
@@ -8072,7 +7695,6 @@ def v25_hub_keyboard(uid):
         ('v25:portfolio','💰 سرمایه‌های من','💰 My Portfolio','portfolio'),
         ('v25:installments','💳 اقساط و تسهیلات','💳 Installments','installments'),
         ('v25:profile','👤 اطلاعات من','👤 My Profile','profile_sharing'),
-        ('v25:voice','🎙️ دستیار صوتی','🎙️ Voice Assistant','voice'),
         ('v25:vip','💎 VIP و اشتراک','💎 VIP & Subscription','vip_plans'),
         ('v25:business','🏪 پنل کسب‌وکار','🏪 Business Panel','business_services'),
     ]
@@ -8214,68 +7836,10 @@ async def v25_vip_plans(update,context):
     await (update.callback_query.message if update.callback_query else update.message).reply_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(kb))
 
 
-async def v25_voice_prompt(update,context):
-    uid=update.effective_user.id; fa=lang(uid)=='fa'; clear_flow(context); context.user_data['v25_voice_mode']=True
-    await update.callback_query.message.edit_text('🎙️ <b>دستیار صوتی</b>\n\nویست رو بفرست؛ من متنش را درمی‌آورم و قبل از اجرا بهت نشان می‌دهم. می‌توانی همان متن را ویرایش کنی یا با یک ویس دیگر اصلاحش کنی.' if fa else '🎙️ <b>Voice Assistant</b>\n\nSend a voice message. I will transcribe it, show you the result, and let you edit or correct it before execution.',parse_mode='HTML',reply_markup=v25_back(uid))
 
-async def v25_transcribe_voice(file_bytes, filename='voice.ogg'):
-    api_key=os.environ.get('OPENAI_API_KEY','').strip()
-    if not api_key:
-        raise RuntimeError('OpenAI transcription provider is not configured. Set OPENAI_API_KEY for voice transcription.')
-    model=os.environ.get('OPENAI_TRANSCRIBE_MODEL','gpt-4o-mini-transcribe').strip()
-    boundary='----MyTasksBoundary'+hashlib.sha256(os.urandom(16)).hexdigest()
-    body=[]
-    def add_field(name,value):
-        body.append(f'--{boundary}\r\n'.encode()); body.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()); body.append(str(value).encode()); body.append(b'\r\n')
-    def add_file(name,fn,data,mime):
-        body.append(f'--{boundary}\r\n'.encode()); body.append(f'Content-Disposition: form-data; name="{name}"; filename="{fn}"\r\n'.encode()); body.append(f'Content-Type: {mime}\r\n\r\n'.encode()); body.append(data); body.append(b'\r\n')
-    add_file('file',filename,file_bytes,'audio/ogg')
-    add_field('model',model)
-    add_field('response_format','json')
-    req=urllib.request.Request('https://api.openai.com/v1/audio/transcriptions',data=b''.join(body)+f'--{boundary}--\r\n'.encode(),headers={'Authorization':f'Bearer {api_key}','Content-Type':f'multipart/form-data; boundary={boundary}'},method='POST')
-    with urllib.request.urlopen(req,timeout=60) as resp:
-        data=json.loads(resp.read().decode('utf-8')); return (data.get('text') or '').strip()
 
-async def v25_voice_handler(update,context):
-    uid=update.effective_user.id
-    allowed, reason = feature_token_gate(uid, "voice")
-    if not allowed:
-        await update.message.reply_text(token_gate_message(uid, "voice", reason), reply_markup=keyboard(uid)); return
-    if not v25_allowed(uid,'voice'): return
-    try:
-        tg_file=await update.message.voice.get_file(); data=await tg_file.download_as_bytearray(); text=await v25_transcribe_voice(bytes(data))
-    except Exception as e:
-        logger.warning('Voice transcription failed: %s',type(e).__name__); await update.message.reply_text('🎙️ فعلاً امکان تبدیل این ویس به متن فراهم نیست. لطفاً کمی بعد دوباره تلاش بفرمایید. 🌷' if lang(uid)=='fa' else '🎙️ Voice transcription is temporarily unavailable. Please try again later. 🌷'); return
-    if not text:
-        await update.message.reply_text('❌ متن قابل تشخیصی از ویس پیدا نشد.'); return
-    context.user_data['v25_voice_text']=text
-    if re.search(r'قیمت|چند شده|نرخ|price|how much|cost',text,re.I):
-        context.user_data['v25_voice_action']='price';
-    elif re.search(r'هدف|یادم|یادآوری|remind|goal',text,re.I):
-        context.user_data['v25_voice_action']='goal'
-    elif admin_guard(uid) and re.search(r'فعال|غیرفعال|روشن|خاموش|enable|disable',text,re.I):
-        context.user_data['v25_voice_action']='admin'
-    else: context.user_data['v25_voice_action']='note'
-    await update.message.reply_text(('🎙️ <b>متن تشخیص‌داده‌شده</b>\n\n'+html.escape(text)+'\n\nقبل از اجرا می‌توانی آن را ویرایش کنی یا تأییدش کنی.'),parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ تأیید',callback_data='v25:voice_confirm'),InlineKeyboardButton('✏️ ویرایش متن',callback_data='v25:voice_edit')],[InlineKeyboardButton('🎙️ اصلاح با ویس',callback_data='v25:voice_retry')],[main_menu_button(uid)]]))
 
-async def v25_voice_confirm(update,context):
-    uid=update.effective_user.id; text=context.user_data.get('v25_voice_text',''); action=context.user_data.get('v25_voice_action'); await update.callback_query.answer()
-    if action=='price':
-        # Map common spoken price requests to the market screen.
-        if 'طلا' in text or 'gold' in text.lower(): asset='gold18'
-        elif 'نقره' in text or 'silver' in text.lower(): asset='silver'
-        elif 'مس' in text or 'copper' in text.lower(): asset='copper'
-        elif 'دلار' in text or 'usd' in text.lower(): asset='usd'
-        else: asset='all'
-        context.user_data.clear(); await v25_show_price(update,context,asset); return
-    if action=='goal':
-        context.user_data.clear(); await update.callback_query.message.edit_text('🎯 متن هدف آماده شد.\n\n'+html.escape(text)+'\n\nمی‌توانی بعداً تاریخ و ساعت را از بخش اهداف تنظیم کنی.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🎯 ثبت هدف',callback_data='goals:main')],[main_menu_button(uid)]])); return
-    if action=='admin' and admin_guard(uid):
-        context.user_data.clear(); await update.callback_query.message.edit_text('🛡️ متن فرمان آماده است. برای فرمان‌های مدیریتی حساس، تأیید مستقیم از پنل امن را پیشنهاد می‌کنم.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🛠️ پنل مدیریت',callback_data='adm:stats')]])); return
-    context.user_data.clear(); await update.callback_query.message.edit_text('✅ ثبت شد. اگر می‌خواهی این متن به هدف یا یادآوری تبدیل شود، از منوی همان بخش استفاده کن.',reply_markup=v25_back(uid))
 
-async def v25_voice_edit(update,context):
-    uid=update.effective_user.id; context.user_data['v25_editing_voice']=True; await update.callback_query.answer(); await update.callback_query.message.edit_text('✏️ متن اصلاح‌شده را بفرست. همان اطلاعات را ویرایش کن؛ لازم نیست از اول همه‌چیز را بنویسی.',reply_markup=v25_back(uid,'v25:voice_edit_cancel'))
 
 async def v25_add_text_state(update,context):
     # handled by text_router wrapper
@@ -8350,8 +7914,6 @@ async def v25_installment_text_save(update,context):
         _v25_exec('UPDATE user_profile SET phone=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ شماره تلفن به‌روزرسانی شد.',reply_markup=keyboard(uid)); return True
     if mode=='profile_edit:email':
         _v25_exec('UPDATE user_profile SET email=?,updated_at=? WHERE user_id=?',(text,_v25_now(),uid)); clear_flow(context); await update.message.reply_text('✅ ایمیل به‌روزرسانی شد.',reply_markup=keyboard(uid)); return True
-    if mode=='v25_edit_voice':
-        context.user_data['v25_voice_text']=text; context.user_data['v25_voice_action']='note'; context.user_data.pop('v25_editing_voice',None); await update.message.reply_text('✅ متن اصلاح شد. حالا تأییدش کن.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ تأیید',callback_data='v25:voice_confirm')],[main_menu_button(uid)]])); return True
     if mode=='v25_sms_test':
         await update.message.reply_text('📱 تست SMS در نسخه تمیز به تنظیمات سرویس پیامکی نیاز دارد. ابتدا endpoint و API key را در پنل کسب‌وکار ثبت کن.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('⬅️ پیامک',callback_data='v25:sms')],[main_menu_button(uid)]])); clear_flow(context); return True
     return False
@@ -8532,7 +8094,6 @@ async def v25_callback(update,context):
             except Exception: pass
             await q.message.edit_text('🙏 ممنون! نظرت ثبت شد. اگر پیشنهادی داری می‌توانی در پیام بعدی بنویسی.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✍️ نوشتن پیشنهاد',callback_data=f'v25:surveycomment:{aid}')],[main_menu_button(uid)]])); return
         if action=='surveycomment': context.user_data['v25_mode']='survey_comment'; context.user_data['survey_appointment_id']=int(p[2]); await q.message.edit_text('💬 پیشنهاد یا توضیح خودت را بنویس. این بخش اختیاری است.',reply_markup=v25_back(uid)); return
-        if action=='voice': await v25_voice_prompt(update,context); return
         if action=='services': await v25_services_menu(update,context); return
         if action=='serviceadd': context.user_data['v25_mode']='service_name'; await q.message.edit_text('🛠️ نام خدمت را بفرست:',reply_markup=v25_back(uid,'v25:services')); return
         if action=='service_toggle':
@@ -8568,11 +8129,6 @@ async def v25_callback(update,context):
             if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
             if len(p) < 3 or not _feature_flag_exists(p[2]): await q.answer('قابلیت نامعتبر است.',show_alert=True); return
             key=p[2]; cur=feature_enabled(key); set_feature(key,not cur,uid); mode='free' if not cur else 'off'; set_feature_access_mode(key,mode,uid); await v25_admin_feature_status(update,context); return
-        if action=='voice_retry': context.user_data['v25_voice_mode']=True; await q.message.edit_text('🎙️ ویس اصلاحی را بفرست. من متن جدید را جایگزین می‌کنم.',reply_markup=v25_back(uid)); return
-        if action=='voice_edit': await v25_voice_edit(update,context); return
-        if action=='voice_edit_cancel': clear_flow(context); await q.message.edit_text('لغو شد.',reply_markup=v25_hub_keyboard(uid)); return
-        if action=='voice_confirm': await v25_voice_confirm(update,context); return
-        if action=='voice': await v25_voice_prompt(update,context); return
     except Exception as e:
         logger.exception('v25 callback error: %s',e)
         await q.message.reply_text(
@@ -8599,7 +8155,6 @@ def keyboard(uid):
     if v25_allowed(uid,'portfolio'): extra.append('💰 سرمایه‌های من' if fa else '💰 My Portfolio')
     if v25_allowed(uid,'installments'): extra.append('💳 اقساط' if fa else '💳 Installments')
     if v25_allowed(uid,'profile_sharing'): extra.append('👤 اطلاعات من' if fa else '👤 My Profile')
-    if v25_allowed(uid,'voice'): extra.append('🎙️ دستیار صوتی' if fa else '🎙️ Voice Assistant')
     if v25_allowed(uid,'calendar_hub'): extra.append('📅 تقویم من' if fa else '📅 My Calendar')
     if extra:
         for i in range(0,len(extra),2): rows.append(extra[i:i+2])
@@ -8723,7 +8278,6 @@ async def text_router(update,context):
         await v25_installments_menu(update,context); return
     if txt in ('👤 اطلاعات من','👤 My Profile'):
         await v25_profile_menu(update,context); return
-    if txt in ('🎙️ دستیار صوتی','🎙️ Voice Assistant'):
         context.user_data['v25_voice_mode']=True; await update.message.reply_text('🎙️ ویست رو بفرست.'); return
     mode=context.user_data.get('v25_mode')
     if mode=='rem_title': context.user_data['v25_rem_title']=txt; context.user_data['v25_mode']='rem_time'; await update.message.reply_text('📅 تاریخ و ساعت را بفرست. نمونه: ۱۴۰۵/۰۶/۰۳ ۱۲:۰۰'); return
@@ -8731,12 +8285,9 @@ async def text_router(update,context):
         if await v25_add_reminder_save(update,context) if mode=='rem_time' else False: return
         if await v25_installment_text_save(update,context): return
         if await v25_business_text_save(update,context): return
-    if context.user_data.get('v25_editing_voice'):
-        context.user_data['v25_voice_text']=txt; context.user_data['v25_voice_action']='note'; context.user_data.pop('v25_editing_voice',None); await update.message.reply_text('✅ متن اصلاح شد.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ تأیید',callback_data='v25:voice_confirm')],[main_menu_button(uid)]])); return
     # Fall through to original router.
     await _LEGACY_TEXT_ROUTER(update,context)
 
-# Add optional Voice handler and V25 menus before the generic text handler in main.
 
 # Wrap appointment completion to deliver the customer survey.
 _LEGACY_APPOINTMENT_STATUS=appointment_status
@@ -8950,10 +8501,6 @@ async def v25_admin_survey(update,context):
     if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
     await update.callback_query.message.edit_text('⭐ <b>تنظیمات نظرسنجی</b>\n\nسؤال‌های اصلی شامل محیط، تمیزی، کارکنان، سرعت، کیفیت، ارزش نسبت به قیمت و راحتی رزرو هستند. کسب‌وکار می‌تواند سؤال سفارشی هم اضافه کند.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🟢/🔴 مدیریت سوال‌ها',callback_data='v25:surveyadmin')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]))
 
-async def v25_admin_voice(update,context):
-    uid=update.effective_user.id
-    if not admin_guard(uid): return await update.callback_query.answer('⛔ دسترسی ندارید.',show_alert=True)
-    await update.callback_query.message.edit_text('🎙️ <b>Voice</b>\n\nفارسی و انگلیسی پشتیبانی می‌شوند. متن ویس قبل از اجرا نمایش داده می‌شود و امکان ویرایش/اصلاح صوتی وجود دارد. برای عملیات حساس مدیر، اجرای فرمان بعد از تأیید دوم انجام می‌شود.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🟢/🔴 Voice',callback_data='v25:feat:voice')],[InlineKeyboardButton('⬅️ بازگشت',callback_data='v25:adminmenu')]]))
 
 async def v25_admin_morning(update,context):
     uid=update.effective_user.id
@@ -9236,47 +8783,6 @@ async def v25_installment_text_save(update,context):
 
 
 # Voice execution: simple, confirm-first admin commands + goal/reminder creation.
-_OLD_V25_VOICE_CONFIRM=v25_voice_confirm
-async def v25_voice_confirm(update,context):
-    uid=update.effective_user.id; text=(context.user_data.get('v25_voice_text') or '').strip(); action=context.user_data.get('v25_voice_action'); await update.callback_query.answer()
-    if action=='admin' and admin_guard(uid):
-        low=text.lower(); feature_map={
-            'رزرو':'booking','رزرو آنلاین':'customer_online_booking','booking':'customer_online_booking',
-            'مشتری':'customers','crm':'customers','پیامک':'sms','sms':'sms','وی آی پی':'vip','vip':'vip',
-            'هوش مصنوعی':'ai','هوش مصنوعی':'ai','ai':'ai','قیمت':'price_data','قیمت بازار':'price_data',
-            'نظرسنجی':'surveys','voice':'voice','دستیار صوتی':'voice','کارت به کارت':'card_to_card','درگاه':'payments',
-            'یادآوری':'reminders','اهداف':'goals','تقویم':'calendar_hub'
-        }
-        target=None
-        for k,v in sorted(feature_map.items(),key=lambda x:-len(x[0])):
-            if k in low: target=v; break
-        turning_off=bool(re.search(r'غیرفعال|خاموش|خاموشش|disable|off',low))
-        turning_on=(not turning_off) and bool(re.search(r'فعال|روشن|روشنش|enable|on',low))
-        # VIP monthly price via voice: "قیمت VIP یک ماهه 3990000 ریال".
-        m=re.search(r'(?:vip|وی[ -]?آی[ -]?پی).*?(?:یک ماهه|ماهانه|one month).*?(\d[\d,]*)',low,re.I)
-        if m:
-            price=int(m.group(1).replace(',','')); row=_v25_exec("SELECT id FROM subscription_plans_v25 WHERE code='one_month'",fetchone=True)
-            if row: _v25_exec('UPDATE subscription_plans_v25 SET price_rial=?,updated_at=? WHERE id=?',(price,_v25_now(),row['id']))
-            context.user_data.clear(); await update.callback_query.message.edit_text(f'✅ قیمت پلن یک‌ماهه VIP به {irr(price)} تغییر کرد.',reply_markup=v25_back(uid,'v25:adminmenu')); return
-        # Card number in admin voice.
-        nums=re.sub(r'[^0-9]','',text)
-        if len(nums)==16 and ('کارت' in low or 'card' in low):
-            set_system_setting('vip_card_number',nums,uid); context.user_data.clear(); await update.callback_query.message.edit_text(f'✅ شماره کارت VIP ذخیره شد.\n💳 <code>{nums}</code>\n\nفعال‌شدن نمایش کارت هنوز از تنظیمات جداگانه کنترل می‌شود.',parse_mode='HTML',reply_markup=v25_back(uid,'v25:adminvip')); return
-        if target and (turning_on or turning_off):
-            set_feature(target,turning_on,uid); set_feature_access_mode(target,'free' if turning_on else 'off',uid); context.user_data.clear(); await update.callback_query.message.edit_text(('✅ قابلیت «'+V25_FEATURE_LABELS.get(target,target)+'» فعال شد.' if turning_on else '🔴 قابلیت «'+V25_FEATURE_LABELS.get(target,target)+'» غیرفعال شد.'),reply_markup=v25_back(uid,'v25:adminmenu')); return
-        await update.callback_query.message.edit_text('🛡️ فرمان صوتی تشخیص داده شد اما برای اجرای ایمن، دستور واضح‌تری لازم است. مثال: «رزرو آنلاین غیرفعال شود» یا «قیمت بازار فعال شود».',reply_markup=v25_back(uid,'v25:adminmenu')); return
-    if action=='goal':
-        # Register a user goal from the transcript; any explicit time becomes the daily goal reminder.
-        title=re.sub(r'^(?:برای|هدف|یادم|یادآوری)\s*','',text,flags=re.I).strip(' .،') or text
-        m=re.search(r'(?:ساعت|at)\s*(\d{1,2})(?::(\d{2}))?',text,re.I)
-        tm=None
-        if m:
-            tm=parse_time(f'{m.group(1)}:{m.group(2) or "00"}')
-        add_goal(uid,title,'✨ شخصی',tm,2)
-        context.user_data.clear(); await update.callback_query.message.edit_text(f'✅ هدف ثبت شد.\n\n🎯 {html.escape(title)}'+(f'\n⏰ یادآوری: {tm}' if tm else ''),parse_mode='HTML',reply_markup=v25_back(uid,'v25:hub')); return
-    return await _OLD_V25_VOICE_CONFIRM(update,context)
-
-
 async def v25_customer_message_menu(update,context):
     uid=update.effective_user.id; rows=customer_list_rows(uid); selected=set(context.user_data.get('customer_message_selected',[])); lines=['📩 <b>ارسال پیام به مشتریان</b>','']
     lines.append(f'انتخاب‌شده: {len(selected)}')
@@ -9327,7 +8833,6 @@ async def v25_callback(update,context):
         if data=='v25:adminpayment': return await v25_admin_payment(update,context)
         if data=='v25:adminsms': return await v25_admin_sms(update,context)
         if data=='v25:adminsurvey': return await v25_admin_survey(update,context)
-        if data=='v25:adminvoice': return await v25_admin_voice(update,context)
         if data=='v25:adminmorning': return await v25_admin_morning(update,context)
         if data=='v25:adminprices': return await v25_admin_prices(update,context)
         if data in {'v25:reports','v25:report_week','v25:report_month','v25:toggle_morning','v25:toggle_night','v25:toggle_friday','v25:toggle_prices'} and not admin_guard(uid):
@@ -9401,7 +8906,6 @@ async def v25_callback(update,context):
         if action=='smstest':
             if not admin_guard(uid): await q.answer('⛔',show_alert=True); return
             context.user_data['v25_mode']='v25_sms_test'; await q.message.edit_text('📱 شماره مقصد تست را بفرست:',reply_markup=v25_back(uid,'v25:adminsms')); return
-        if action=='voice_confirm' and admin_guard(uid):
             return await _OLD_V25_CALLBACK_FINAL(update,context)
         if action=='gateway' and admin_guard(uid):
             return await _OLD_V25_CALLBACK_FINAL(update,context)
@@ -9492,7 +8996,6 @@ async def text_router(update,context):
         clear_flow(context); await update.message.reply_text(v25_hub_text(uid),parse_mode='HTML',reply_markup=v25_hub_keyboard(uid)); return
     if txt in ('🏠 منوی اصلی','🏠 Main Menu'):
         clear_flow(context); await update.message.reply_text('🏠 منوی اصلی',reply_markup=keyboard(uid)); return
-    if txt in ('🎙️ دستیار صوتی','🎙️ Voice Assistant'):
         context.user_data['v25_voice_mode']=True; await update.message.reply_text('🎙️ ویست رو بفرست. / Send a voice message.'); return
     if txt in ('🧠 مرکز من','🧠 My Center'):
         await v25_hub(update,context); return
@@ -9515,8 +9018,6 @@ admin_keyboard=final_admin_keyboard
 # ===================== TOKEN / QUOTA SYSTEM =====================
 # Free by default. Admin can later switch any feature to limited/VIP/off.
 TOKEN_FEATURES = [
-    ("ai", "🤖 هوش مصنوعی"),
-    ("voice", "🎙️ دستیار صوتی"),
     ("price_data", "📈 قیمت بازار"),
     ("portfolio", "💰 سرمایه‌های من"),
     ("customers", "👥 CRM / مشتریان"),
@@ -10119,7 +9620,6 @@ def keyboard(uid):
         ("portfolio", "💰 سرمایه‌های من", "💰 My Portfolio"),
         ("installments", "💳 اقساط", "💳 Installments"),
         ("profile_sharing", "👤 اطلاعات من", "👤 My Profile"),
-        ("voice", "🎙️ دستیار صوتی", "🎙️ Voice Assistant"),
         ("calendar_hub", "📅 تقویم من", "📅 My Calendar"),
     ]
     for key, fa_label, en_label in extra_defs:
@@ -10374,15 +9874,6 @@ async def _show_admin_section(update, context, section):
         await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'channel':
         await update.message.reply_text("📡 <b>مدیریت کانال و پست‌گذاری</b>", parse_mode='HTML', reply_markup=channel_keyboard())
-    elif section == 'ai':
-        text = (
-            "🤖 <b>مدیریت AI</b>\n\n"
-            f"-model: {OPENAI_MODEL}\n"
-            f"Gemini: {GEMINI_MODEL}\n"
-            f"OmniRoute: {OMNIROUTE_MODEL}\n\n"
-            "از بخش تنظیمات سیستم، کلیدهای API را مدیریت کن."
-        )
-        await update.message.reply_text(text, parse_mode='HTML', reply_markup=back_kb)
     elif section == 'health':
         await run_health_checks(context.bot, uid)
         await update.message.reply_text(health_text(), reply_markup=back_kb)
@@ -10481,157 +9972,6 @@ async def text_router(update, context):
             "👤 <b>Use Bot</b>\n\nAll normal bot features are available here.",
             parse_mode="HTML", reply_markup=_compact_user_keyboard(uid)
         )
-        return
-    if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=keyboard(uid))
-            return
-        clear_flow(context)
-        await _show_admin_management(update, context)
-        return
-    # Birthday & Events buttons
-    if txt in ("🎂 تولد من", "🎂 My Birthday"):
-        if not birthday_enabled():
-            await update.message.reply_text("🎂 این قابلیت در حال حاضر غیرفعال است.", reply_markup=compact_keyboard(uid))
-            return
-        await birthday_show_callback(update, context)
-        return
-    if txt in ("🎂 تولد و مناسبت‌ها", "🎂 Birthday & Events"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = "🎂 <b>تولد و مناسبت‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎂 مدیریت تولد", callback_data="adm:birthdays:list"),
-             InlineKeyboardButton("⚙️ تنظیمات تولد", callback_data="adm:birthdays:settings")],
-            [InlineKeyboardButton("📅 مناسبت‌ها", callback_data="adm:events:list")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("🎁 هدیه مدیریتی", "🎁 Admin Gifts"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = (
-            "🎁 <b>هدیه مدیریتی</b>\n\n"
-            "برای ارسال هدیه به کاربر:\n"
-            "1️⃣ شناسه کاربر رو بفرست\n"
-            "2️⃣ نوع هدیه رو انتخاب کن\n"
-            "3️⃣ مقدار و مدت رو تعیین کن"
-        )
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")]])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        context.user_data["admin_gift_mode"] = "user_id"
-        return
-    # New admin menu items (restructured)
-    if txt in ("👥 کاربران و پاداش‌ها", "👥 Users & Rewards"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = "👥 <b>کاربران و پاداش‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("👥 لیست کاربران", callback_data="adm:users"),
-             InlineKeyboardButton("🔎 جستجو", callback_data="adm:search")],
-            [InlineKeyboardButton("⭐ XP / VIP", callback_data="adm:xpvip"),
-             InlineKeyboardButton("🎁 هدیه مدیریتی", callback_data="adm:gifts")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("💎 اشتراک و دسترسی‌ها", "💎 Subscriptions & Access"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = "💎 <b>اشتراک و دسترسی‌ها</b>\n\nبخش موردنظر را انتخاب کن:"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💎 مدیریت VIP", callback_data="adm:xpvip"),
-             InlineKeyboardButton("🔐 ماتریس دسترسی", callback_data="adm:access")],
-            [InlineKeyboardButton("🧩 قابلیت‌ها", callback_data="adm:features"),
-             InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("📢 مدیریت کانال", "📢 Channel Management"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        await update.message.reply_text("📡 <b>مدیریت کانال</b>", parse_mode="HTML", reply_markup=channel_keyboard())
-        return
-    if txt in ("🤖 هوش مصنوعی", "🤖 AI Management"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = (
-            "🤖 <b>مدیریت هوش مصنوعی</b>\n\n"
-            f"-model: {OPENAI_MODEL}\n"
-            f"Gemini: {GEMINI_MODEL}\n"
-            f"OmniRoute: {OMNIROUTE_MODEL}"
-        )
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات AI", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("🎯 اهداف و یادآوری", "🎯 Goals & Reminders"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        c = db()
-        goals = c.execute("SELECT COUNT(*) n FROM goals").fetchone()["n"]
-        active = c.execute("SELECT COUNT(*) n FROM goals WHERE enabled=1").fetchone()["n"]
-        c.close()
-        text = f"🎯 <b>اهداف و یادآوری</b>\n\n🎯 کل اهداف: {goals}\n✅ فعال: {active}"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("📈 قیمت و بازار", "📈 Prices & Market"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = "📈 <b>قیمت و بازار</b>\n\nاز بخش ابزارهای هوشمند برای کاربران قابل دسترسی است."
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("💳 پرداخت‌ها", "💳 Payments"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        c = db()
-        payments = c.execute("SELECT COUNT(*) n FROM payments").fetchone()["n"]
-        revenue = c.execute("SELECT COALESCE(SUM(total_amount),0) n FROM payments").fetchone()["n"]
-        c.close()
-        text = f"💳 <b>پرداخت‌ها</b>\n\n💳 تراکنش‌ها: {payments}\n💵 مبلغ: {revenue:,}"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚙️ تنظیمات", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
-        return
-    if txt in ("👥 مشتری و رزرو", "👥 Customers & Bookings"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        await _show_admin_section(update, context, "users")
-        return
-    if txt in ("🎙️ دستیار صوتی", "🎙️ Voice Assistant"):
-        if not admin_guard(uid):
-            await update.message.reply_text("⛔ دسترسی ندارید.", reply_markup=compact_keyboard(uid))
-            return
-        text = "🎙️ <b>دستیار صوتی</b>\n\nاز بخش هوش مصنوعی مدیریت می‌شود."
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🤖 هوش مصنوعی", callback_data="adm:features")],
-            [InlineKeyboardButton("⬅️ پنل مدیریت", callback_data="adm:stats")],
-        ])
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
         return
     if txt in ("🎫 پشتیبانی و تیکت", "🎫 Support & Tickets"):
         if not admin_guard(uid):
@@ -10760,8 +10100,6 @@ async def text_router(update, context):
         "📢 کانال و انتشار": "channel", "📢 Channels & Publishing": "channel",
         "📢 مدیریت کانال": "channel",
         # AI
-        "🤖 مدیریت AI": "ai", "🤖 AI Management": "ai",
-        "🤖 هوش مصنوعی": "ai",
         # Health
         "🩺 سلامت و Diagnostics": "health", "🩺 Health & Diagnostics": "health",
         "🩺 Health Check": "health",
@@ -10793,7 +10131,6 @@ async def text_router(update, context):
         # Customers
         "👥 مشتری و رزرو": "users",
         # Voice
-        "🎙️ دستیار صوتی": "ai",
         # Gifts
         "🎁 هدیه مدیریتی": "xpvip",
         # Referrals
@@ -10879,7 +10216,6 @@ async def text_router(update, context):
         await v25_routes[text](update, context)
         return
 
-    if text in ("🎙️ دستیار صوتی", "🎙️ Voice Assistant"):
         clear_flow(context)
         context.user_data["v25_voice_mode"] = True
         await update.message.reply_text("🎙️ ویس را بفرست. / Send a voice message.")
@@ -10943,8 +10279,6 @@ async def text_router(update, context):
         clear_flow(context)
         fa = lang(uid) == "fa"
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🤖 چت با AI" if fa else "🤖 AI Chat", callback_data="aichat:start"),
-             InlineKeyboardButton("🎙️ دستیار صوتی" if fa else "🎙️ Voice", callback_data="v25:voice")],
             [InlineKeyboardButton("📈 قیمت آنلاین" if fa else "📈 Prices", callback_data="prices:menu")],
         ])
         await update.message.reply_text("🛠️ <b>ابزارها</b>" if fa else "🛠️ <b>Tools</b>", parse_mode="HTML", reply_markup=kb)
@@ -10962,7 +10296,6 @@ async def text_router(update, context):
         "🏆 دستاوردها": achievements, "🏆 Achievements": achievements,
         "🤝 دعوت دوستان": referral, "🤝 Referrals": referral,
         "📈 قیمت آنلاین": prices, "📈 Online Prices": prices,
-        "🤖 چت با AI": ai_chat_start, "🤖 AI Chat": ai_chat_start,
         "💎 VIP": vip_center,
         "🎫 پشتیبانی": support_start, "🎫 Support": support_start,
         "⚙️ تنظیمات": settings, "⚙️ Settings": settings,
@@ -11229,7 +10562,6 @@ def _compact_menu_keyboard(uid, section):
             [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
         ],
         "tools": [
-            [("🤖 چت با AI", "cm:ai"), ("🎙️ دستیار صوتی", "cm:voice")],
             [("📈 قیمت آنلاین", "cm:prices"), ("🧠 مرکز من", "cm:center")],
         ],
         "vip": [
@@ -11247,7 +10579,7 @@ def _compact_menu_keyboard(uid, section):
     titles = {
         "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
         "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-        "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+        "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
         "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
         "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
         "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
@@ -11267,7 +10599,6 @@ def _compact_menu_keyboard(uid, section):
             "cm:ready_goals":"🏆 Ready Goals","cm:edit_goals":"✏️ Edit Goals",
             "cm:weekly":"📅 Weekly Report","cm:stats":"📊 My Stats",
             "cm:achievements":"🏆 Achievements","cm:xp":"⭐ XP",
-            "cm:ai":"🤖 AI Chat","cm:voice":"🎙️ Voice Assistant",
             "cm:prices":"📈 Online Prices","cm:center":"🧠 My Center",
             "cm:vip":"💎 VIP & Subscription","cm:referral":"🤝 Referrals",
             "cm:tokens":"🎟️ My Tokens","cm:profile":"👤 Profile",
@@ -11290,7 +10621,7 @@ async def _compact_menu_show(update, context, section):
     titles = {
         "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
         "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-        "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+        "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
         "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
         "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
         "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
@@ -11312,7 +10643,7 @@ async def general_guide(update, context):
         "📚 <b>راهنمای ربات</b>\n\n"
         "🎯 برنامه و اهداف: ساخت و پیگیری هدف‌ها\n"
         "📊 گزارش و پیشرفت: مشاهده آمار و گزارش‌ها\n"
-        "🤖 ابزارهای هوشمند: چت AI، دستیار صوتی و قیمت‌ها\n"
+        "📈 ابزارها: قیمت‌های آنلاین و ابزارهای کاربردی\n"
         "🧠 مرکز من: یادآوری، تقویم، سرمایه‌ها، اقساط و پروفایل\n"
         "👥 مدیریت مشتری و نوبت‌دهی: برای حساب‌های مجاز\n\n"
         "برای برگشت از دکمه «⬅️ بازگشت» استفاده کن."
@@ -11404,8 +10735,6 @@ async def compact_menu_callback(update, context):
         "cm:stats": stats,
         "cm:achievements": achievements,
         "cm:xp": xp_command,
-        "cm:ai": ai_chat_start,
-        "cm:voice": None,
         "cm:prices": prices,
         "cm:center": v25_hub,
         "cm:vip": vip_center,
@@ -11418,19 +10747,6 @@ async def compact_menu_callback(update, context):
         "cm:support": support_start,
         "cm:guide": general_guide,
     }
-    if data == "cm:voice":
-        clear_flow(context)
-        await q.message.edit_text(
-            "🎙️ <b>دستیار صوتی</b>\n\nویس خودت را در پیام بعدی بفرست." if lang(uid) == "fa"
-            else "🎙️ <b>Voice Assistant</b>\n\nSend your voice message next.",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("⬅️ بازگشت" if lang(uid) == "fa" else "⬅️ Back", callback_data="cm:tools"),
-                main_menu_button(uid),
-            ]])
-        )
-        context.user_data["v25_voice_mode"] = True
-        return
     if data == "cm:tokens":
         tokens_from_xp(uid)
         await q.message.edit_text(token_user_text(uid), parse_mode="HTML", reply_markup=token_user_keyboard(uid))
@@ -11488,7 +10804,7 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+             InlineKeyboardButton("🛠️ ابزارها", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
@@ -11497,7 +10813,7 @@ def _compact_root_inline(uid):
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
             [InlineKeyboardButton("📊 Reports", callback_data="menu:reports"),
-             InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+             InlineKeyboardButton("🛠️ Tools", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"),
              InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
@@ -11534,10 +10850,8 @@ def _compact_admin_management_keyboard(uid):
         ["📊 داشبورد و گزارش" if fa else "📊 Dashboard & Reports"],
         ["👥 کاربران و پاداش‌ها" if fa else "👥 Users & Rewards", "💎 اشتراک و دسترسی‌ها" if fa else "💎 Subscriptions & Access"],
         ["📢 مدیریت کانال" if fa else "📢 Channel Management", "🔒 عضویت اجباری کانال" if fa else "🔒 Mandatory Channel Subscription"],
-        ["🤖 هوش مصنوعی" if fa else "🤖 AI Management"],
         ["🎂 تولد و مناسبت‌ها" if fa else "🎂 Birthday & Events", "🎯 اهداف و یادآوری" if fa else "🎯 Goals & Reminders"],
         ["📈 قیمت و بازار" if fa else "📈 Prices & Market", "💳 پرداخت‌ها" if fa else "💳 Payments"],
-        ["👥 مشتری و رزرو" if fa else "👥 Customers & Bookings", "🎙️ دستیار صوتی" if fa else "🎙️ Voice Assistant"],
         ["🎫 پشتیبانی و تیکت" if fa else "🎫 Support & Tickets", "🎁 هدیه مدیریتی" if fa else "🎁 Admin Gifts"],
         ["🩺 Health Check" if fa else "🩺 Health Check", "📣 دعوت و رفرال" if fa else "📣 Referrals"],
         ["🧪 مرکز تست" if fa else "🧪 Test Center", "🧩 قابلیت‌ها" if fa else "🧩 Features"],
@@ -11611,7 +10925,6 @@ async def text_router(update, context):
     if txt in ("🧩 قابلیت‌ها", "🧩 Features"):
         await admin_command(update, context)
         return
-    if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
         await admin_command(update, context)
         return
     if txt in ("👥 کاربران", "👥 Users"):
@@ -11903,16 +11216,6 @@ def master_users_text():
     return "\n".join(lines)
 
 
-def master_ai_text():
-    state=ai_provider_diagnostics()
-    return ("🤖 <b>AI و Voice</b>\n\n"
-            f"OmniRoute: {'🟢' if state.get('omniroute') else '🔴'}\n"
-            f"OpenAI: {'🟢' if state.get('openai') else '🔴'}\n"
-            f"n8n: {'🟢' if state.get('n8n') else '🔴'}\n"
-            f"Gemini: {'🟢' if state.get('gemini') else '🔴'}\n"
-            f"Text AI unified: {'🟢' if state.get('text_unified') else '🔴'}\n"
-            f"Voice STT: {'🟢' if state.get('voice_stt') else '🔴'}\n\n"
-            "AI مجاز به اجرای مستقیم عملیات حساس نیست. خروجی باید از مسیر اعتبارسنجی عبور کند.")
 
 
 def master_tests():
@@ -11975,8 +11278,6 @@ async def master_management_callback(update,context):
         await q.message.edit_text(text,parse_mode="HTML",reply_markup=kb); return
     if action=="channels":
         await q.message.edit_text("📢 <b>کانال و انتشار</b>\n\nمدیریت کانال، پست‌گذاری، زمان‌بندی، انتشار خودکار، تأیید قبل از انتشار و بررسی عضویت در این بخش‌های موجود ربات فعال هستند.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 مدیریت کانال",callback_data="adm:channel")],[InlineKeyboardButton("🤖 انتشار خودکار",callback_data="auto:menu")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
-    if action=="ai":
-        await q.message.edit_text(master_ai_text(),parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🎙️ تنظیمات Voice",callback_data="v25:adminvoice")],[InlineKeyboardButton("🔧 وضعیت قابلیت‌ها",callback_data="v25:adminfeatures")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
     if action=="health":
         await run_health_checks(context.bot,uid); text=health_text();
         await q.message.edit_text(text,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🩺 اجرای دوباره",callback_data="v25:master:health")],[InlineKeyboardButton("🔎 Diagnostics",callback_data="v25:master:diagnostics")],[InlineKeyboardButton("⬅️ مرکز مدیریت",callback_data="v25:master:home")]])); return
@@ -12119,7 +11420,6 @@ def _master_settings_keyboard(uid):
             callback_data="settings:managers"
         )],
         [InlineKeyboardButton(
-            "🤖 تنظیمات AI  ›" if fa else "🤖 AI Settings  ›",
             callback_data="settings:ai"
         )],
         [InlineKeyboardButton(
@@ -12152,7 +11452,6 @@ def _manager_settings_text(uid):
             "🛡️ <b>تنظیمات مدیریتی</b>\n\n"
             "از این بخش می‌توانی تنظیمات مدیریت را دسته‌بندی‌شده کنترل کنی.\n\n"
             "🧑‍💼 مدیریت مدیران › افزودن، مشاهده و کنترل نقش مدیران\n"
-            "🤖 تنظیمات AI › وضعیت سرویس‌های هوشمند\n"
             "📢 تنظیمات کانال › اتصال و انتشار\n"
             "🔔 اعلان‌ها › تنظیمات اعلان‌های حساب"
         )
@@ -12577,7 +11876,6 @@ async def text_router(update, context):
             await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
             return
 
-        if txt in ("🛡 مدیریت ربات", "🛡 Bot Management"):
             clear_flow(context)
             await _show_admin_management(update, context)
             return
@@ -12589,14 +11887,6 @@ async def text_router(update, context):
         if txt in ("👥 کاربران و نقش‌ها", "👥 Users & Roles"):
             await update.message.reply_text(
                 master_users_text(),
-                parse_mode="HTML",
-                reply_markup=master_back_keyboard(uid)
-            )
-            return
-
-        if txt in ("🤖 مدیریت AI", "🤖 AI Management"):
-            await update.message.reply_text(
-                master_ai_text(),
                 parse_mode="HTML",
                 reply_markup=master_back_keyboard(uid)
             )
@@ -12848,7 +12138,6 @@ TARGETED_PERMISSION_LABELS = {
     "manage_tickets":"🎫 تیکت‌ها",
     "manage_finance":"💰 مالی",
     "manage_channels":"📢 کانال",
-    "manage_ai":"🤖 هوش مصنوعی",
     "manage_features":"🧩 قابلیت‌ها",
     "run_health":"🩺 Health Check",
     "run_diagnostics":"🔎 عیب‌یابی",
@@ -13114,8 +12403,7 @@ async def text_router(update,context):
                     '🛡 مدیریت ربات','🛡 Bot Management',
                     '⚙️ تنظیمات سیستم','⚙️ System Settings',
                     '📊 داشبورد و گزارش','📊 Dashboard & Reports',
-                    '👤 استفاده از ربات','👤 Use Bot',
-                    '🤖 مدیریت AI','🤖 AI Management')
+                    '👤 استفاده از ربات','👤 Use Bot')
     if context.user_data.get('targeted_add_manager') and txt in _nav_labels:
         context.user_data.pop('targeted_add_manager', None)
     if context.user_data.get('master_add_manager') and txt in _nav_labels:
@@ -13220,7 +12508,6 @@ def _manager_main_keyboard(uid):
         ("view_dashboard", "📊 داشبورد و گزارش", "📊 Dashboard & Reports"),
         ("manage_users", "👥 کاربران و نقش‌ها", "👥 Users & Roles"),
         ("manage_tickets", "🎫 تیکت‌ها و Incident", "🎫 Tickets & Incidents"),
-        ("manage_ai", "🤖 مدیریت AI", "🤖 AI Management"),
         ("manage_channels", "📢 کانال و انتشار", "📢 Channels & Publishing"),
         ("manage_finance", "💰 مالی و پرداخت", "💰 Finance & Payments"),
         ("manage_vip", "💎 VIP / XP / Token", "💎 VIP / XP / Token"),
@@ -13312,7 +12599,7 @@ async def text_router(update, context):
             titles = {
                 "goals": ("🎯 <b>برنامه و اهداف</b>", "🎯 <b>Goals & Plan</b>"),
                 "reports": ("📊 <b>گزارش و پیشرفت</b>", "📊 <b>Reports & Progress</b>"),
-                "tools": ("🤖 <b>ابزارهای هوشمند</b>", "🤖 <b>Smart Tools</b>"),
+                "tools": ("🛠️ <b>ابزارها</b>", "🛠️ <b>Tools</b>"),
                 "vip": ("💎 <b>VIP و پاداش‌ها</b>", "💎 <b>VIP & Rewards</b>"),
                 "account": ("👤 <b>حساب من</b>", "👤 <b>My Account</b>"),
                 "support": ("🎫 <b>پشتیبانی</b>", "🎫 <b>Support</b>"),
@@ -15934,7 +15221,6 @@ def _compact_menu_keyboard(uid, section):
             [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
         ],
         "tools": [
-            [("🤖 چت با AI", "cm:ai"), ("🎙️ دستیار صوتی", "cm:voice")],
             [("📚 راهنمای ربات", "cm:guide")],
         ],
         "vip": [
@@ -15958,7 +15244,6 @@ def _compact_menu_keyboard(uid, section):
         "cm:stats":"📈 My Stats", "cm:weekly":"📅 Weekly Report",
         "v25:reports":"📊 Today's Report", "v25:report_month":"🗓️ Monthly Report",
         "cm:achievements":"🏆 Achievements", "cm:xp":"⭐ XP",
-        "cm:ai":"🤖 AI Chat", "cm:voice":"🎙️ Voice Assistant", "cm:guide":"📚 Bot Guide",
         "cm:vip":"💎 VIP & Subscription", "cm:tokens":"🎟️ My Tokens", "cm:referral":"🤝 Referrals",
         "cm:profile":"👤 Profile", "cm:rewards":"🎁 My Rewards", "cm:settings":"⚙️ Settings",
         "cm:support":"🎫 Support",
@@ -15981,14 +15266,14 @@ def _compact_root_inline(uid):
     if fa:
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🛠️ ابزارها", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
         ]
     else:
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🛠️ Tools", callback_data="menu:tools")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
         ]
@@ -16069,7 +15354,7 @@ async def text_router(update, context):
 _FINAL_DIRECT_FEATURE_ALIASES = {
     "weekly_table": "weekly", "referral": "referrals", "price": "price_data",
     "price_data": "price_data", "customer": "customers", "customers": "customers",
-    "ai_chat": "ai", "ai": "ai", "voice": "voice", "vip": "vip",
+    "vip": "vip",
     "support": "support", "settings": "settings", "goals": "goals", "edit": "goals",
     "reminders": "reminders", "calendar": "calendar_hub", "profile": "profile",
     "achievements": "achievements", "xp": "xp", "stats": "stats",
@@ -16110,7 +15395,6 @@ def _direct_cb_feature(data):
     if data in {"cm:home", "nav:main", "cm:guide", "v25:admin", "v25:admin:hub", "v25:fsub:home"}:
         return None
     exact = {
-        "cm:ai":"ai", "cm:voice":"voice", "cm:prices":"price_data", "cm:vip":"vip",
         "cm:referral":"referrals", "cm:settings":"settings", "cm:today":"goals",
         "cm:custom_goal":"goals", "cm:ready_goals":"goals", "cm:edit_goals":"edit",
         "cm:reminders":"reminders", "cm:calendar":"calendar_hub", "cm:stats":"stats",
@@ -16122,7 +15406,6 @@ def _direct_cb_feature(data):
     if data in exact:
         return exact[data]
     if data.startswith("price:"): return "price_data"
-    if data.startswith("ai") or data.startswith("aichat:"): return "ai"
     if data.startswith("vip:"): return "vip"
     if data.startswith("ref:"): return "referrals"
     if data.startswith("support:"): return "support"
@@ -16215,14 +15498,6 @@ async def price_callback(update, context):
     if not _direct_feature_allowed(uid,"price_data"):
         await update.callback_query.answer("🔒 قیمت آنلاین غیرفعال است.",show_alert=True); return
     return await _DIRECT_OLD_PRICE_CALLBACK(update, context)
-
-_DIRECT_OLD_AI_NAV = ai_chat_navigation_callback
-async def ai_chat_navigation_callback(update, context):
-    uid=update.effective_user.id
-    if not _direct_feature_allowed(uid,"ai"):
-        await update.callback_query.answer("🔒 هوش مصنوعی غیرفعال است.",show_alert=True); return
-    return await _DIRECT_OLD_AI_NAV(update, context)
-
 # ---------------- Multi-channel permanent forced subscription ----------------
 def _direct_fsub_init():
     c=db()
@@ -16545,7 +15820,6 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_users_navigation_callback, pattern=r"^adm:users:\d+$"))
     app.add_handler(CallbackQueryHandler(feature_category_callback, pattern=r"^fcat:"))
     app.add_handler(CallbackQueryHandler(navigation_callback, pattern=r"^nav:"))
-    app.add_handler(CallbackQueryHandler(ai_chat_navigation_callback, pattern=r"^aichat:"))
     # Birthday callbacks
     app.add_handler(CallbackQueryHandler(birthday_register_callback, pattern=r"^birthday:set$"))
     app.add_handler(CallbackQueryHandler(birthday_show_callback, pattern=r"^birthday:show$"))
@@ -16638,7 +15912,6 @@ def main():
     # Register it explicitly; otherwise Telegram sends the callback but no handler receives it.
     app.add_handler(CallbackQueryHandler(targeted_goalrepeat_callback, pattern=r"^goalrepeat:"))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, v25_receipt_handler))
-    app.add_handler(MessageHandler(filters.VOICE, v25_voice_handler))
     app.add_handler(MessageHandler(filters.CONTACT, customer_contact_save))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_error_handler(error_handler)
@@ -16667,7 +15940,6 @@ def main():
         app.job_queue.run_repeating(birthday_occasion_job, interval=60, first=65)
 
     logger.info("MyTasks build: 2026-08-25-FINAL-QUALITY-01")
-    logger.info("AI providers configured: OmniRoute=%s OpenAI=%s n8n=%s", omniroute_configured(), bool(os.environ.get("OPENAI_API_KEY","").strip()), n8n_configured())
     logger.info("Goal bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
