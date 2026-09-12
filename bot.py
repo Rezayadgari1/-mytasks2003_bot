@@ -15299,7 +15299,7 @@ def _compact_user_keyboard(uid):
     rows = [
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
         ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
-        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports", "🛠️ ابزارها" if fa else "🛠️ Tools"],
+        ["📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
         ["🎫 پشتیبانی" if fa else "🎫 Support", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
     ]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -15365,14 +15365,14 @@ def _compact_root_inline(uid):
     if fa:
         rows = [
             [InlineKeyboardButton("🎯 برنامه من", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports"), InlineKeyboardButton("🤖 ابزارها", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 گزارش و پیشرفت", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP و XP", callback_data="menu:vip"), InlineKeyboardButton("👤 حساب من", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 پشتیبانی", callback_data="menu:support")],
         ]
     else:
         rows = [
             [InlineKeyboardButton("🎯 My Plan", callback_data="menu:goals")],
-            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports"), InlineKeyboardButton("🤖 Tools", callback_data="menu:tools")],
+            [InlineKeyboardButton("📊 Reports & Progress", callback_data="menu:reports")],
             [InlineKeyboardButton("💎 VIP & XP", callback_data="menu:vip"), InlineKeyboardButton("👤 My Account", callback_data="menu:account")],
             [InlineKeyboardButton("🎫 Support", callback_data="menu:support")],
         ]
