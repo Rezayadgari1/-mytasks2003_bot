@@ -15297,6 +15297,7 @@ _FINAL_OLD_COMPACT_MENU_CALLBACK_UI = compact_menu_callback
 def _compact_user_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
+        ["🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
         ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
         ["📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
