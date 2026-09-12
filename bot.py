@@ -15297,7 +15297,7 @@ _FINAL_OLD_COMPACT_MENU_CALLBACK_UI = compact_menu_callback
 def _compact_user_keyboard(uid):
     fa = lang(uid) == "fa"
     rows = [
-        ["🎯 برنامه و اهداف" if fa else "🎯 Goals & Plan"],
+        ["🎯 اهداف" if fa else "🎯 Goals"],
         ["📈 قیمت آنلاین" if fa else "📈 Online Prices", "📅 تقویم و یادآوری" if fa else "📅 Calendar & Reminders"],
         ["👤 حساب من" if fa else "👤 My Account", "🤝 دعوت دوستان" if fa else "🤝 Invite Friends"],
         ["📊 آمار و گزارش" if fa else "📊 Stats & Reports"],
@@ -15422,6 +15422,7 @@ async def text_router(update, context):
     txt = update.message.text.strip()
     uid = update.effective_user.id
     direct = {
+        "🎯 اهداف": "goals", "🎯 Goals": "goals",
         "🎯 برنامه و اهداف": "goals", "🎯 Goals & Plan": "goals",
         "📈 قیمت آنلاین": "prices", "📈 Online Prices": "prices",
         "📅 تقویم و یادآوری": "calendar", "📅 Calendar & Reminders": "calendar",
