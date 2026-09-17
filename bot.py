@@ -16243,5 +16243,464 @@ async def legacy_compat_callback(update, context):
     return await compact_menu_callback(update, context)
 
 
+
+# === FINAL USER MENU CLEANUP / ACTIVE SECTIONS ONLY 2026-09-17 ===
+# Keep the existing feature implementations, but expose a single compact
+# navigation surface. Legacy handlers remain available for old callback data;
+# inactive/duplicate buttons are no longer shown to users.
+
+def _active_main_menu_rows(uid):
+    fa = lang(uid) == "fa"
+    return [
+        ["🔥 امروز من" if fa else "🔥 Today"],
+        ["🎯 اهداف" if fa else "🎯 Goals"],
+        ["📝 وظایف" if fa else "📝 Tasks"],
+        ["📅 برنامه امروز" if fa else "📅 Today's Schedule"],
+        ["⏰ یادآوری‌ها" if fa else "⏰ Reminders"],
+        ["📊 گزارش عملکرد" if fa else "📊 Performance Reports"],
+        ["🔍 جستجو" if fa else "🔍 Search"],
+        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+    ]
+
+
+def keyboard(uid):
+    """Final user-facing menu: only the eight active core sections."""
+    return ReplyKeyboardMarkup(
+        _active_main_menu_rows(uid),
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
+
+
+def _active_root_inline(uid):
+    fa = lang(uid) == "fa"
+    labels = {
+        "today": ("🔥 امروز من", "🔥 Today"),
+        "goals": ("🎯 اهداف", "🎯 Goals"),
+        "tasks": ("📝 وظایف", "📝 Tasks"),
+        "schedule": ("📅 برنامه امروز", "📅 Today's Schedule"),
+        "reminders": ("⏰ یادآوری‌ها", "⏰ Reminders"),
+        "reports": ("📊 گزارش عملکرد", "📊 Performance Reports"),
+        "search": ("🔍 جستجو", "🔍 Search"),
+        "settings": ("⚙️ تنظیمات", "⚙️ Settings"),
+    }
+    rows = [
+        [InlineKeyboardButton(labels["today"][0 if fa else 1], callback_data="menu:today")],
+        [InlineKeyboardButton(labels["goals"][0 if fa else 1], callback_data="menu:goals"),
+         InlineKeyboardButton(labels["tasks"][0 if fa else 1], callback_data="menu:tasks")],
+        [InlineKeyboardButton(labels["schedule"][0 if fa else 1], callback_data="menu:schedule"),
+         InlineKeyboardButton(labels["reminders"][0 if fa else 1], callback_data="menu:reminders")],
+        [InlineKeyboardButton(labels["reports"][0 if fa else 1], callback_data="menu:reports")],
+        [InlineKeyboardButton(labels["search"][0 if fa else 1], callback_data="menu:search"),
+         InlineKeyboardButton(labels["settings"][0 if fa else 1], callback_data="menu:settings")],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def _compact_root_inline(uid):
+    """Final inline root mirrors the active eight-section user menu."""
+    return _active_root_inline(uid)
+
+
+def _active_section_keyboard(uid, section):
+    fa = lang(uid) == "fa"
+    data = {
+        "today": [
+            [("🔥 وضعیت امروز", "cm:today")],
+            [("🎯 اهداف امروز", "cm:today"), ("📊 آمار من", "cm:stats")],
+        ],
+        "goals": [
+            [("➕ هدف جدید", "cm:custom_goal"), ("🏆 اهداف آماده", "cm:ready_goals")],
+            [("✏️ ویرایش اهداف", "cm:edit_goals"), ("📅 گزارش هفتگی", "cm:weekly")],
+        ],
+        "tasks": [
+            [("📝 فهرست وظایف", "cm:edit_goals"), ("➕ افزودن وظیفه", "cm:custom_goal")],
+            [("🔥 وظایف امروز", "cm:today"), ("📊 وضعیت انجام", "cm:stats")],
+        ],
+        "schedule": [
+            [("📅 برنامه امروز", "cm:calendar"), ("⏰ یادآوری‌ها", "cm:reminders")],
+            [("📆 گزارش هفتگی", "cm:weekly")],
+        ],
+        "reminders": [
+            [("⏰ یادآوری‌ها", "cm:reminders")],
+            [("📅 تقویم من", "cm:calendar")],
+        ],
+        "reports": [
+            [("📊 آمار من", "cm:stats"), ("📅 گزارش هفتگی", "cm:weekly")],
+            [("🏆 دستاوردها", "cm:achievements"), ("⭐ XP", "cm:xp")],
+        ],
+        "search": [
+            [("🔍 جستجوی اهداف/وظایف", "cm:search")],
+        ],
+        "settings": [
+            [("⚙️ تنظیمات", "cm:settings"), ("👤 پروفایل", "cm:profile")],
+            [("🔔 یادآوری‌ها", "cm:reminders")],
+        ],
+    }
+    en = {
+        "cm:today": "🔥 Today",
+        "cm:custom_goal": "➕ New Goal",
+        "cm:ready_goals": "🏆 Ready Goals",
+        "cm:edit_goals": "✏️ Edit Tasks",
+        "cm:weekly": "📅 Weekly Report",
+        "cm:stats": "📊 My Stats",
+        "cm:calendar": "📅 My Calendar",
+        "cm:reminders": "⏰ Reminders",
+        "cm:achievements": "🏆 Achievements",
+        "cm:xp": "⭐ XP",
+        "cm:search": "🔍 Search",
+        "cm:settings": "⚙️ Settings",
+        "cm:profile": "👤 Profile",
+    }
+    rows = []
+    for row in data.get(section, []):
+        rows.append([
+            InlineKeyboardButton(label if fa else en.get(cb, label), callback_data=cb)
+            for label, cb in row
+        ])
+    rows.append([
+        InlineKeyboardButton("⬅️ بازگشت" if fa else "⬅️ Back", callback_data="cm:home"),
+        main_menu_button(uid),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _active_search_start(update, context):
+    uid = update.effective_user.id
+    context.user_data["awaiting_main_search"] = True
+    context.user_data["_flow_started_at"] = datetime.now(TZ).isoformat()
+    await update.message.reply_text(
+        "🔍 نام هدف یا بخشی از متن را بفرست تا در هدف‌ها جستجو کنم."
+        if lang(uid) == "fa" else
+        "🔍 Send a goal name or part of its text to search.",
+        reply_markup=nav_keyboard(uid),
+    )
+    return True
+
+
+async def _active_search_save(update, context):
+    uid = update.effective_user.id
+    query = (getattr(update.message, "text", "") or "").strip()
+    context.user_data.pop("awaiting_main_search", None)
+    if not query:
+        await update.message.reply_text("❌ عبارت جستجو خالی است.", reply_markup=keyboard(uid))
+        return True
+    c = db()
+    try:
+        rows = c.execute(
+            """SELECT id, name, category, reminder_time
+               FROM goals
+               WHERE user_id=? AND (name LIKE ? OR category LIKE ?)
+               ORDER BY id DESC LIMIT 20""",
+            (uid, f"%{query}%", f"%{query}%"),
+        ).fetchall()
+    finally:
+        c.close()
+    if rows:
+        body = "\n".join(
+            f"• #{r['id']} — {html.escape(r['name'])}"
+            + (f" | ⏰ {html.escape(r['reminder_time'])}" if r["reminder_time"] else "")
+            for r in rows
+        )
+        text = f"🔍 <b>نتیجه جستجو برای «{html.escape(query)}»</b>\n\n{body}"
+    else:
+        text = f"🔍 برای «{html.escape(query)}» چیزی پیدا نشد."
+    await update.message.reply_text(
+        text, parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [main_menu_button(uid)]
+        ]),
+    )
+    return True
+
+
+async def _active_section_show(update, context, section):
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    titles = {
+        "today": ("🔥 <b>امروز من</b>", "🔥 <b>Today</b>"),
+        "goals": ("🎯 <b>اهداف</b>", "🎯 <b>Goals</b>"),
+        "tasks": ("📝 <b>وظایف</b>", "📝 <b>Tasks</b>"),
+        "schedule": ("📅 <b>برنامه امروز</b>", "📅 <b>Today's Schedule</b>"),
+        "reminders": ("⏰ <b>یادآوری‌ها</b>", "⏰ <b>Reminders</b>"),
+        "reports": ("📊 <b>گزارش عملکرد</b>", "📊 <b>Performance Reports</b>"),
+        "search": ("🔍 <b>جستجو</b>", "🔍 <b>Search</b>"),
+        "settings": ("⚙️ <b>تنظیمات</b>", "⚙️ <b>Settings</b>"),
+    }
+    if section == "today":
+        return await today(update, context)
+    if section == "goals":
+        return await _compact_menu_show(update, context, "goals")
+    if section == "tasks":
+        return await _compact_menu_show(update, context, "goals")
+    if section == "schedule":
+        return await v25_reminders_menu(update, context)
+    if section == "reminders":
+        return await v25_reminders_menu(update, context)
+    if section == "reports":
+        return await _compact_menu_show(update, context, "reports")
+    if section == "settings":
+        return await settings(update, context)
+    if section == "search":
+        if getattr(update, "callback_query", None):
+            q = update.callback_query
+            await q.answer()
+            await q.message.edit_text(
+                titles["search"][0 if fa else 1],
+                parse_mode="HTML",
+                reply_markup=_active_section_keyboard(uid, "search"),
+            )
+            context.user_data["awaiting_main_search"] = True
+            return
+        return await _active_search_start(update, context)
+    return await _compact_menu_show(update, context, section)
+
+
+_FINAL_ACTIVE_OLD_TEXT_ROUTER = text_router
+
+async def text_router(update, context):
+    """Final router for the cleaned user menu; legacy flows still fall through."""
+    if not update.message or not getattr(update.message, "text", None):
+        return await _FINAL_ACTIVE_OLD_TEXT_ROUTER(update, context)
+    txt = update.message.text.strip()
+    uid = update.effective_user.id
+
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+        clear_flow(context)
+        await update.message.reply_text(
+            "🏠 <b>منوی اصلی</b>" if lang(uid) == "fa" else "🏠 <b>Main Menu</b>",
+            parse_mode="HTML",
+            reply_markup=keyboard(uid),
+        )
+        return True
+
+    if context.user_data.get("awaiting_main_search"):
+        try:
+            return await _active_search_save(update, context)
+        except Exception:
+            logger.exception("Main-menu search failed for uid=%s", uid)
+            context.user_data.pop("awaiting_main_search", None)
+            await update.message.reply_text(
+                "⚠️ جستجو انجام نشد. دوباره از منوی اصلی امتحان کن.",
+                reply_markup=keyboard(uid),
+            )
+            return True
+
+    direct = {
+        "🔥 امروز من": "today", "🔥 Today": "today",
+        "🎯 اهداف": "goals", "🎯 Goals": "goals",
+        "📝 وظایف": "tasks", "📝 Tasks": "tasks",
+        "📅 برنامه امروز": "schedule", "📅 Today's Schedule": "schedule",
+        "⏰ یادآوری‌ها": "reminders", "⏰ Reminders": "reminders",
+        "📊 گزارش عملکرد": "reports", "📊 Performance Reports": "reports",
+        "🔍 جستجو": "search", "🔍 Search": "search",
+        "⚙️ تنظیمات": "settings", "⚙️ Settings": "settings",
+    }
+    section = direct.get(txt)
+    if section:
+        clear_flow(context)
+        return await _active_section_show(update, context, section)
+
+    return await _FINAL_ACTIVE_OLD_TEXT_ROUTER(update, context)
+
+
+_FINAL_ACTIVE_OLD_COMPACT_MENU_CALLBACK = compact_menu_callback
+
+async def compact_menu_callback(update, context):
+    q = update.callback_query
+    data = str(q.data or "")
+    uid = q.from_user.id
+    if data == "cm:search":
+        await q.answer()
+        context.user_data["awaiting_main_search"] = True
+        await q.message.edit_text(
+            "🔍 <b>جستجو</b>\n\nعبارت جستجو را در پیام بعدی بفرست."
+            if lang(uid) == "fa" else
+            "🔍 <b>Search</b>\n\nSend the search text in your next message.",
+            parse_mode="HTML",
+            reply_markup=_active_section_keyboard(uid, "search"),
+        )
+        return
+    if data.startswith("menu:"):
+        section = data.split(":", 1)[1]
+        if section in {
+            "today", "goals", "tasks", "schedule",
+            "reminders", "reports", "search", "settings",
+        }:
+            try:
+                await q.answer()
+                return await _active_section_show(update, context, section)
+            except Exception as exc:
+                logger.exception("Active menu route failed: %s", data)
+                release_leaked_connections(exc)
+                await q.answer("⚠️ این بخش موقتاً در دسترس نیست.", show_alert=True)
+                return
+    return await _FINAL_ACTIVE_OLD_COMPACT_MENU_CALLBACK(update, context)
+
+
+
+# ===== FINAL UX LAYER: in-place menus, consistent Back/Main navigation =====
+
+async def _final_render_main_menu(update, context, text=None):
+    """Render the main menu once and remember its message so text-menu transitions
+    can remove the previous bot bubble instead of creating a chat trail."""
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+    body = text or ("🏠 <b>منوی اصلی</b>\n\nلطفاً بخش موردنظر را انتخاب کنید."
+                    if fa else "🏠 <b>Main Menu</b>\n\nPlease choose a section.")
+    markup = _active_root_inline(uid)
+    if getattr(update, "callback_query", None):
+        q = update.callback_query
+        await q.answer()
+        msg = await q.message.edit_text(body, parse_mode="HTML", reply_markup=markup)
+    else:
+        old_id = context.user_data.get("_last_bot_menu_message_id")
+        try:
+            if old_id and getattr(update, "effective_chat", None):
+                await context.bot.delete_message(update.effective_chat.id, int(old_id))
+        except Exception:
+            pass
+        msg = await update.message.reply_text(body, parse_mode="HTML", reply_markup=markup)
+    context.user_data["_last_bot_menu_message_id"] = getattr(msg, "message_id", None)
+    return msg
+
+
+async def _final_active_section_show(update, context, section):
+    uid = update.effective_user.id
+    fa = lang(uid) == "fa"
+
+    # Callback -> edit the current bot message in place.
+    q = getattr(update, "callback_query", None)
+    if q:
+        proxy = _SectionProxyMessage(q.message, uid, "menu:home")
+        if section == "today":
+            return await today(type("_U", (), {"effective_user": q.from_user, "message": proxy, "callback_query": None})(), context)
+        if section == "goals":
+            return await _compact_menu_show(update, context, "goals")
+        if section == "tasks":
+            return await _compact_menu_show(update, context, "goals")
+        if section in ("schedule", "reminders"):
+            return await v25_reminders_menu(type("_U", (), {"effective_user": q.from_user, "message": proxy, "callback_query": None})(), context)
+        if section == "reports":
+            return await _compact_menu_show(update, context, "reports")
+        if section == "settings":
+            return await settings(type("_U", (), {"effective_user": q.from_user, "message": proxy, "callback_query": None})(), context)
+        if section == "search":
+            await q.answer()
+            context.user_data["awaiting_main_search"] = True
+            await q.message.edit_text(
+                "🔍 <b>جستجو</b>\n\nعبارت موردنظر را ارسال کنید."
+                if fa else
+                "🔍 <b>Search</b>\n\nSend the text you want to search for.",
+                parse_mode="HTML",
+                reply_markup=_active_section_keyboard(uid, "search"),
+            )
+            return True
+
+    # Reply-keyboard selection: remove the previous bot menu bubble, then show one screen.
+    old_id = context.user_data.get("_last_bot_menu_message_id")
+    if old_id:
+        try:
+            await context.bot.delete_message(update.effective_chat.id, int(old_id))
+        except Exception:
+            pass
+
+    if section == "search":
+        return await _active_search_start(update, context)
+    if section == "today":
+        return await today(update, context)
+    if section in ("goals", "tasks"):
+        return await _compact_menu_show(update, context, "goals")
+    if section in ("schedule", "reminders"):
+        return await v25_reminders_menu(update, context)
+    if section == "reports":
+        return await _compact_menu_show(update, context, "reports")
+    if section == "settings":
+        return await settings(update, context)
+    return await _compact_menu_show(update, context, section)
+
+
+# Override the registered callback by name: the handler resolves this function at dispatch time.
+async def compact_section_callback(update, context):
+    q = update.callback_query
+    data = str(q.data or "")
+    if data == "menu:home":
+        return await _final_render_main_menu(update, context)
+    section = data.split(":", 1)[1] if data.startswith("menu:") else ""
+    if section in {"today", "goals", "tasks", "schedule", "reminders", "reports", "search", "settings"}:
+        try:
+            return await _final_active_section_show(update, context, section)
+        except Exception as exc:
+            logger.exception("Final section route failed: %s", data)
+            try:
+                await q.answer("⚠️ این بخش موقتاً در دسترس نیست.", show_alert=True)
+            except Exception:
+                pass
+            return
+    # Preserve every legacy compact section.
+    return await _FINAL_ACTIVE_OLD_COMPACT_MENU_CALLBACK(update, context)
+
+
+# Final main-menu text routing: keep the chat clean and make the bot menu stateful.
+async def text_router(update, context):
+    if not update.message or not getattr(update.message, "text", None):
+        return await _FINAL_ACTIVE_OLD_TEXT_ROUTER(update, context)
+
+    txt = update.message.text.strip()
+    uid = update.effective_user.id
+
+    if txt in ("🏠 منوی اصلی", "🏠 Main Menu"):
+        clear_flow(context)
+        return await _final_render_main_menu(update, context)
+
+    if context.user_data.get("awaiting_main_search"):
+        try:
+            return await _active_search_save(update, context)
+        except Exception:
+            logger.exception("Main-menu search failed for uid=%s", uid)
+            context.user_data.pop("awaiting_main_search", None)
+            await update.message.reply_text(
+                "⚠️ متأسفانه جستجو انجام نشد. لطفاً دوباره تلاش کنید."
+                if lang(uid) == "fa" else
+                "⚠️ The search could not be completed. Please try again.",
+                reply_markup=nav_keyboard(uid),
+            )
+            return True
+
+    direct = {
+        "🔥 امروز من": "today", "🔥 Today": "today",
+        "🎯 اهداف": "goals", "🎯 Goals": "goals",
+        "📝 وظایف": "tasks", "📝 Tasks": "tasks",
+        "📅 برنامه امروز": "schedule", "📅 Today's Schedule": "schedule",
+        "⏰ یادآوری‌ها": "reminders", "⏰ Reminders": "reminders",
+        "📊 گزارش عملکرد": "reports", "📊 Performance Reports": "reports",
+        "🔍 جستجو": "search", "🔍 Search": "search",
+        "⚙️ تنظیمات": "settings", "⚙️ Settings": "settings",
+    }
+    section = direct.get(txt)
+    if section:
+        clear_flow(context)
+        return await _final_active_section_show(update, context, section)
+
+    return await _FINAL_ACTIVE_OLD_TEXT_ROUTER(update, context)
+# ===== FINAL ADMIN UX: compact, separated from the user menu =====
+def admin_keyboard():
+    """Compact admin-only keyboard. Backend/admin handlers remain unchanged."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 داشبورد", callback_data="adm:stats"),
+         InlineKeyboardButton("👥 کاربران", callback_data="adm:users")],
+        [InlineKeyboardButton("🎯 اهداف", callback_data="adm:goals"),
+         InlineKeyboardButton("📈 فعالیت‌ها", callback_data="adm:activity")],
+        [InlineKeyboardButton("⏰ یادآوری‌ها", callback_data="adm:reminders"),
+         InlineKeyboardButton("🏆 دستاوردها", callback_data="adm:achievements")],
+        [InlineKeyboardButton("📢 پیام همگانی", callback_data="adm:broadcast")],
+        [InlineKeyboardButton("📢 مدیریت کانال", callback_data="adm:channel")],
+        [InlineKeyboardButton("🩺 سلامت ربات", callback_data="adm:health"),
+         InlineKeyboardButton("📋 گزارش روزانه", callback_data="adm:report")],
+        [InlineKeyboardButton("⚙️ قابلیت‌ها", callback_data="adm:features")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="adm:main")],
+    ])
+
+
 if __name__ == "__main__":
     main()
