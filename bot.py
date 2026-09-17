@@ -13129,6 +13129,7 @@ async def goal_reminders_list(update,context):
             details=' | '.join(f'{k}: {v}' for k,v in list(meta.items())[:3] if v)
             if details: lines.append(f"  📝 {html.escape(details)}")
         rows.append([InlineKeyboardButton(f"✏️ {g['name']}",callback_data=f"edit:{g['id']}")])
+        rows.append([InlineKeyboardButton('🗑 حذف همین هدف' if fa else '🗑 Delete this goal',callback_data=f"delete:{g['id']}")])
     rows += [[InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today'),main_menu_button(uid)]]
     target=q.message; await target.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
@@ -13221,7 +13222,10 @@ async def detail(update,context):
     if g['reminder_end_date']: lines.append(f"📅 پایان تکرار: {html.escape(g['reminder_end_date'])}")
     for k,v in meta.items():
         if v: lines.append(f"📝 {html.escape(k)}: {html.escape(v)}")
-    rows=[[InlineKeyboardButton('✏️ ویرایش' if fa=='fa' else '✏️ Edit',callback_data=f'edit:{gid}')],[InlineKeyboardButton('✅ انجام دادم' if fa=='fa' else '✅ Done',callback_data=f'done:{gid}'),InlineKeyboardButton('❌ انجام ندادم' if fa=='fa' else '❌ Not done',callback_data=f'miss:{gid}')],[main_menu_button(uid)]]
+    rows=[[InlineKeyboardButton('✏️ ویرایش' if fa=='fa' else '✏️ Edit',callback_data=f'edit:{gid}')],
+          [InlineKeyboardButton('🗑 حذف همین هدف' if fa=='fa' else '🗑 Delete this goal',callback_data=f'delete:{gid}')],
+          [InlineKeyboardButton('✅ انجام دادم' if fa=='fa' else '✅ Done',callback_data=f'done:{gid}'),InlineKeyboardButton('❌ انجام ندادم' if fa=='fa' else '❌ Not done',callback_data=f'miss:{gid}')],
+          [main_menu_button(uid)]]
     await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
 # Save detailed fields after the goal row exists.
@@ -13328,6 +13332,7 @@ async def my_goals_callback(update,context):
     for g in goals:
         lines.append(f"• {html.escape(g['name'])} — ⏰ {g['reminder_time'] or 'خاموش'}")
         rows.append([InlineKeyboardButton(g['name'],callback_data=f'edit:{g["id"]}')])
+        rows.append([InlineKeyboardButton('🗑 حذف همین هدف' if fa else '🗑 Delete this goal',callback_data=f'delete:{g["id"]}')])
     rows.append([InlineKeyboardButton('🔔 یادآوری‌ها' if fa else '🔔 Reminders',callback_data='goalreminders'),InlineKeyboardButton('📅 تقویم' if fa else '📅 Calendar',callback_data='goalcalendar:today')]); rows.append([main_menu_button(uid)])
     await q.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(rows))
 
@@ -16251,15 +16256,12 @@ async def legacy_compat_callback(update, context):
 
 def _active_main_menu_rows(uid):
     fa = lang(uid) == "fa"
+    # Compact two-column layout: eight core sections, four rows.
     return [
-        ["🔥 امروز من" if fa else "🔥 Today"],
-        ["🎯 اهداف" if fa else "🎯 Goals"],
-        ["📝 وظایف" if fa else "📝 Tasks"],
-        ["📅 برنامه امروز" if fa else "📅 Today's Schedule"],
-        ["⏰ یادآوری‌ها" if fa else "⏰ Reminders"],
-        ["📊 گزارش عملکرد" if fa else "📊 Performance Reports"],
-        ["🔍 جستجو" if fa else "🔍 Search"],
-        ["⚙️ تنظیمات" if fa else "⚙️ Settings"],
+        ["🔥 امروز من" if fa else "🔥 Today", "🎯 اهداف" if fa else "🎯 Goals"],
+        ["📝 وظایف" if fa else "📝 Tasks", "📅 برنامه امروز" if fa else "📅 Today's Schedule"],
+        ["⏰ یادآوری‌ها" if fa else "⏰ Reminders", "📊 گزارش عملکرد" if fa else "📊 Performance Reports"],
+        ["🔍 جستجو" if fa else "🔍 Search", "⚙️ تنظیمات" if fa else "⚙️ Settings"],
     ]
 
 
@@ -16285,12 +16287,12 @@ def _active_root_inline(uid):
         "settings": ("⚙️ تنظیمات", "⚙️ Settings"),
     }
     rows = [
-        [InlineKeyboardButton(labels["today"][0 if fa else 1], callback_data="menu:today")],
-        [InlineKeyboardButton(labels["goals"][0 if fa else 1], callback_data="menu:goals"),
-         InlineKeyboardButton(labels["tasks"][0 if fa else 1], callback_data="menu:tasks")],
-        [InlineKeyboardButton(labels["schedule"][0 if fa else 1], callback_data="menu:schedule"),
-         InlineKeyboardButton(labels["reminders"][0 if fa else 1], callback_data="menu:reminders")],
-        [InlineKeyboardButton(labels["reports"][0 if fa else 1], callback_data="menu:reports")],
+        [InlineKeyboardButton(labels["today"][0 if fa else 1], callback_data="menu:today"),
+         InlineKeyboardButton(labels["goals"][0 if fa else 1], callback_data="menu:goals")],
+        [InlineKeyboardButton(labels["tasks"][0 if fa else 1], callback_data="menu:tasks"),
+         InlineKeyboardButton(labels["schedule"][0 if fa else 1], callback_data="menu:schedule")],
+        [InlineKeyboardButton(labels["reminders"][0 if fa else 1], callback_data="menu:reminders"),
+         InlineKeyboardButton(labels["reports"][0 if fa else 1], callback_data="menu:reports")],
         [InlineKeyboardButton(labels["search"][0 if fa else 1], callback_data="menu:search"),
          InlineKeyboardButton(labels["settings"][0 if fa else 1], callback_data="menu:settings")],
     ]
